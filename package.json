@@ -1,0 +1,47 @@
+{
+  "name": "agentic-user-skills",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Monorepo of user-level agentic skills — cross-agent (Claude Code, OpenCode, Cursor, Codex) tools that improve the user's experience across any repo. Installed user-level via bunx skills add.",
+  "author": "UPEX Galaxy",
+  "license": "MIT",
+  "homepage": "https://github.com/upex-galaxy/agentic-user-skills#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/upex-galaxy/agentic-user-skills.git"
+  },
+  "bugs": {
+    "url": "https://github.com/upex-galaxy/agentic-user-skills/issues"
+  },
+  "keywords": [
+    "agent-skills",
+    "claude-code",
+    "opencode",
+    "cursor",
+    "codex",
+    "bun",
+    "typescript",
+    "agentic",
+    "user-skills",
+    "human-in-the-loop",
+    "wokitoki",
+    "toki"
+  ],
+  "bin": {
+    "toki": "./skills/wokitoki/cli/index.ts"
+  },
+  "scripts": {
+    "lint:check": "eslint .",
+    "lint:fix": "eslint --fix .",
+    "types:check": "tsc --noEmit",
+    "toki:build": "bun build --compile skills/wokitoki/cli/index.ts --outfile $HOME/.bun/bin/toki",
+    "repo:check": "bun run lint:check && bun run types:check"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "^4.16.0",
+    "@types/bun": "^1.3.7",
+    "@types/node": "^24.10.1",
+    "eslint": "^9.28.0",
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,0 +1,16 @@
+node_modules
+dist
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# WokiToki writes results/images under ~/.toki, but ignore a stray local one too.
+.toki/
+
+# Compiled standalone binary, if ever emitted into the repo.
+/toki
+
+# playwright-cli page snapshots, dropped where the tool is driven during E2E.
+.playwright-cli/

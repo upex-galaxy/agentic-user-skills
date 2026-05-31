@@ -1,0 +1,11 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "notGrouped": "bottom",
+  "groupings": [
+    {
+      "title": "Human-in-the-loop",
+      "description": "Skills that let the AI collect structured, anchored feedback from the user mid-conversation.",
+      "skills": ["wokitoki"]
+    }
+  ]
+}

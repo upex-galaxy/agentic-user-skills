@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Types
+        run: bun run types:check
+      - name: Lint
+        run: bun run lint:check
+      - name: Compile standalone binary (asset-embed smoke)
+        run: bun build --compile skills/wokitoki/cli/index.ts --outfile /tmp/toki
