@@ -147,7 +147,10 @@ export function render(spec: NormalizedSpec, submitToken: string): string {
 <body>
   <main id="toki-app">
     <header class="toki-header">
-      <button type="button" class="toki-theme-toggle" id="toki-theme-toggle" aria-label="Toggle light/dark theme" aria-pressed="false" title="Toggle light/dark theme"></button>
+      <div class="toki-header__tools">
+        <button type="button" class="toki-kbd-toggle" id="toki-kbd-toggle" aria-label="Keyboard shortcuts" title="Keyboard shortcuts">⌨</button>
+        <button type="button" class="toki-theme-toggle" id="toki-theme-toggle" aria-label="Toggle light/dark theme" aria-pressed="false" title="Toggle light/dark theme"></button>
+      </div>
       <h1 class="toki-title">${title}</h1>${intro ? `\n      ${intro}` : ''}
     </header>
     <div class="toki-progress" id="toki-progress" role="status" aria-live="polite">
@@ -177,6 +180,18 @@ ${sections}
       </div>
     </div>
     <button type="button" class="toki-quote-btn" id="toki-quote-btn" hidden>quote</button>
+    <div class="toki-kbd" id="toki-kbd" hidden aria-hidden="true">
+      <div class="toki-kbd__backdrop" id="toki-kbd-backdrop"></div>
+      <div class="toki-kbd__panel" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+        <header class="toki-kbd__head">
+          <span class="toki-kbd__title">Keyboard shortcuts</span>
+          <button type="button" class="toki-kbd__close" id="toki-kbd-close" aria-label="Close">close</button>
+        </header>
+        <ul class="toki-kbd__list" id="toki-kbd-list"></ul>
+      </div>
+    </div>
+    <div class="toki-rowpop-backdrop" id="toki-rowpop-backdrop" hidden></div>
+    <div class="toki-rowpop-layer" id="toki-rowpop-layer"></div>
     <div class="toki-done" id="toki-done" hidden>Submitted. You can close this tab.</div>
   </main>
   <script>window.__TOKI__ = ${specJson};window.__TOKI_TOKEN__ = ${JSON.stringify(submitToken)};</script>

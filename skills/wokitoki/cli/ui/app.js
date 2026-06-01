@@ -56,7 +56,7 @@
   const inlineTextareas = Object.create(null);
 
   /** The block id the floating panel is currently editing, or null when closed. */
-  let currentExpandBlockId = null;
+  let currentExpandKey = null;
 
   for (const block of blocks) {
     if (!block || typeof block.id !== 'string') {
@@ -165,6 +165,24 @@
   const doneEl = byId('toki-done');
   const bar = document.querySelector('.toki-bar');
   const themeToggle = byId('toki-theme-toggle');
+  const rowpopLayer = byId('toki-rowpop-layer');
+  const rowpopBackdrop = byId('toki-rowpop-backdrop');
+  const kbd = byId('toki-kbd');
+  const kbdToggle = byId('toki-kbd-toggle');
+  const kbdClose = byId('toki-kbd-close');
+  const kbdBackdrop = byId('toki-kbd-backdrop');
+  const kbdList = byId('toki-kbd-list');
+
+  /**
+   * Row answer buttons keyed by `block::row` so refresh() can relabel them, and
+   * the per-row popovers keyed the same way. `currentRowPopKey` is the one open
+   * popover (only one at a time), or null.
+   * @type {Record<string, { btn: HTMLElement, textEl: HTMLElement, block: any, rowId: string }>}
+   */
+  const answerButtons = Object.create(null);
+  /** @type {Record<string, HTMLElement>} */
+  const rowPops = Object.create(null);
+  let currentRowPopKey = null;
 
   // --------------------------------------------------------------------------
   // THEME (light / dark) — persisted, no-flash, localStorage-guarded
@@ -271,9 +289,11 @@
   }
 
   /**
-   * Fill each row's server-rendered `.toki-table__answer` cell with the row
-   * controls, the row quote-chips area and the row textarea — same builders as
-   * a normal block, parameterized by a per-row state target.
+   * Each row's `.toki-table__answer` cell gets a single compact button; that
+   * row's controls / quote chips / textarea / images live in a popover (built
+   * into #toki-rowpop-layer) shown anchored to the button. This keeps the answer
+   * column narrow and the row height equal to its content, instead of inlining
+   * tall controls into every cell. Also wires the wide-table scroll affordance.
    */
   function buildTableBlock(block, section) {
     const table = block.table;
@@ -288,14 +308,301 @@
         // Missing row <tr>/<td> or state — skip gracefully.
         continue;
       }
-      const target = rowTarget(block, row.id);
-      if (table.rowControls) {
-        cell.appendChild(buildControls(table.rowControls, target));
-      }
-      cell.appendChild(buildQuotesArea(target));
-      cell.appendChild(buildTextarea(table.rowText, target, null));
-      cell.appendChild(buildImagesArea(target));
+      const key = `${block.id}::${row.id}`;
+      buildRowPopover(block, row);
+
+      const btn = el('button', 'toki-table__answer-btn', {
+        'type': 'button',
+        'data-row-pop-btn': key,
+        'aria-haspopup': 'dialog',
+      });
+      const txt = el('span', 'toki-table__answer-btn__text');
+      txt.textContent = 'Answer';
+      const caret = el('span', 'toki-table__answer-btn__caret');
+      caret.textContent = '▾';
+      btn.appendChild(txt);
+      btn.appendChild(caret);
+      btn.addEventListener('click', () => {
+        if (currentRowPopKey === key) {
+          closeRowPop();
+        }
+        else {
+          openRowPop(key, btn);
+        }
+      });
+      cell.appendChild(btn);
+
+      answerButtons[key] = { btn, textEl: txt, block, rowId: row.id };
+      updateAnswerButton(key);
     }
+    setupTableScroll(section);
+  }
+
+  /**
+   * Build one row's answer popover (head + collapsible row reference + controls
+   * + quote chips + textarea with an Expand→full-panel escape hatch + images +
+   * footer) into the popover layer. Reuses the same per-row state target as the
+   * old inline cell, so quoting / images / validation all keep working.
+   */
+  function buildRowPopover(block, row) {
+    if (!rowpopLayer) {
+      return;
+    }
+    const key = `${block.id}::${row.id}`;
+    const target = rowTarget(block, row.id);
+
+    const pop = el('div', 'toki-rowpop', {
+      'data-row-pop': key,
+      'role': 'dialog',
+      'aria-modal': 'false',
+      'aria-label': `Answer for ${rowTitle(block, row)}`,
+    });
+
+    const head = el('div', 'toki-rowpop__head');
+    const title = el('span', 'toki-rowpop__title');
+    title.textContent = rowTitle(block, row);
+    const close = el('button', 'toki-rowpop__close', { 'type': 'button', 'aria-label': 'Close' });
+    close.textContent = 'close';
+    close.addEventListener('click', () => closeRowPop());
+    head.appendChild(title);
+    head.appendChild(close);
+    pop.appendChild(head);
+
+    const ref = el('details', 'toki-rowpop__ref');
+    const summary = el('summary', 'toki-rowpop__ref-summary');
+    summary.textContent = 'Reference (this row)';
+    ref.appendChild(summary);
+    ref.appendChild(buildRowReference(block, row));
+    pop.appendChild(ref);
+
+    if (block.table.rowControls) {
+      pop.appendChild(buildControls(block.table.rowControls, target));
+    }
+    pop.appendChild(buildQuotesArea(target));
+    pop.appendChild(buildTextarea(block.table.rowText, target, () => {
+      closeRowPop();
+      openExpand(key);
+    }));
+    pop.appendChild(buildImagesArea(target));
+
+    const foot = el('div', 'toki-rowpop__foot');
+    const full = el('button', 'toki-rowpop__full', { 'type': 'button', 'title': 'Open in the full writing panel' });
+    full.textContent = '⤢ Full';
+    full.addEventListener('click', () => {
+      closeRowPop();
+      openExpand(key);
+    });
+    const done = el('button', 'toki-rowpop__done', { 'type': 'button' });
+    done.textContent = 'Done';
+    done.addEventListener('click', () => closeRowPop());
+    foot.appendChild(full);
+    foot.appendChild(done);
+    pop.appendChild(foot);
+
+    rowpopLayer.appendChild(pop);
+    rowPops[key] = pop;
+  }
+
+  /** A `Column: value` list of every cell in the row, for the popover/panel reference. */
+  function buildRowReference(block, row) {
+    const wrap = el('div', 'toki-rowpop__ref-content');
+    const cols = Array.isArray(block.table.columns) ? block.table.columns : [];
+    const cells = Array.isArray(row.cells) ? row.cells : [];
+    const n = Math.max(cols.length, cells.length);
+    for (let i = 0; i < n; i += 1) {
+      const line = el('div', 'toki-rowpop__ref-row');
+      const k = el('span', 'toki-rowpop__ref-key');
+      k.textContent = cols[i] != null ? String(cols[i]) : `Col ${i + 1}`;
+      const v = el('span', 'toki-rowpop__ref-val');
+      v.textContent = cells[i] != null ? String(cells[i]) : '';
+      line.appendChild(k);
+      line.appendChild(v);
+      wrap.appendChild(line);
+    }
+    return wrap;
+  }
+
+  /** Short human label for a row — its first cell, falling back to the row id. */
+  function rowTitle(block, row) {
+    const cells = Array.isArray(row.cells) ? row.cells : [];
+    return cells.length > 0 && String(cells[0]).length > 0 ? String(cells[0]) : row.id;
+  }
+
+  function openRowPop(key, btn) {
+    const pop = rowPops[key];
+    if (!pop) {
+      return;
+    }
+    if (currentRowPopKey && currentRowPopKey !== key) {
+      closeRowPop();
+    }
+    currentRowPopKey = key;
+    if (rowpopBackdrop) {
+      rowpopBackdrop.hidden = false;
+    }
+    pop.classList.add('is-open');
+    if (btn) {
+      btn.classList.add('is-open');
+    }
+    positionRowPop(pop, btn);
+    const focusable = pop.querySelector('input[type="radio"], input[type="checkbox"], .toki-switch__input, textarea');
+    if (focusable) {
+      try {
+        focusable.focus({ preventScroll: true });
+      }
+      catch {
+        focusable.focus();
+      }
+    }
+  }
+
+  /** Anchor `pop` to `btn`: right-aligned, opening downward, flipping up / clamping to stay on screen. */
+  function positionRowPop(pop, btn) {
+    if (!btn) {
+      return;
+    }
+    const r = btn.getBoundingClientRect();
+    const pw = pop.offsetWidth || 360;
+    const ph = pop.offsetHeight || 320;
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    const gap = 8;
+
+    let left = r.right - pw;
+    left = Math.max(8, Math.min(left, vw - pw - 8));
+
+    let top = r.bottom + gap;
+    if (top + ph > vh - 8) {
+      const above = r.top - gap - ph;
+      top = above >= 8 ? above : Math.max(8, vh - ph - 8);
+    }
+
+    pop.style.left = `${Math.round(left)}px`;
+    pop.style.top = `${Math.round(top)}px`;
+  }
+
+  function closeRowPop() {
+    if (!currentRowPopKey) {
+      return;
+    }
+    const pop = rowPops[currentRowPopKey];
+    if (pop) {
+      pop.classList.remove('is-open');
+    }
+    const reg = answerButtons[currentRowPopKey];
+    if (reg && reg.btn) {
+      reg.btn.classList.remove('is-open');
+    }
+    if (rowpopBackdrop) {
+      rowpopBackdrop.hidden = true;
+    }
+    currentRowPopKey = null;
+  }
+
+  /** Relabel a row's answer button from its live state (summary + answered/required classes). */
+  function updateAnswerButton(key) {
+    const reg = answerButtons[key];
+    if (!reg) {
+      return;
+    }
+    const entry = state[reg.block.id].rows[reg.rowId];
+    if (!entry) {
+      return;
+    }
+    const controls = reg.block.table.rowControls;
+    const text = reg.block.table.rowText;
+    const summary = controlSummary(entry, controls);
+    const hasText = entry.text.trim().length > 0;
+    const hasImages = Array.isArray(entry.images) && entry.images.length > 0;
+    const answered = summary.length > 0 || hasText || hasImages;
+
+    let label = 'Answer';
+    if (answered) {
+      if (summary && hasText) {
+        label = `${summary} · note`;
+      }
+      else if (summary) {
+        label = summary;
+      }
+      else if (hasText) {
+        label = 'Note added';
+      }
+      else {
+        label = 'Image added';
+      }
+    }
+    reg.textEl.textContent = (answered ? '✓ ' : '') + label;
+    reg.btn.classList.toggle('is-answered', answered);
+    reg.btn.classList.toggle('is-required', !entrySatisfied(entry, controls, text));
+  }
+
+  /** A compact human summary of a control answer (the chosen label / count / on). */
+  function controlSummary(entry, controls) {
+    if (!controls) {
+      return '';
+    }
+    const answer = entry.controlAnswer;
+    if (controls.type === 'single') {
+      return typeof answer === 'string' && answer.length > 0 ? optionLabel(controls, answer) : '';
+    }
+    if (controls.type === 'multi') {
+      return Array.isArray(answer) && answer.length > 0 ? `${answer.length} selected` : '';
+    }
+    if (controls.type === 'toggle') {
+      return answer === true ? 'on' : '';
+    }
+    return '';
+  }
+
+  /** Resolve an option `value` back to its display `label`. */
+  function optionLabel(controls, value) {
+    const options = Array.isArray(controls.options) ? controls.options : [];
+    for (const opt of options) {
+      if (opt && opt.value === value) {
+        return opt.label;
+      }
+    }
+    return value;
+  }
+
+  /**
+   * Wrap a table's `.toki-table__scroll` in a positioned viewport and add the
+   * edge fades + "scroll for more" hint, toggled via `data-scroll` as the user
+   * scrolls — so the affordance only shows when columns are actually off-screen.
+   */
+  function setupTableScroll(section) {
+    const scroll = section.querySelector('.toki-table__scroll');
+    if (!scroll || !scroll.parentNode || scroll.parentNode.classList.contains('toki-table__viewport')) {
+      return;
+    }
+    const viewport = el('div', 'toki-table__viewport');
+    scroll.parentNode.insertBefore(viewport, scroll);
+    viewport.appendChild(scroll);
+
+    viewport.appendChild(el('div', 'toki-table__fade toki-table__fade--left'));
+    viewport.appendChild(el('div', 'toki-table__fade toki-table__fade--right'));
+    const hint = el('div', 'toki-table__hint', {
+      title: 'Shift + scroll, or swipe horizontally, to see more columns',
+    });
+    hint.textContent = '⇄ scroll for more';
+    viewport.appendChild(hint);
+
+    const update = () => {
+      const maxScroll = scroll.scrollWidth - scroll.clientWidth;
+      const states = [];
+      if (maxScroll > 1) {
+        if (scroll.scrollLeft > 1) {
+          states.push('more-left');
+        }
+        if (scroll.scrollLeft < maxScroll - 1) {
+          states.push('more-right');
+        }
+      }
+      viewport.setAttribute('data-scroll', states.join(' '));
+    };
+    scroll.addEventListener('scroll', throttle(update, 60));
+    window.addEventListener('resize', throttle(update, 120));
+    update();
   }
 
   /**
@@ -327,6 +634,9 @@
 
     if (controls.required) {
       const header = el('div', 'toki-controls__header');
+      const hint = el('span', 'toki-controls__hint');
+      hint.textContent = controls.type === 'multi' ? 'Pick one or more' : 'Pick one';
+      header.appendChild(hint);
       header.appendChild(requiredMarker());
       group.appendChild(header);
     }
@@ -436,7 +746,7 @@
     textarea.addEventListener('input', () => {
       target.entry().text = textarea.value;
       // Mirror into the big panel textarea when it is open for this block.
-      if (currentExpandBlockId === target.key && expandInput) {
+      if (currentExpandKey === target.key && expandInput) {
         expandInput.value = textarea.value;
         autoGrowExpandInput();
       }
@@ -804,36 +1114,74 @@
     expandInput.style.height = `${expandInput.scrollHeight}px`;
   }
 
-  function openExpand(blockId) {
-    if (!expand || !state[blockId]) {
+  /** The live state entry behind an expand/quote key (block id or `block::row`). */
+  function entryForKey(key) {
+    return quoteEntryForKey(key);
+  }
+
+  /** Resolve a `block::row` key to its `{ block, row }`, or null for a block key. */
+  function rowInfoForKey(key) {
+    const separator = key.indexOf('::');
+    if (separator === -1) {
+      return null;
+    }
+    const blockId = key.slice(0, separator);
+    const rowId = key.slice(separator + 2);
+    const block = blocks.find(b => b && b.id === blockId);
+    if (!block || !isTableBlock(block)) {
+      return null;
+    }
+    const row = block.table.rows.find(r => r && r.id === rowId);
+    return row ? { block, row } : null;
+  }
+
+  /**
+   * Open the full writing panel for `key` — a block id OR a `block::row` key.
+   * The reference + title adapt: a block shows its server-rendered content; a
+   * row shows its per-cell `Column: value` reference. Text mirrors two-way with
+   * the key's inline textarea (the row popover's, for a row).
+   */
+  function openExpand(key) {
+    const entry = entryForKey(key);
+    if (!expand || !entry) {
       return;
     }
-    currentExpandBlockId = blockId;
+    currentExpandKey = key;
+    const rowInfo = rowInfoForKey(key);
 
-    // Title: 1-based block index when known, else a generic label.
     if (expandTitle) {
-      const index = blocks.findIndex(b => b && b.id === blockId);
-      expandTitle.textContent = index >= 0 ? `Block ${index + 1}` : 'Your response';
-    }
-
-    // Reference: a clone of the server-rendered block content (collapsible).
-    if (expandRefContent) {
-      expandRefContent.textContent = '';
-      const section = blockSection(blockId);
-      const source = section ? section.querySelector('.toki-block__content') : null;
-      if (source) {
-        const clone = source.cloneNode(true);
-        clone.removeAttribute('data-quote-source');
-        expandRefContent.appendChild(clone);
+      if (rowInfo) {
+        expandTitle.textContent = `Row · ${rowTitle(rowInfo.block, rowInfo.row)}`;
+      }
+      else {
+        const index = blocks.findIndex(b => b && b.id === key);
+        expandTitle.textContent = index >= 0 ? `Block ${index + 1}` : 'Your response';
       }
     }
 
-    // Quotes: read-only chip row of this block's captured quotes.
-    fillExpandQuotes(blockId);
+    // Reference: a row's per-cell list, or a clone of the block content.
+    if (expandRefContent) {
+      expandRefContent.textContent = '';
+      if (rowInfo) {
+        expandRefContent.appendChild(buildRowReference(rowInfo.block, rowInfo.row));
+      }
+      else {
+        const section = blockSection(key);
+        const source = section ? section.querySelector('.toki-block__content') : null;
+        if (source) {
+          const clone = source.cloneNode(true);
+          clone.removeAttribute('data-quote-source');
+          expandRefContent.appendChild(clone);
+        }
+      }
+    }
+
+    // Quotes: read-only chip row of this key's captured quotes.
+    fillExpandQuotes(key);
 
     // Seed the big textarea from current state and grow it.
     if (expandInput) {
-      expandInput.value = state[blockId].text;
+      expandInput.value = entry.text;
     }
 
     // Two-frame dance: drop [hidden] now, add the open class next frame so the
@@ -853,12 +1201,12 @@
     }
   }
 
-  function fillExpandQuotes(blockId) {
+  function fillExpandQuotes(key) {
     if (!expandQuotes) {
       return;
     }
     expandQuotes.textContent = '';
-    const entry = state[blockId];
+    const entry = entryForKey(key);
     if (!entry || entry.quotes.length === 0) {
       return;
     }
@@ -876,7 +1224,7 @@
     expand.classList.remove(EXPAND_OPEN_CLASS);
     expand.setAttribute('aria-hidden', 'true');
     expand.hidden = true;
-    currentExpandBlockId = null;
+    currentExpandKey = null;
   }
 
   // --------------------------------------------------------------------------
@@ -987,6 +1335,11 @@
     }
     if (progressLabel) {
       progressLabel.textContent = `${answered}/${total} answered`;
+    }
+
+    // Keep every row's collapsed answer button in sync with its live state.
+    for (const key of Object.keys(answerButtons)) {
+      updateAnswerButton(key);
     }
   }
 
@@ -1186,13 +1539,15 @@
 
     if (expandInput) {
       expandInput.addEventListener('input', () => {
-        const blockId = currentExpandBlockId;
-        if (!blockId || !state[blockId]) {
+        const key = currentExpandKey;
+        const entry = key ? entryForKey(key) : null;
+        if (!entry) {
           return;
         }
-        state[blockId].text = expandInput.value;
-        // Mirror back into that block's inline textarea (two-way sync).
-        const inline = inlineTextareas[blockId];
+        entry.text = expandInput.value;
+        // Mirror back into that key's inline textarea (two-way sync). For a row
+        // that is the row popover's textarea; for a block its inline textarea.
+        const inline = inlineTextareas[key];
         if (inline) {
           inline.value = expandInput.value;
         }
@@ -1200,15 +1555,14 @@
         autoGrowExpandInput();
       });
 
-      // Pasting an image in the big panel attaches it to the SAME block answer
-      // (the panel is block-level only). The chip renders in the block's inline
-      // images area, keeping it consistent with how text mirrors two-way.
+      // Pasting an image in the big panel attaches it to the SAME answer (block
+      // or row) the panel is currently editing.
       expandInput.addEventListener('paste', (event) => {
-        const blockId = currentExpandBlockId;
-        if (!blockId) {
+        const key = currentExpandKey;
+        if (!key) {
           return;
         }
-        handleImagePaste(event, blockId);
+        handleImagePaste(event, key);
       });
     }
 
@@ -1219,8 +1573,47 @@
       expandBackdrop.addEventListener('click', () => closeExpand());
     }
 
+    // Row answer popover: dismiss on backdrop click; keep it anchored to its
+    // button across page scroll / resize (it is position:fixed, the button is
+    // not, so they would otherwise detach).
+    if (rowpopBackdrop) {
+      rowpopBackdrop.addEventListener('click', () => closeRowPop());
+    }
+    const repositionRowPop = throttle(() => {
+      if (!currentRowPopKey) {
+        return;
+      }
+      const pop = rowPops[currentRowPopKey];
+      const reg = answerButtons[currentRowPopKey];
+      if (pop && reg) {
+        positionRowPop(pop, reg.btn);
+      }
+    }, 60);
+    window.addEventListener('scroll', repositionRowPop, true);
+    window.addEventListener('resize', repositionRowPop);
+
+    // Keyboard shortcuts legend.
+    if (kbdToggle) {
+      kbdToggle.addEventListener('click', () => toggleKbd());
+    }
+    if (kbdClose) {
+      kbdClose.addEventListener('click', () => closeKbd());
+    }
+    if (kbdBackdrop) {
+      kbdBackdrop.addEventListener('click', () => closeKbd());
+    }
+
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
+        // Close the most transient surface first.
+        if (currentRowPopKey) {
+          closeRowPop();
+          return;
+        }
+        if (kbd && !kbd.hidden) {
+          closeKbd();
+          return;
+        }
         closeExpand();
         return;
       }
@@ -1228,8 +1621,94 @@
       if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
         event.preventDefault();
         void submit();
+        return;
+      }
+      // "?" toggles the shortcuts legend (ignored while typing).
+      if (event.key === '?' && !event.metaKey && !event.ctrlKey && !event.altKey && !isTypingTarget(event.target)) {
+        event.preventDefault();
+        toggleKbd();
       }
     });
+  }
+
+  // --------------------------------------------------------------------------
+  // Keyboard shortcuts legend (platform-aware)
+  // --------------------------------------------------------------------------
+
+  /** True when the target is a field where "?" should type, not toggle the legend. */
+  function isTypingTarget(target) {
+    if (!target || !target.tagName) {
+      return false;
+    }
+    const tag = target.tagName;
+    return tag === 'TEXTAREA' || tag === 'INPUT' || target.isContentEditable === true;
+  }
+
+  /** Detect a Mac keyboard so the legend shows ⌘ rather than Ctrl. */
+  function isMacPlatform() {
+    const ua = navigator.userAgentData;
+    const platform = (ua && typeof ua.platform === 'string' ? ua.platform : '') || navigator.platform || '';
+    return /mac|iphone|ipad|ipod/i.test(platform);
+  }
+
+  /** Populate #toki-kbd-list with platform-aware shortcut rows (once). */
+  function buildKbdLegend() {
+    if (!kbdList) {
+      return;
+    }
+    const mod = isMacPlatform() ? '⌘' : 'Ctrl';
+    const rows = [
+      { action: 'Submit answers', keys: [mod, 'Enter'] },
+      { action: 'Close panel / popover / legend', keys: ['Esc'] },
+      { action: 'See more table columns', keys: ['Shift', 'scroll'] },
+      { action: 'Quote selected text', keys: ['select', 'quote'] },
+      { action: 'Toggle this legend', keys: ['?'] },
+    ];
+    kbdList.textContent = '';
+    for (const row of rows) {
+      const item = el('li', 'toki-kbd__item');
+      const action = el('span', 'toki-kbd__action');
+      action.textContent = row.action;
+      const keys = el('span', 'toki-kbd__keys');
+      row.keys.forEach((k, i) => {
+        if (i > 0) {
+          const plus = el('span', 'toki-kbd__plus');
+          plus.textContent = '+';
+          keys.appendChild(plus);
+        }
+        const key = el('kbd', 'toki-kbd__key');
+        key.textContent = k;
+        keys.appendChild(key);
+      });
+      item.appendChild(action);
+      item.appendChild(keys);
+      kbdList.appendChild(item);
+    }
+  }
+
+  function openKbd() {
+    if (kbd) {
+      kbd.hidden = false;
+      kbd.setAttribute('aria-hidden', 'false');
+    }
+  }
+
+  function closeKbd() {
+    if (kbd) {
+      kbd.hidden = true;
+      kbd.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  function toggleKbd() {
+    if (kbd) {
+      if (kbd.hidden) {
+        openKbd();
+      }
+      else {
+        closeKbd();
+      }
+    }
   }
 
   // --------------------------------------------------------------------------
@@ -1244,6 +1723,7 @@
         buildBlock(block);
       }
     }
+    buildKbdLegend();
     wireGlobals();
     refresh();
   }
