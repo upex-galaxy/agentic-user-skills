@@ -1,0 +1,262 @@
+<!doctype html>
+<!--
+  agentic-audit report template (lens=external).
+
+  How to use:
+   1. Copy this file to the output path, then replace every {{PLACEHOLDER}}.
+   2. Repeat or delete the marked blocks (score rows, finding cards, steps) as needed.
+   3. Recolor: override the six brand tokens in :root with the audited product's own palette when it
+      has one. Reading an evaluation dressed in your own colors lands differently than a generic
+      document, and it signals the audit actually looked at the product.
+   4. Embed every screenshot as a base64 data URI so the file survives Slack, email and offline
+      viewing. Nothing may reference an external host.
+   5. Delete this comment.
+
+  Keep it ONE file. The whole point is that the recipient can open it anywhere with no setup.
+-->
+<html lang="{{LANG}}">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{REPORT_TITLE}}</title>
+<style>
+  /* --- brand tokens: override these six with the audited product's palette --- */
+  :root {
+    --bg: #FAF8F3;
+    --surface: #EFEAE0;
+    --surface-2: #FCFAF6;
+    --accent: #1B4D2E;        /* headings, verdict panel, bars */
+    --accent-warm: #C2410C;   /* kickers, section numbers */
+    --highlight: #F5C86B;     /* the big score numeral */
+
+    --ink: #1F1D18;
+    --ink-2: #494537;
+    --ink-3: #77705C;
+    --red: #9B2C22;
+    --red-soft: #F7E2DE;
+    --orange-soft: #FBEBD2;
+    --accent-soft: #E4EDE3;
+    --line: #DED6C6;
+    --line-2: #C3B9A2;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16150F; --surface: #211F16; --surface-2: #1B1A12;
+      --accent: #7BC08F; --accent-warm: #E9A845; --highlight: #F5C86B;
+      --ink: #F3EDDD; --ink-2: #D6CDB6; --ink-3: #A79E85;
+      --red: #E98474; --red-soft: #33201C; --orange-soft: #2E2415; --accent-soft: #1D2C21;
+      --line: #34301F; --line-2: #4A4530;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.65; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 0 20px 96px; }
+
+  header.masthead { padding: 64px 0 40px; border-bottom: 3px solid var(--accent); }
+  .kicker { font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent-warm); font-weight: 700; margin: 0 0 14px; }
+  h1 { font-size: clamp(34px, 6vw, 54px); line-height: 1.06; margin: 0 0 18px; letter-spacing: -0.02em; font-weight: 800; color: var(--accent); }
+  .standfirst { font-size: 19px; color: var(--ink-2); margin: 0 0 28px; max-width: 62ch; }
+  .meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-top: 26px; }
+  .meta-cell { border-left: 3px solid var(--line-2); padding-left: 12px; }
+  .meta-cell dt { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-weight: 700; }
+  .meta-cell dd { margin: 3px 0 0; font-size: 15px; color: var(--ink); font-weight: 600; }
+
+  section { padding-top: 56px; }
+  h2 { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); font-weight: 700; margin: 0 0 6px; display: flex; align-items: baseline; gap: 10px; }
+  h2 .num { color: var(--accent-warm); font-variant-numeric: tabular-nums; }
+  h3.title { font-size: clamp(24px, 3.6vw, 32px); line-height: 1.18; margin: 0 0 18px; letter-spacing: -0.015em; font-weight: 800; color: var(--ink); }
+  h4 { font-size: 18px; margin: 30px 0 8px; font-weight: 750; color: var(--ink); letter-spacing: -0.01em; }
+  p { margin: 0 0 16px; max-width: 68ch; }
+  a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+  code { font-family: var(--mono); font-size: .875em; background: var(--surface); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line); }
+
+  .verdict { background: var(--accent); color: #F7F3E8; border-radius: 14px; padding: 28px 30px; }
+  .verdict p { color: #EDE7D8; max-width: none; }
+  .verdict p:last-child { margin-bottom: 0; }
+  .verdict .big { font-size: 22px; line-height: 1.35; font-weight: 700; color: #fff; }
+  .verdict .score { font-size: 60px; font-weight: 800; line-height: 1; letter-spacing: -0.03em; color: var(--highlight); font-variant-numeric: tabular-nums; }
+  .verdict .score small { font-size: 22px; color: #C9D8C6; font-weight: 600; }
+
+  .score-row { display: grid; grid-template-columns: 190px 1fr 46px; gap: 14px; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .score-row:last-child { border-bottom: 0; }
+  .score-row .label { font-weight: 700; font-size: 15px; }
+  .score-row .label span { display: block; font-weight: 400; font-size: 12.5px; color: var(--ink-3); line-height: 1.4; }
+  .bar { height: 9px; background: var(--surface); border-radius: 99px; overflow: hidden; border: 1px solid var(--line); }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+  .bar i.warn { background: var(--accent-warm); }
+  .score-row .val { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; font-size: 15px; }
+
+  .card { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 22px 24px; margin: 0 0 16px; }
+  .card > :last-child { margin-bottom: 0; }
+  .finding { border-left: 5px solid var(--line-2); }
+  .finding.high { border-left-color: var(--red); }
+  .finding.mid { border-left-color: var(--accent-warm); }
+  .finding.low { border-left-color: var(--accent); }
+  .tag { display: inline-block; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 800; padding: 3px 9px; border-radius: 99px; vertical-align: 2px; margin-right: 8px; }
+  .tag.high { background: var(--red-soft); color: var(--red); }
+  .tag.mid { background: var(--orange-soft); color: var(--accent-warm); }
+  .tag.low { background: var(--accent-soft); color: var(--accent); }
+  .finding h4 { margin-top: 0; }
+
+  blockquote.pull { margin: 20px 0; padding: 18px 22px; background: var(--surface); border-radius: 10px; border: 1px solid var(--line); font-family: var(--mono); font-size: 13px; line-height: 1.6; color: var(--ink-2); overflow-x: auto; }
+  blockquote.pull p { max-width: none; margin: 0; }
+  .cite { display: block; margin-top: 10px; font-family: var(--sans); font-size: 12.5px; color: var(--ink-3); }
+
+  .table-scroll { overflow-x: auto; margin: 0 0 18px; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; min-width: 560px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--surface); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); font-weight: 800; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.axis { font-weight: 700; }
+
+  ul.clean { margin: 0 0 16px; padding-left: 20px; }
+  ul.clean li { margin-bottom: 8px; max-width: 66ch; }
+  pre.diagram { font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; overflow-x: auto; color: var(--ink-2); margin: 0 0 18px; }
+
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; margin: 20px 0; }
+  figure { margin: 0; }
+  figure img { width: 100%; border: 1px solid var(--line-2); border-radius: 10px; display: block; background: #fff; }
+  figcaption { font-size: 13px; color: var(--ink-3); margin-top: 8px; line-height: 1.5; }
+
+  ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 0; }
+  ol.steps li { counter-increment: s; position: relative; padding: 16px 0 16px 52px; border-bottom: 1px solid var(--line); }
+  ol.steps li:last-child { border-bottom: 0; }
+  ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 15px; width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #F7F3E8; display: grid; place-items: center; font-weight: 800; font-size: 14px; }
+  ol.steps b { display: block; font-size: 16.5px; margin-bottom: 3px; }
+  ol.steps span { color: var(--ink-2); font-size: 14.5px; }
+
+  footer.end { margin-top: 64px; padding-top: 28px; border-top: 3px solid var(--accent); color: var(--ink-3); font-size: 14px; }
+  .stamp { margin-top: 18px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); }
+  @media (max-width: 620px) {
+    .score-row { grid-template-columns: 1fr 46px; }
+    .score-row .bar { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <p class="kicker">{{CONTEXT_LABEL}}</p>
+  <h1>{{HEADLINE}}</h1>
+  <p class="standfirst">{{OPENING_ADDRESSED_TO_AUTHOR}}</p>
+  <dl class="meta-grid">
+    <div class="meta-cell"><dt>Para</dt><dd>{{AUTHOR}}</dd></div>
+    <div class="meta-cell"><dt>De</dt><dd>{{REVIEWER}}</dd></div>
+    <div class="meta-cell"><dt>Fecha</dt><dd>{{DATE}}</dd></div>
+    <div class="meta-cell"><dt>Alcance</dt><dd>{{SCOPE}}</dd></div>
+  </dl>
+</header>
+
+<section>
+  <h2><span class="num">01</span> Veredicto</h2>
+  <div class="verdict">
+    <p class="score">{{OVERALL}}<small> / 5</small></p>
+    <p class="big">{{ONE_SENTENCE_VERDICT}}</p>
+    <p>{{VERDICT_EVIDENCE — the counts and facts that back the sentence}}</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">02</span> Qué miré exactamente</h2>
+  <h3 class="title">{{METHOD_TITLE}}</h3>
+  <p>{{METHOD_INTRO}}</p>
+  <ul class="clean">
+    <li>{{EVIDENCE_SOURCE_1}}</li>
+    <li>{{EVIDENCE_SOURCE_2}}</li>
+    <li>{{EVIDENCE_SOURCE_3}}</li>
+  </ul>
+  <p>{{BLIND_SPOTS — what could not be reached, and how to unblock it. Never omit this.}}</p>
+</section>
+
+<section>
+  <h2><span class="num">03</span> Puntuación</h2>
+  <h3 class="title">{{SCORE_TITLE}}</h3>
+  <div class="card">
+    <!-- repeat one .score-row per axis; add class="warn" to the bar fill when below 5 -->
+    <div class="score-row">
+      <div class="label">{{AXIS_NAME}}<span>{{AXIS_SUBTITLE}}</span></div>
+      <div class="bar"><i style="width:{{AXIS_PCT}}%"></i></div><div class="val">{{AXIS_SCORE}}</div>
+    </div>
+  </div>
+  <p>{{SCORE_COMMENTARY — explain what separates the lower axes from the rest}}</p>
+</section>
+
+<section>
+  <h2><span class="num">04</span> Lo que está por encima de la media</h2>
+  <h3 class="title">{{PRAISE_TITLE}}</h3>
+  <h4>{{PRAISE_1_HEADING}}</h4>
+  <p>{{PRAISE_1_BODY}}</p>
+  <blockquote class="pull">
+    <p>{{QUOTE_FROM_THEIR_OWN_WORK}}</p>
+    <span class="cite">{{QUOTE_SOURCE}}</span>
+  </blockquote>
+  <p>{{WHY_THE_QUOTE_MATTERS}}</p>
+  <h4>{{PRAISE_2_HEADING}}</h4>
+  <p>{{PRAISE_2_BODY}}</p>
+</section>
+
+<section>
+  <h2><span class="num">05</span> Hallazgos</h2>
+  <h3 class="title">{{FINDINGS_TITLE}}</h3>
+
+  <!-- repeat one .card.finding per finding, ordered by return on effort; classes: high | mid | low -->
+  <div class="card finding high">
+    <h4><span class="tag high">Alto</span>{{FINDING_TITLE}}</h4>
+    <p>{{WHAT_AND_THE_EVIDENCE}}</p>
+    <p>{{WHY_IT_COSTS_SOMETHING}}</p>
+    <p>{{THE_FIX_AND_ITS_SIZE}}</p>
+  </div>
+
+  <div class="card finding low">
+    <h4><span class="tag low">Bajo</span>{{NITS_TITLE}}</h4>
+    <ul class="clean">
+      <li>{{NIT_1}}</li>
+      <li>{{WHAT_CAME_OUT_CLEAN — say this too, it calibrates the rest}}</li>
+    </ul>
+    <div class="shots">
+      <figure>
+        <img src="data:image/png;base64,{{BASE64}}" alt="{{ALT}}" />
+        <figcaption>{{CAPTION}}</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">06</span> {{DEEP_DIVE_LABEL}}</h2>
+  <h3 class="title">{{DEEP_DIVE_TITLE}}</h3>
+  <p>{{THE_REAL_FORK_IN_THIS_PROJECT — ask the author why they chose what they chose before giving the opinion}}</p>
+  <pre class="diagram">{{ASCII_DIAGRAM_OF_WHAT_THEY_BUILT}}</pre>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Eje</th><th>{{THEIR_APPROACH}}</th><th>{{REFERENCE_APPROACH}}</th></tr></thead>
+      <tbody>
+        <tr><td class="axis">{{COMPARISON_AXIS}}</td><td>{{THEIRS}}</td><td>{{OURS}}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h4>{{RECOMMENDATION_HEADING}}</h4>
+  <p>{{RECOMMENDATION — including when NOT to change, and the signals that would justify changing later}}</p>
+</section>
+
+<section>
+  <h2><span class="num">07</span> El siguiente movimiento</h2>
+  <h3 class="title">{{NEXT_TITLE}}</h3>
+  <ol class="steps">
+    <li><b>{{STEP_TITLE}}</b><span>{{STEP_BODY}}</span></li>
+  </ol>
+</section>
+
+<footer class="end">
+  <p>{{CLOSING_OFFER — re-run, access requests, what you need from them}}</p>
+  <p>{{CLOSING_GOOD_NOTE — genuine, specific, never end on a criticism}}</p>
+  <p class="stamp">rubric: agentic-audit v1 · subject={{SUBJECT}} · lens=external · {{DATE}}</p>
+</footer>
+
+</div>
+</body>
+</html>

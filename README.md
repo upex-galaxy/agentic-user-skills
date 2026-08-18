@@ -18,6 +18,7 @@ A user-level skill loads automatically in every project — no per-repo wiring.
 
 | Skill | Command | What it is |
 | --- | --- | --- |
+| [`agentic-audit`](skills/agentic-audit/SKILL.md) | — | An **evidence-based project auditor**: reads a whole repo (git history, context artifacts, agent config, tracker mirror, tests, CI) and drives the live app, then scores six axes 0-5 and writes a self-contained HTML evaluation. Two modes: `subject` (`dev` \| `qa` \| `pair`) picks the rubric, `lens` (`external` \| `internal`) picks the register and deliverable. Read-only on the target. |
 | [`wokitoki`](skills/wokitoki/SKILL.md) | `toki` | A blocking, browser-based **human-in-the-loop feedback CLI** the AI drives mid-conversation: it serves a local dark web UI where the user answers each block (question / report / answerable table) with controls + free text + highlight-to-quote + clipboard images, then returns anchored Result JSON on stdout the same turn. Replaces inline questionnaires and unanchored prose feedback. |
 
 ## Layout

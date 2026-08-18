@@ -128,6 +128,7 @@ self-contained CLI. Keep each skill independently extractable.
 
 | Skill | What it is | Status |
 |---|---|---|
+| `agentic-audit` (no binary) | An **evidence-based auditor of a whole project** — someone else's or our own. Sweeps git history, `.context/` artifacts, `.agents/` config, the tracker mirror, tests and CI, then drives the live app with `playwright-cli`, scores six fixed axes 0-5 and emits a single-file HTML evaluation. `subject` (`dev` \| `qa` \| `pair`) selects the rubric; `lens` (`external` \| `internal`) selects register and deliverable. Load-bearing invariant: **the rubric travels with the skill**, never read from the audited repo, or version drift scores as compliance. Strictly read-only on the target. | **v1** |
 | `wokitoki` (binary `toki`) | A blocking interactive **human-in-the-loop feedback CLI** the AI invokes mid-conversation: serves a local dark web UI where the user answers each block (question / report / answerable table) with controls + free text + highlight-to-quote + clipboard images, then returns anchored JSON on stdout the same turn. Replaces inline questionnaires + unanchored prose feedback. | **Being extracted** from `agentic-qa-boilerplate` per the handoff — see §8 |
 
 `wokitoki` security contract (do not regress when moving it in): per-run `x-toki-token` + loopback bind

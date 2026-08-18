@@ -6,6 +6,11 @@
       "title": "Human-in-the-loop",
       "description": "Skills that let the AI collect structured, anchored feedback from the user mid-conversation.",
       "skills": ["wokitoki"]
+    },
+    {
+      "title": "Evaluation",
+      "description": "Skills that judge a body of work and produce a defensible, shareable verdict.",
+      "skills": ["agentic-audit"]
     }
   ]
 }
