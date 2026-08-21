@@ -24,17 +24,13 @@
     "agentic",
     "user-skills",
     "human-in-the-loop",
-    "wokitoki",
-    "toki"
+    "decision-making",
+    "mkd"
   ],
-  "bin": {
-    "toki": "./skills/wokitoki/cli/index.ts"
-  },
   "scripts": {
     "lint:check": "eslint .",
     "lint:fix": "eslint --fix .",
     "types:check": "tsc --noEmit",
-    "toki:build": "bun build --compile skills/wokitoki/cli/index.ts --outfile $HOME/.bun/bin/toki",
     "repo:check": "bun run lint:check && bun run types:check"
   },
   "devDependencies": {

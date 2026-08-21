@@ -1,18 +1,28 @@
 #!/usr/bin/env bun
 /**
- * WokiToki (`toki`) - CLI entry point.
+ * MKD (`mkd`) - CLI entry point.
  *
- * Blocking command: read + validate a spec, serve the UI, open the browser,
- * await the browser's `POST /submit`, then write the result and print it.
+ * Two modes:
+ *
+ * - DEFAULT (copy mode, non-blocking): read + validate a spec, render the
+ *   self-contained deck HTML to `~/.mkd/deck-<name>.html`, open it in the
+ *   browser, and EXIT 0 immediately. The user answers at their own pace and
+ *   pastes the copied result JSON back into the chat. Nothing is written to
+ *   stdout.
+ *
+ * - `--wait` (blocking): serve the deck over loopback HTTP, await the
+ *   browser's `POST /submit`, then write the result backup and print the
+ *   result JSON to stdout - the AI parses it the same turn.
  *
  * STDOUT DISCIPLINE (load-bearing): the ONLY thing ever written to
  * process.stdout in the entire tool is the final result JSON, emitted once
- * here. Everything else - banners, the waiting URL, errors - goes to stderr via
- * console.error. NEVER use console.log (it writes to stdout).
+ * here in --wait mode. Everything else - banners, paths, URLs, errors - goes
+ * to stderr via console.error. NEVER use console.log (it writes to stdout).
  *
  * Exit codes (repo convention): 0 ok | 1 timeout/runtime | 2 spec validation.
  *
- * Bun built-ins only, zero external deps (stays extractable).
+ * Bun built-ins only, zero external deps (stays extractable). No install
+ * step: run it from the skill directory with `bun <skill-dir>/cli/index.ts`.
  */
 
 import type { Result } from './schema.ts';
@@ -23,13 +33,14 @@ import { render } from './render.ts';
 import { SpecError, validateSpec } from './schema.ts';
 import { serve, TimeoutError } from './server.ts';
 
-// All tool output (result backups + persisted images) lands under the user's
-// home, NEVER the cwd — so running `toki` inside any repo leaves zero footprint
-// there (no host .gitignore edits needed). Bun's `Bun.write` creates this dir.
-const TOKI_HOME = join(homedir(), '.toki');
+// All tool output (rendered decks, result backups, persisted images) lands
+// under the user's home, NEVER the cwd - so running `mkd` inside any repo
+// leaves zero footprint there (no host .gitignore edits needed). Bun's
+// `Bun.write` creates this dir.
+const MKD_HOME = join(homedir(), '.mkd');
 
 // ============================================================================
-// ARG PARSING (self-contained, mirrors cli/xray/lib/parser.ts style)
+// ARG PARSING (self-contained)
 // ============================================================================
 
 interface ParsedArgs {
@@ -38,7 +49,7 @@ interface ParsedArgs {
 }
 
 // Flags that take a value; everything else is boolean and never consumes the
-// next token (so `toki --no-open <spec>` keeps <spec> as a positional).
+// next token (so `mkd --no-open <spec>` keeps <spec> as a positional).
 const VALUE_FLAGS = new Set(['port', 'timeout']);
 
 function parseArgs(args: string[]): ParsedArgs {
@@ -82,23 +93,28 @@ function getBoolFlag(flags: ParsedArgs['flags'], name: string): boolean {
 // HELP
 // ============================================================================
 
-const HELP = `toki - WokiToki interactive feedback CLI
+const HELP = `mkd - MKD (Make Decision) interactive decision-deck CLI
 
 USAGE
-  toki <specPath> [options]
+  bun <skill-dir>/cli/index.ts <specPath> [options]
 
 ARGUMENTS
   specPath            Path to a spec JSON file (required)
 
 OPTIONS
-  --port <n>         Preferred port (default: 4747; auto-increments if busy)
-  --timeout <min>    Minutes to wait for a submission (fractional ok, default: 1440 = 24h)
-  --no-open          Do not auto-open the browser (still prints the URL)
+  --wait             Blocking mode: serve the deck, await the browser submit,
+                     print the result JSON to stdout (default: render a static
+                     page, open it, exit immediately - the user copies the JSON)
+  --port <n>         --wait only: preferred port (default: 4747, auto-increments)
+  --timeout <min>    --wait only: minutes to wait (fractional ok, default: 1440 = 24h)
+  --no-open          Do not auto-open the browser (still prints the page path/URL)
   --help             Show this help
 
 OUTPUT
-  On submit: writes ~/.toki/result-<name>.json and prints the result JSON to
-  stdout (the ONLY thing on stdout). Banners/errors go to stderr.
+  copy mode:  writes ~/.mkd/deck-<name>.html and exits 0. Nothing on stdout.
+  --wait:     on submit, writes ~/.mkd/result-<name>.json and prints the result
+              JSON to stdout (the ONLY thing on stdout).
+  Banners/paths/errors always go to stderr.
 
 EXIT CODES
   0  ok    1  timeout/runtime    2  spec validation
@@ -121,11 +137,12 @@ async function main(): Promise<void> {
 
   const specPath = positional[0];
   if (!specPath) {
-    console.error('[toki] error: missing required <specPath> argument.\n');
+    console.error('[mkd] error: missing required <specPath> argument.\n');
     console.error(HELP);
     process.exit(2);
   }
 
+  const wait = getBoolFlag(flags, 'wait');
   const port = parsePort(getFlag(flags, 'port'));
   const timeoutMinutes = parseTimeout(getFlag(flags, 'timeout'));
   const noOpen = getBoolFlag(flags, 'no-open');
@@ -137,7 +154,7 @@ async function main(): Promise<void> {
   }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[toki] error: could not read spec file "${specPath}": ${message}`);
+    console.error(`[mkd] error: could not read spec file "${specPath}": ${message}`);
     process.exit(2);
   }
 
@@ -147,21 +164,68 @@ async function main(): Promise<void> {
   }
   catch (error) {
     if (error instanceof SpecError) {
-      console.error(`[toki] invalid spec at ${error.path}: ${error.message}`);
+      console.error(`[mkd] invalid spec at ${error.path}: ${error.message}`);
       process.exit(2);
     }
     throw error;
   }
 
-  // Short run id for the fallback result filename + logging.
+  // Short run id for the fallback filenames + logging.
   const id = Date.now().toString(36);
+  const name = deriveName(specPath, id);
 
-  // Start serving (blocking handshake). Wire SIGINT teardown.
+  if (!wait) {
+    await runCopyMode(spec, name, noOpen);
+    return;
+  }
+  await runWaitMode(spec, name, port, timeoutMinutes, noOpen);
+}
+
+// ============================================================================
+// COPY MODE (default, non-blocking)
+// ============================================================================
+
+async function runCopyMode(
+  spec: ReturnType<typeof validateSpec>,
+  name: string,
+  noOpen: boolean,
+): Promise<void> {
+  const html = render(spec, { mode: 'copy' });
+  const pagePath = join(MKD_HOME, `deck-${sanitizeForFilename(name)}.html`);
+
+  try {
+    await Bun.write(pagePath, html);
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[mkd] error: could not write ${pagePath}: ${message}`);
+    process.exit(1);
+  }
+
+  if (!noOpen) {
+    openBrowser(pagePath);
+  }
+  console.error(`[mkd] deck written to ${pagePath}${noOpen ? '' : ' (opened in the browser)'}`);
+  console.error('[mkd] the user answers at their own pace and pastes the copied result JSON into the chat.');
+  process.exit(0);
+}
+
+// ============================================================================
+// WAIT MODE (--wait, blocking)
+// ============================================================================
+
+async function runWaitMode(
+  spec: ReturnType<typeof validateSpec>,
+  name: string,
+  port: number,
+  timeoutMinutes: number,
+  noOpen: boolean,
+): Promise<void> {
   let handle: ServeHandle | null = null;
   let boundUrl = `http://localhost:${port}/`;
 
   const onSigint = (): void => {
-    console.error('\n[toki] interrupted (SIGINT). Stopping server.');
+    console.error('\n[mkd] interrupted (SIGINT). Stopping server.');
     handle?.stop();
     process.exit(130);
   };
@@ -170,17 +234,17 @@ async function main(): Promise<void> {
   handle = serve(spec, {
     port,
     timeoutMs: timeoutMinutes * 60000,
-    render,
+    render: (normalized, submitToken) =>
+      render(normalized, { mode: 'wait', submitToken }),
     onListening: (info) => {
       boundUrl = info.url;
     },
   });
 
-  // Open the browser unless suppressed. Always print the waiting URL to stderr.
   if (!noOpen) {
     openBrowser(boundUrl);
   }
-  console.error(`[toki] open this URL to respond: ${boundUrl}`);
+  console.error(`[mkd] open this URL to respond: ${boundUrl}`);
 
   let result;
   try {
@@ -188,7 +252,7 @@ async function main(): Promise<void> {
   }
   catch (error) {
     if (error instanceof TimeoutError) {
-      console.error(`[toki] ${error.message}`);
+      console.error(`[mkd] ${error.message}`);
       process.exit(1);
     }
     throw error;
@@ -197,23 +261,20 @@ async function main(): Promise<void> {
     process.off('SIGINT', onSigint);
   }
 
-  // Persist a backup. Derive the name from spec-NAME.json when it matches.
-  const resultName = deriveResultName(specPath, id);
+  // Decode any user-pasted images (data URLs in transit) to `~/.mkd/` files
+  // and rewrite each entry in-place to the file path BEFORE either write, so
+  // both the backup and the authoritative stdout copy reference paths the AI
+  // can Read - never inline base64. Mutates `result`.
+  await persistImages(result, name);
 
-  // Decode any user-pasted images (data URLs in transit) to `~/.toki/` files and
-  // rewrite each entry in-place to the file path BEFORE either write, so both
-  // the backup and the authoritative stdout copy reference paths the AI can
-  // Read — never inline base64. Mutates `result`.
-  await persistImages(result, resultName);
-
-  const outPath = join(TOKI_HOME, `result-${resultName}.json`);
+  const outPath = join(MKD_HOME, `result-${sanitizeForFilename(name)}.json`);
   try {
     await Bun.write(outPath, `${JSON.stringify(result, null, 2)}\n`);
-    console.error(`[toki] result written to ${outPath}`);
+    console.error(`[mkd] result written to ${outPath}`);
   }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[toki] warning: could not write ${outPath}: ${message}`);
+    console.error(`[mkd] warning: could not write ${outPath}: ${message}`);
   }
 
   // THE single stdout write. Nothing else ever touches stdout.
@@ -222,13 +283,13 @@ async function main(): Promise<void> {
 }
 
 // ============================================================================
-// IMAGE PERSISTENCE
+// IMAGE PERSISTENCE (--wait mode)
 // ============================================================================
 
-/** `data:image/png;base64,...` → capture the mime in group 1. */
-const DATA_URL_RE = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/s;
+/** `data:image/png;base64,...` -> capture the mime in group 1. */
+const DATA_URL_RE = /^data:(image\/[a-z0-9.+-]+);base64,(.*)$/is;
 
-/** Map an image mime to a file extension. Unknown image mimes → `bin`. */
+/** Map an image mime to a file extension. Unknown image mimes -> `bin`. */
 function extForMime(mime: string): string {
   switch (mime.toLowerCase()) {
     case 'image/png':
@@ -247,30 +308,30 @@ function extForMime(mime: string): string {
   }
 }
 
-/** Replace anything outside [A-Za-z0-9._-] (i.e. not word/dot/hyphen) with `_`. */
+/** Replace anything outside [A-Za-z0-9._-] with `_`. */
 function sanitizeForFilename(value: string): string {
   return value.replace(/[^\w.-]/g, '_');
 }
 
 /**
- * Walk every block + every block.rows[] entry; for each `images` array, decode
- * any `data:` URL entry to bytes, write it to
- * `~/.toki/<resultName>-img-<blockId>[-<rowId>]-<n>.<ext>`, and replace the entry
+ * Walk every item + every table item's rows[]; for each `images` array,
+ * decode any `data:` URL entry to bytes, write it to
+ * `~/.mkd/<name>-img-<itemId>[-<rowId>]-<n>.<ext>`, and replace the entry
  * with that absolute path. Entries that are already plain paths pass through
  * untouched. A failed decode/write logs a stderr warning and drops the entry
- * (never throws — must not break the handshake). Mutates `result` in place.
+ * (never throws - must not break the handshake). Mutates `result` in place.
  */
-export async function persistImages(result: Result, resultName: string): Promise<void> {
-  const safeName = sanitizeForFilename(resultName);
+export async function persistImages(result: Result, name: string): Promise<void> {
+  const safeName = sanitizeForFilename(name);
 
-  for (const block of result.blocks) {
-    if (Array.isArray(block.images)) {
-      block.images = await persistImageList(block.images, safeName, block.id, null);
+  for (const item of result.items) {
+    if ('images' in item && Array.isArray(item.images)) {
+      item.images = await persistImageList(item.images, safeName, item.id, null);
     }
-    if (Array.isArray(block.rows)) {
-      for (const row of block.rows) {
+    if (item.type === 'table' && Array.isArray(item.rows)) {
+      for (const row of item.rows) {
         if (Array.isArray(row.images)) {
-          row.images = await persistImageList(row.images, safeName, block.id, row.id);
+          row.images = await persistImageList(row.images, safeName, item.id, row.id);
         }
       }
     }
@@ -279,14 +340,14 @@ export async function persistImages(result: Result, resultName: string): Promise
 
 /**
  * Persist one `images` array, returning a new array where every decoded data
- * URL is replaced by its written `~/.toki/` path. Non-data-URL entries (already
- * paths) pass through; entries that fail to decode/write are dropped with a
- * stderr warning.
+ * URL is replaced by its written `~/.mkd/` path. Non-data-URL entries pass
+ * through; entries that fail to decode/write are dropped with a stderr
+ * warning.
  */
 async function persistImageList(
   images: string[],
   safeName: string,
-  blockId: string,
+  itemId: string,
   rowId: string | null,
 ): Promise<string[]> {
   const out: string[] = [];
@@ -294,7 +355,7 @@ async function persistImageList(
   for (const entry of images) {
     const match = DATA_URL_RE.exec(entry);
     if (!match) {
-      // Already a plain path (or non-data string) — pass through unchanged.
+      // Already a plain path (or non-data string) - pass through unchanged.
       out.push(entry);
       continue;
     }
@@ -302,18 +363,18 @@ async function persistImageList(
     const mime = match[1];
     const b64 = match[2];
     const ext = extForMime(mime);
-    const safeBlock = sanitizeForFilename(blockId);
+    const safeItem = sanitizeForFilename(itemId);
     const rowPart = rowId !== null ? `-${sanitizeForFilename(rowId)}` : '';
-    const path = join(TOKI_HOME, `${safeName}-img-${safeBlock}${rowPart}-${n}.${ext}`);
+    const path = join(MKD_HOME, `${safeName}-img-${safeItem}${rowPart}-${n}.${ext}`);
     try {
       const bytes = Buffer.from(b64, 'base64');
       await Bun.write(path, bytes);
       out.push(path);
-      console.error(`[toki] image written to ${path}`);
+      console.error(`[mkd] image written to ${path}`);
     }
     catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[toki] warning: could not write image ${path}: ${message} (dropped)`);
+      console.error(`[mkd] warning: could not write image ${path}: ${message} (dropped)`);
     }
   }
   return out;
@@ -329,7 +390,7 @@ function parsePort(raw: string | undefined): number {
   }
   const value = Number.parseInt(raw, 10);
   if (!Number.isFinite(value) || value <= 0 || value > 65535) {
-    console.error(`[toki] error: invalid --port "${raw}".`);
+    console.error(`[mkd] error: invalid --port "${raw}".`);
     process.exit(2);
   }
   return value;
@@ -341,34 +402,35 @@ function parseTimeout(raw: string | undefined): number {
   }
   const value = Number.parseFloat(raw);
   if (!Number.isFinite(value) || value <= 0) {
-    console.error(`[toki] error: invalid --timeout "${raw}" (minutes, fractional allowed).`);
+    console.error(`[mkd] error: invalid --timeout "${raw}" (minutes, fractional allowed).`);
     process.exit(2);
   }
   return value;
 }
 
 /**
- * Derive the result filename. A spec named `spec-NAME.json` yields `NAME`
- * (so `~/.toki/spec-demo.json` -> `~/.toki/result-demo.json`). Otherwise fall back
- * to the short epoch id.
+ * Derive the deck/result name. A spec named `spec-NAME.json` yields `NAME`
+ * (so `~/.mkd/spec-audit.json` -> `~/.mkd/deck-audit.html` +
+ * `~/.mkd/result-audit.json`). Otherwise fall back to the short epoch id.
  */
-function deriveResultName(specPath: string, id: string): string {
+function deriveName(specPath: string, id: string): string {
   const base = specPath.split(/[/\\]/).pop() ?? specPath;
   const match = /^spec-(.+)\.json$/.exec(base);
   return match ? match[1] : id;
 }
 
-function openBrowser(url: string): void {
+/** Open a URL or a local file path in the default browser, cross-platform. */
+function openBrowser(target: string): void {
   let cmd: string[];
   switch (process.platform) {
     case 'darwin':
-      cmd = ['open', url];
+      cmd = ['open', target];
       break;
     case 'win32':
-      cmd = ['cmd', '/c', 'start', '', url];
+      cmd = ['cmd', '/c', 'start', '', target];
       break;
     default:
-      cmd = ['xdg-open', url];
+      cmd = ['xdg-open', target];
       break;
   }
   try {
@@ -376,7 +438,7 @@ function openBrowser(url: string): void {
   }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[toki] could not auto-open browser (${message}). Open ${url} manually.`);
+    console.error(`[mkd] could not auto-open browser (${message}). Open ${target} manually.`);
   }
 }
 
@@ -389,13 +451,13 @@ function openBrowser(url: string): void {
 if (import.meta.main) {
   main().catch((error: unknown) => {
     if (error instanceof Error) {
-      console.error(`[toki] ${error.message}`);
+      console.error(`[mkd] ${error.message}`);
       if (process.env.DEBUG) {
         console.error(error.stack);
       }
     }
     else {
-      console.error(`[toki] ${String(error)}`);
+      console.error(`[mkd] ${String(error)}`);
     }
     process.exit(1);
   });
