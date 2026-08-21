@@ -25,9 +25,10 @@
    kills. Open `package.json` first, then answer.
 8. **SKILL DECOUPLING (load-bearing for distribution)**: any CLI/code a skill bundles MUST import
    **runtime built-ins only** (Bun / `node:` built-ins) — **zero external npm deps**, relative imports
-   only, no host-repo paths/aliases. This is what lets a skill travel via `bunx skills add` and compile
-   to a standalone binary. A bundled tool must also leave **zero footprint** in the consumer repo: write
-   any output (caches, results, artifacts) under the user's home (e.g. `~/.<tool>/`), never the cwd.
+   only, no host-repo paths/aliases. This is what lets a skill travel via `bunx skills add`. A bundled
+   tool must also leave **zero footprint** in the consumer repo: write any output (caches, results,
+   artifacts) under the user's home (e.g. `~/.<tool>/`), never the cwd. **No install step**: a bundled
+   CLI runs straight from the skill dir (`bun <skill-dir>/cli/index.ts`) — no compiled binary, no PATH.
 9. **LANGUAGE DETECTION + MIRRORING**: read the FULL user message, detect their working language, and
    mirror it in ALL conversational replies. Repo artifacts ALWAYS English regardless: code, comments,
    commits, PR titles/bodies, branch/file names, config values, external-action artifacts.
@@ -98,23 +99,21 @@ self-contained CLI. Keep each skill independently extractable.
 
 ## 5. DISTRIBUTION MODEL — how these skills reach users
 
-- **Consumed user-level.** Other repos' installers run `bunx skills add --global <this-repo> <skill>`,
-  landing the skill once at the user level so it loads in every project without per-repo wiring.
-- **Bundled CLI → global binary, built lazily.** If a skill ships a CLI, its `SKILL.md` first-run /
-  Phase-0 section makes the AI check for the binary and build it if missing, e.g.
-  `command -v <bin> || bun build --compile <skill-dir>/cli/index.ts --outfile ~/.bun/bin/<bin>`.
-  For `--compile` to embed UI/asset files, import them with `with { type: 'text' }` (Bun embeds those;
-  `readFileSync(import.meta.url)` does NOT survive compilation). Fallback: `bun <skill-dir>/cli/index.ts`.
+- **Consumed project-level or user-level.** A skill lives in the consumer repo's `.claude/skills/<name>`
+  (project) or `~/.claude/skills/<name>` (user, via `bunx skills add --global <this-repo> <skill>`).
+- **No-install CLIs.** A bundled CLI ships as source and the AI runs it from the skill directory:
+  `bun <skill-dir>/cli/index.ts <args>`. No compiled binary, no PATH entry, no Phase-0 build. UI assets
+  are still imported `with { type: 'text' }` (embedded strings, no per-call I/O).
 - **Zero host footprint.** A bundled tool writes its caches/results under `~/.<tool>/`, never the
   consumer repo's cwd — so running it inside any repo dirties nothing there.
-- **Idempotent.** Re-running an installer / rebuild overwrites in place; no duplicates across repos.
+- **Idempotent.** Re-running an installer overwrites in place; no duplicates across repos.
 
 ---
 
 ## 6. TOOLCHAIN + VERIFICATION
 
-- **Runtime/toolkit: Bun** (TS runs directly; `bun build --compile` for binaries). Gates: `tsc --noEmit`
-  (types) + ESLint (`@antfu/eslint-config` style — newline interface delimiters, `no-console` off).
+- **Runtime/toolkit: Bun** (TS runs directly). Gates: `tsc --noEmit` (types) + ESLint
+  (`@antfu/eslint-config` style — newline interface delimiters, `no-console` off).
   Always READ `package.json` for the exact script names; never quote them from memory.
 - **E2E a bundled CLI with the `playwright-cli` binary** (drive the real running tool in a headless
   browser). Assert real-user visibility (computed `opacity`, `getBoundingClientRect`) and the tool's
@@ -129,27 +128,23 @@ self-contained CLI. Keep each skill independently extractable.
 | Skill | What it is | Status |
 |---|---|---|
 | `agentic-audit` (no binary) | An **evidence-based auditor of a whole project** — someone else's or our own. Sweeps git history, `.context/` artifacts, `.agents/` config, the tracker mirror, tests and CI, then drives the live app with `playwright-cli`, scores six fixed axes 0-5 and emits a single-file HTML evaluation. `subject` (`dev` \| `qa` \| `pair`) selects the rubric; `lens` (`external` \| `internal`) selects register and deliverable. Load-bearing invariant: **the rubric travels with the skill**, never read from the audited repo, or version drift scores as compliance. Strictly read-only on the target. | **v1** |
-| `wokitoki` (binary `toki`) | A blocking interactive **human-in-the-loop feedback CLI** the AI invokes mid-conversation: serves a local dark web UI where the user answers each block (question / report / answerable table) with controls + free text + highlight-to-quote + clipboard images, then returns anchored JSON on stdout the same turn. Replaces inline questionnaires + unanchored prose feedback. | **Being extracted** from `agentic-qa-boilerplate` per the handoff — see §8 |
+| `mkd` (no binary — `bun cli/index.ts`) | **MKD (Make Decision)** — a browser-based **decision-deck CLI**, successor of `wokitoki`/`toki` fused with the Catch-Up prototype. The AI writes a spec of `items` (`decision` \| `question` \| `report` \| `table`); the CLI renders a one-screen-per-item deck (progress rail, intro + summary, skip = decide later, live stats, localStorage persistence, verdigris+amber light/dark skin, MKD wordmark). **Default = non-blocking copy-paste**: render `~/.mkd/deck-<name>.html`, open browser, exit 0; the user pastes the Result JSON into the chat as the execution contract. `--wait` keeps the blocking loopback handshake (Result JSON on stdout; only mode with image paste). **Hard rule (validator-enforced)**: every decision option carries a written `justification`; max 1 `recommended` per decision and its justification states the why. | **v2** |
 
-`wokitoki` security contract (do not regress when moving it in): per-run `x-toki-token` + loopback bind
-on `/submit`; stdout carries ONLY the Result JSON; the server's defensive body-shaping must pass through
-every field (it silently drops unknown fields — that bug bit `rows[]` and `images[]`).
+`mkd` security contract (do not regress): per-run `x-mkd-token` + loopback bind on `/submit` (`--wait`
+mode); stdout carries ONLY the Result JSON; the server shapes the body AGAINST THE SPEC (unknown items
+dropped, stats/`wasRecommended` recomputed server-side) and must pass through every legit field —
+silently dropping unknown fields is the bug class that once bit `rows[]`/`images[]`.
 
 ---
 
-## 8. CURRENT TASK — extract WokiToki into this repo
+## 8. CURRENT STATE — mkd v2 shipped on `feat/mkd`
 
-This repo starts EMPTY. The immediate work is to move the finished WokiToki implementation in and wire
-its distribution. The full, self-sufficient plan lives in the source repo:
-
-- **Handoff:** `agentic-qa-boilerplate/.scratch/wokitoki-cli/HANDOFF-NEXT-extract-to-agentic-user-skills.md`
-- **Source code (to move):** `agentic-qa-boilerplate` branch `feat/wokitoki-cli` → `cli/toki/*` +
-  `.claude/skills/wokitoki/*`.
-
-It covers: create this repo's scaffolding, move the CLI under `skills/wokitoki/cli/`, apply the
-portability refinements (asset-embed for `--compile`, output → `~/.toki/`, lazy binary build in
-SKILL.md), verify with `playwright-cli`, then (in the QA + dev repos) add `wokitoki` to the installer's
-USER-level skills list and close/salvage QA PR #3. Read the handoff before starting.
+The wokitoki→mkd fusion is implemented on branch `feat/mkd` (rename + unified deck + docs), verified
+with types/lint + `playwright-cli` E2E (copy-mode full flow, persistence hydration, highlight-to-quote,
+`--wait` submit with stdout contract). UX/design reference lives at
+`agentic-qa-boilerplate/.session/pbi-jira-cache-refactor/catchup-decisiones.html` (the validated
+prototype). Pending follow-up in **`agentic-qa-boilerplate`**: its installer's `USER_LEVEL_SKILLS`
+still lists `wokitoki` — update it to `mkd` once this lands on main.
 
 ---
 

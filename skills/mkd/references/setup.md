@@ -1,38 +1,49 @@
-# WokiToki setup — the `toki` global binary
+# MKD — Setup (there is none)
 
-`toki` is distributed as **source** (Bun built-ins only, zero external npm deps) and compiled to a **single self-contained binary** the first time the skill is used. This file documents that first-run flow, the fallback, and how to rebuild.
+MKD ships as source and runs straight from the skill directory. There is **no
+install step, no compiled binary, nothing added to PATH**.
 
-## First-run build (lazy, idempotent)
+## Requirements
 
-Before the first `toki` invocation in a session, ensure the binary exists; build it if missing:
+- **Bun** (any recent version). It runs the TypeScript CLI directly. If
+  missing: `curl -fsSL https://bun.sh/install | bash` (the user runs this, not
+  the AI).
 
-```bash
-command -v toki >/dev/null 2>&1 || bun build --compile "<skill-dir>/cli/index.ts" --outfile "$HOME/.bun/bin/toki"
-```
-
-- `<skill-dir>` — this skill's install directory. User-level (global) install, that is `~/.claude/skills/wokitoki`.
-- `--compile` produces a standalone executable that **embeds** the two UI assets (`cli/ui/app.css`, `cli/ui/app.js`). They are imported as text via Bun import attributes (`import APP_CSS from './ui/app.css' with { type: 'text' }`), which is what lets `bun build --compile` bake them into the binary — so the executable renders the full UI from anywhere, with no sibling files required.
-- `~/.bun/bin` is on PATH for every Bun install, so the freshly built `toki` runs immediately.
-- The build is idempotent: re-running it overwrites the binary in place. Re-run it after pulling skill updates so the binary tracks the source.
-
-## Fallback — run from source (no compile)
-
-If `--compile` is unavailable, or you can't write into `~/.bun/bin`, run directly from source — identical behavior, just a slower cold start:
+## How the AI runs it
 
 ```bash
-bun "<skill-dir>/cli/index.ts" <specPath>
+bun "<skill-dir>/cli/index.ts" <specPath> [flags]
 ```
 
-## Output location — `~/.toki/`
+`<skill-dir>` resolution:
 
-Everything the CLI writes lands under `~/.toki/`:
+| Install level | Path |
+| --- | --- |
+| Project | `<repo>/.claude/skills/mkd` |
+| User (global) | `~/.claude/skills/mkd` |
 
-- `~/.toki/result-<name>.json` — a backup of each submitted Result (the stdout copy is authoritative).
-- `~/.toki/<name>-img-<blockId>[-<rowId>]-<n>.<ext>` — any clipboard image the user pasted, decoded to a file; the Result's `images[]` carries that path.
+Installed via the skills CLI: `bunx skills add <repo-or-url> mkd` (project) or
+`bunx skills add --global <repo-or-url> mkd` (user level).
 
-Writing under `$HOME` (via `node:os` `homedir()` + `node:path` `join`) — never the cwd — is what makes the tool leave **zero footprint** in whatever repo it runs inside.
+## Footprint
+
+Everything the tool writes lands under `~/.mkd/`:
+
+| File | What |
+| --- | --- |
+| `spec-<name>.json` | The spec the AI writes (convention, keeps the repo clean). |
+| `deck-<name>.html` | The rendered self-contained deck page (copy mode). |
+| `result-<name>.json` | Result backup (`--wait` mode). |
+| `<name>-img-*.{png,jpg,…}` | Pasted images persisted to disk (`--wait` mode). |
+
+Nothing is ever written to the consumer repo's cwd — no `.gitignore` edits
+needed anywhere.
 
 ## Notes
 
-- Binary size is ~50–90 MB (it embeds the Bun runtime). If that is undesirable, prefer the run-from-source fallback above as the default invocation.
-- Nothing here needs network access or external dependencies; the only requirement is `bun` on PATH.
+- The page loads Bricolage Grotesque / Albert Sans / Spline Sans Mono from
+  Google Fonts with full system fallback stacks; offline the deck still works.
+- Answers persist in the browser's localStorage keyed by `session`, so closing
+  and reopening `deck-<name>.html` never loses work. A NEW deck for the same
+  `session` reuses (and overwrites) that saved state — reuse a session slug
+  only when re-opening the same set of items.

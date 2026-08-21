@@ -1,140 +1,150 @@
 ---
-name: wokitoki
-description: "WokiToki (`toki`) — a local, browser-based human-in-the-loop feedback CLI the AI drives mid-conversation to collect structured, anchored, point-by-point answers. WHEN to use: the AI needs the user to react to MORE THAN ~3 decision points at once, OR to a long multi-section explanation/report the user may want to answer one point at a time. It beats `AskUserQuestion` (which is capped at ~4 questions × ~4 options, terminal-bound, has no rich free-text, and cannot show the reference content while answering) and it beats an inline prose questionnaire (which produces unanchored replies the AI must guess-map back to each question/paragraph). HOW it works: the AI writes a spec JSON of `blocks` (a block WITH `controls` is a question, a block WITHOUT `controls` is a report paragraph, and a mix is a hybrid form), runs `toki <specPath>` (a global binary the skill builds on first use), and the user answers in a local dark-themed web UI with single/multi/toggle controls + a per-block free-text field + highlight-to-quote; on submit the tool prints ONLY the Result JSON to stdout (banners/errors go to stderr), which the AI reads the SAME turn and continues with precise, anchored feedback. Triggers on: `wokitoki`, `toki`, `feedback UI`, `ask me point by point`, `let me answer in the browser`, `decision form`, `interactive feedback`, `review this plan point by point`, `react to each section`, `more than three questions`, `long explanation I want to respond to piece by piece`. Use this skill even when the user does not say `toki` — if the task is to collect granular anchored feedback on many decisions or a long report, this is the right tool. Do NOT use for: a trivial 1–2 option pick or a single yes/no (use `AskUserQuestion`), or any non-interactive / CI / one-shot output where there is no human at a browser to answer."
+name: mkd
+description: "MKD (`mkd` — Make Decision) — a local, browser-based decision-deck CLI the AI drives to collect structured human feedback: decisions with justified options, questions, report reactions and answerable tables, one screen at a time (Slack Catch-Up style). WHEN to use: the AI has MORE THAN ~3 decision points or a long multi-section report/plan that needs the user's verdict point by point. It beats `AskUserQuestion` (capped at ~4 questions × ~4 options, terminal-bound, no rich free-text, cannot show reference content) and beats an inline prose questionnaire (unanchored replies the AI must guess-map back). HOW it works: the AI writes a spec JSON of `items` (`decision` | `question` | `report` | `table`), runs `bun <skill-dir>/cli/index.ts <specPath>` (no install, no binary), and the CLI renders a self-contained deck page under `~/.mkd/`, opens the browser and EXITS immediately — the user answers at their own pace (progress rail, arrow keys, skip = decide later, live stats, localStorage persistence) and pastes the copied Result JSON back into the chat, which the AI treats as the execution contract. Add `--wait` only when the answer is needed the same turn (blocking loopback server, Result JSON on stdout). HARD RULE: every decision option MUST carry a written justification (value + cost), and the recommended option's justification must state WHY it is recommended — the validator rejects options without one. Triggers on: `mkd`, `make decision`, `decision deck`, `catch-up`, `catchup`, `decision form`, `feedback UI`, `ask me point by point`, `let me answer in the browser`, `review this plan point by point`, `react to each section`, `more than three questions`, `decisiones de auditoría`, `tomar decisiones`. Use this skill even when the user does not say `mkd` — if the task is to collect granular decisions or anchored feedback on many points, this is the right tool. Do NOT use for: a trivial 1-2 option pick or a single yes/no (use `AskUserQuestion`), or any non-interactive / CI / one-shot output where there is no human at a browser."
 license: MIT
 compatibility: [claude-code, opencode, cursor, codex]
-allowed-tools: Bash(toki:*), Bash(bun:*), Bash(command:*)
+allowed-tools: Bash(bun:*), Bash(command:*)
 complementary_categories: [meta-skill]
 ---
 
-# WokiToki (`toki`)
+# MKD (`mkd`) — Make Decision
 
-WokiToki is a local, blocking feedback CLI the AI invokes mid-conversation. It serves a dark web UI, opens the browser, waits for the user to answer, and on submit prints a single Result JSON to stdout that the AI parses the same turn. The branding is "walkie-talkie": back-and-forth, one answer per thing. Command = `toki`; all tool output lands under `~/.toki/`.
+MKD is a local decision-deck CLI the AI invokes mid-conversation. It renders a browser page where the user works through a deck of items **one screen at a time** (Slack Catch-Up style): decisions with justified options, questions with controls, report sections to react to, and answerable tables. The default flow is **non-blocking copy-paste**: the CLI opens the page and exits; the user answers whenever they want and pastes the Result JSON into the chat. That JSON is the **execution contract** — the AI executes exactly what it says.
 
-This skill is installed **user-level** (global): it loads automatically in every project, with no per-repo wiring. Because every file it writes goes under `~/.toki/` (never the cwd), running `toki` inside any repo leaves **zero footprint** in that repo — no `.gitignore` edits needed.
+This skill needs **no install step**: there is no compiled binary and nothing added to PATH. The AI runs the CLI from the skill directory with Bun. All output (rendered decks, results, images) lands under `~/.mkd/` — never the cwd — so running it inside any repo leaves **zero footprint** there.
 
-Everything is one engine: a spec is a list of **blocks**. A block with `controls` is a question; a block without `controls` is a report paragraph; mixing them in one spec is a hybrid form — for free.
-
-## Phase 0 — first-run binary check (before the first invocation in a session)
-
-`toki` ships as source and is compiled to a single global binary on first use. Before invoking it the first time, ensure the binary exists; build it if missing:
+## Running it (no install)
 
 ```bash
-command -v toki >/dev/null 2>&1 || bun build --compile "<skill-dir>/cli/index.ts" --outfile "$HOME/.bun/bin/toki"
+bun "<skill-dir>/cli/index.ts" <specPath> [--wait] [--no-open] [--port <n>] [--timeout <min>]
 ```
 
-- `<skill-dir>` is this skill's install directory — user-level that is `~/.claude/skills/wokitoki`.
-- `~/.bun/bin` is already on PATH for Bun installs, so the freshly built `toki` is immediately runnable.
-- **Fallback** (if `--compile` is unavailable or the binary can't be written): run from source with `bun "<skill-dir>/cli/index.ts" <specPath>` — identical behavior, just a slower cold start.
+`<skill-dir>` is this skill's install directory:
 
-Full first-run details (sizes, PATH, rebuild) → `references/setup.md`.
+- project-level: `<repo>/.claude/skills/mkd`
+- user-level: `~/.claude/skills/mkd`
+
+Bun runs TypeScript directly; cold start is negligible. If Bun is missing, tell the user to install it (`curl -fsSL https://bun.sh/install | bash`) — do not substitute Node.
 
 ## When to use vs `AskUserQuestion` vs inline prose
 
 | Situation | Use |
 | --- | --- |
-| 1–2 option pick, single yes/no, ≤3 simple decisions | `AskUserQuestion` |
-| >3 decision points at once (mix of single/multi/toggle) | **WokiToki** |
-| A long multi-section explanation/report the user may want to react to one point at a time | **WokiToki** |
-| You need the reply ANCHORED to the exact phrase it is about | **WokiToki** (highlight-to-quote) |
+| 1-2 option pick, single yes/no, ≤3 simple decisions | `AskUserQuestion` |
+| >3 decision points, or decisions needing context + written tradeoffs | **MKD** |
+| A long multi-section report/plan the user should react to point by point | **MKD** (`report` items) |
+| Row-by-row verdicts over tabular data | **MKD** (`table` item) |
+| The reply must be ANCHORED to exact phrases | **MKD** (highlight-to-quote) |
 | Non-interactive / CI / no human at a browser | neither — emit plain output |
 
-Why not the alternatives:
+## The deck model
 
-- **`AskUserQuestion`** is capped (~4 questions × ~4 options), terminal-bound, has no rich free-text, and cannot display the reference content while the user answers.
-- **Inline prose questionnaire** produces unanchored replies: the AI has to guess which paragraph/point each sentence of the reply maps to. WokiToki returns per-block answers keyed by a stable `id`, so the mapping is exact.
+A spec is a list of **items**; each item is one screen. Four types:
+
+| Type | What the screen holds | Answer captured |
+| --- | --- | --- |
+| `decision` | Problem statement (plain PM language) + collapsible context balloons + options **with written justification** + optional custom option + note | `chosen` key (or `"CUSTOM"` + `customText`), `wasRecommended`, `note` |
+| `question` | Markdown content + `single`/`multi`/`toggle` control + free text | `controlAnswer`, `text`, `quotes` |
+| `report` | A report section to react to | `text`, `quotes` |
+| `table` | Answerable table, one answer per row (popover controls + text) | `rows[]` each with `controlAnswer`/`text`/`quotes`, plus item `note` |
+
+Deck chrome, always on: intro screen (headline + markdown + stat tiles), navigable progress rail, ← → arrow keys, per-item **Skip for now** (skipped = decide later, NOT a rejection), summary screen, live footer stats (answered / rec followed / changed / custom / skipped), light/dark theme, localStorage persistence (closing the tab loses nothing).
+
+## HARD RULE — justified options (this is the point of the tool)
+
+When authoring `decision` items:
+
+1. **Every option carries a written `justification`**: what it buys (value) and what it costs. The validator **rejects** any option without one (exit 2) — do not fight it, write the justification.
+2. **At most one option is `recommended`**, and its justification must state **why it is the recommendation** explicitly (e.g. "**Recommended** because …").
+3. The `problem` is written in **plain language** (PM voice) for someone without the full technical context; jargon and internal codenames go inside `context` balloons that explain how things work today.
+4. Every real tradeoff the user should know about goes in writing. An unexplained option list is exactly the failure mode this tool exists to eliminate.
 
 ## Spec schema in brief
 
 ```jsonc
 {
-  "title": "Auth plan — decisions",      // required, non-empty
-  "intro": "Optional markdown at top",   // optional
-  "submitLabel": "Submit answers",        // optional (default "Submit")
-  "blocks": [                              // required, non-empty
+  "session": "audit-skills-alignment",   // required — result echo + persistence key
+  "source": ".session/.../audit.md",     // optional pointer to the source artifact
+  "title": "Catch-Up: audit decisions",  // required
+  "intro": {                              // optional intro screen
+    "headline": "8 decisions await you",
+    "body": "Markdown, PM voice",
+    "stats": [{ "n": "115", "label": "verified findings" }]
+  },
+  "items": [
     {
-      "id": "q1",                          // required, unique within the spec
-      "content": "Which token strategy?",  // markdown string (may be empty "")
-      "controls": {                        // OMIT for a report paragraph
-        "type": "single",                  // single | multi | toggle
-        "options": [                        // required for single/multi, FORBIDDEN for toggle
-          { "value": "jwt", "label": "JWT stateless" },
-          { "value": "session", "label": "Server-side session" }
-        ],
-        "required": true                    // optional (default false)
-      },
-      "text": { "required": true, "placeholder": "Justify" }  // text ALWAYS present at runtime; required decided per-block
-    }
+      "id": "D1", "type": "decision", "title": "…",
+      "severity": "high",                // optional: high | medium | low (chip)
+      "scope": "test-documentation",     // optional (chip)
+      "problem": "Plain-language markdown problem statement",
+      "context": [{ "title": "How does X work today?", "body": "markdown" }],
+      "options": [
+        { "key": "A", "label": "…", "justification": "Value + cost. **Recommended** because …", "recommended": true },
+        { "key": "B", "label": "…", "justification": "Value + cost." }
+      ],
+      "allowCustom": true                // default true
+    },
+    { "id": "Q1", "type": "question", "title": "…", "content": "markdown",
+      "controls": { "type": "single", "required": true, "options": [{ "value": "keep", "label": "Keep" }] },
+      "text": { "placeholder": "Why?" } },
+    { "id": "R1", "type": "report", "title": "…", "content": "markdown section" },
+    { "id": "T1", "type": "table", "title": "…", "content": "optional intro",
+      "table": { "columns": ["Test", "Rate"], "rows": [{ "id": "r1", "cells": ["a", "b"] }],
+                 "rowControls": { "type": "single", "options": [ … ] } } }
   ]
 }
 ```
 
-- `controls` absent → report paragraph. Present → question. Mixed list → hybrid.
-- `controls.type`: `single` (radio), `multi` (checkbox), `toggle` (boolean switch, no `options`).
-- `controls.required` and `text.required` are independent — either, both, or neither can be required per block.
-- `id` is the stable AI-assigned key the answer is mapped back to.
-
 Full contract (every field, defaults, validation rules) → `references/schema.md`. Worked copy-pasteable specs → `references/examples.md`.
 
-## Exact invocation
+## Exact invocation — default (copy mode, non-blocking)
 
-1. **Write the spec** to a JSON file. Convention: `~/.toki/spec-<name>.json` (a `spec-<name>.json` filename makes the backup land at `~/.toki/result-<name>.json`). Keeping the spec under `~/.toki/` — not the repo — keeps the whole footprint out of whatever repo you are working in.
-2. **Run it (blocking):** `toki <specPath>`. This serves the UI, opens the browser, and waits. (First run in a session: do the Phase 0 binary check above.)
-   - Flags: `--port <n>` (default 4747, auto-increments if busy), `--timeout <min>` (default 1440 = 24h, fractional ok), `--no-open` (print the URL but do not open the browser), `--help`.
-3. **Parse stdout.** stdout carries **ONLY** the Result JSON — one object, no banner. All progress lines, the waiting URL, and errors go to **stderr**. Read stdout, `JSON.parse` it, continue the same turn.
+1. **Write the spec** to `~/.mkd/spec-<name>.json` (that filename makes the page land at `~/.mkd/deck-<name>.html`). Keeping it under `~/.mkd/` keeps the repo clean.
+2. **Run:** `bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-<name>.json`. The CLI validates, renders a self-contained page, opens the browser, and **exits 0 immediately**. Nothing lands on stdout.
+3. **Tell the user** the deck is open in their browser and that pressing **Copy JSON** (footer) and pasting it into the chat brings the answers back. Then continue with other work or end the turn — do NOT block or poll.
+4. **When the pasted JSON arrives**, parse it and treat it as the execution contract: `status: "skipped"` items are "decide later" (re-ask later, never assume a rejection); `chosen: "CUSTOM"` means execute `customText` as stated (or ask if something does not add up); always read each item's `note`.
 
-Exit codes:
+## `--wait` (blocking, same-turn answer)
 
-| Code | Meaning |
-| --- | --- |
-| 0 | submitted OK — Result JSON is on stdout |
-| 1 | timeout (no submit within `--timeout`) or runtime error — nothing usable on stdout |
-| 2 | bad spec (file unreadable or failed validation) — `[toki] invalid spec at <path>: …` on stderr |
+Use only when the AI genuinely needs the answer in the same turn to continue:
 
-A backup of the Result is also written to `~/.toki/result-<name>.json`, but the stdout copy is authoritative for the AI.
+- `bun "<skill-dir>/cli/index.ts" <specPath> --wait` serves the deck over loopback (`--port`, default 4747, auto-increments) with a per-run `x-mkd-token` submit gate, waits for the browser's submit (`--timeout <min>`, default 1440 = 24h), then prints the Result JSON to **stdout** (the ONLY thing on stdout; banners/errors go to stderr) and writes a backup to `~/.mkd/result-<name>.json`.
+- Image paste (clipboard → attachment) works **only** in `--wait` mode: entries in `images` arrive as absolute file paths under `~/.mkd/` the AI can `Read`. Copy mode disables paste (no server to persist bytes).
 
-## User-absence protocol
-
-A long session is expected — the default `--timeout` is **24h (1440 min)**, adjustable via `--timeout <min>`. A person may step away and leave the session open, so a non-zero exit is not necessarily an error:
+Exit codes and absence protocol (`--wait`):
 
 | Exit | Meaning | What the AI does |
 | --- | --- | --- |
 | 0 | submitted — Result JSON on stdout | parse it, continue the same turn |
-| 1 | timeout elapsed with NO submission (or runtime error) | treat as the user being **AWAY**, not a failure — see below |
-| 2 | bad spec (unreadable / failed validation) | fix the spec, then re-run |
-| 130 | Ctrl-C (SIGINT) | the user cancelled — ask what they want next |
-
-On exit code 1, do **not** error out or move on silently. Treat it as the user being away from the keyboard: post a brief standby message and offer to relaunch — e.g. "Dejé toki esperando, no llegó respuesta; sigo disponible — decime y lo relanzo." Keep `toki` ready to re-run with the same spec the moment the user is back.
+| 1 | timeout with NO submission (or runtime error) | user is AWAY, not an error — post a standby note, offer to relaunch |
+| 2 | bad spec (unreadable / failed validation) | fix the spec at the reported path, re-run |
+| 130 | Ctrl-C | the user cancelled — ask what they want next |
 
 ## Reading the Result
 
 ```jsonc
 {
-  "submittedAt": "2026-05-29T12:34:56.000Z",
-  "blocks": [
-    { "id": "q1", "controlAnswer": "jwt", "text": "Prefer JWT for scale", "quotes": ["token strategy"] }
-  ],
-  "meta": { "answered": 5, "total": 8 }
+  "session": "audit-skills-alignment",
+  "source": ".session/.../audit.md",
+  "submittedAt": "2026-08-21T…",
+  "stats": { "total": 8, "answered": 6, "skipped": 1, "recFollowed": 4, "overridden": 1, "custom": 1 },
+  "items": [
+    { "id": "D1", "type": "decision", "title": "…", "status": "answered",
+      "chosen": "A", "chosenLabel": "…", "wasRecommended": true, "customText": "", "note": "…" },
+    { "id": "Q1", "type": "question", "status": "answered", "controlAnswer": "keep", "text": "…", "quotes": ["…"] },
+    { "id": "R1", "type": "report", "status": "skipped", "controlAnswer": null, "text": "", "quotes": [] },
+    { "id": "T1", "type": "table", "status": "answered", "note": "", "quotes": [],
+      "rows": [{ "id": "r1", "controlAnswer": "fix", "text": "", "quotes": [] }] }
+  ]
 }
 ```
 
-Per `ResultBlock`, decode `controlAnswer` by the block's control type:
-
-- `single` → `string` (the chosen option `value`) or `null` if unanswered.
-- `multi` → `string[]` (chosen option `value`s; `[]` if none).
-- `toggle` → `boolean`.
-- report block / no controls → `null`.
-
-Other fields:
-
-- `text` — the user's free-text for that block (empty string `""` if untouched).
-- `quotes` — `string[]` of exact phrases the user highlighted from that block's `content`. These tell you precisely which words the reply emphasizes; weight them when interpreting `text`.
-- `images` — present **only** when the user pasted at least one image onto that block (or table row). Each entry is an **absolute file path under `~/.toki/`** the AI can `Read` — never inline base64.
-- `meta.answered` — count of blocks with any answer (a control selection and/or non-empty text); `meta.total` — block count.
-
-Match each `blocks[].id` back to the `id` you assigned in the spec to anchor every answer to its decision/paragraph.
+- `controlAnswer` decodes by control type: `single` → `string|null`, `multi` → `string[]`, `toggle` → `boolean`.
+- `quotes` are exact phrases the user highlighted from that item's content (or that row's cells) — weight them when interpreting `text`.
+- Match `items[].id` (and `rows[].id`) back to the ids you authored to anchor every answer.
 
 ## Notes
 
-- UI chrome is English (repo-artifact rule); the block `content` is whatever language you authored it in.
-- The CLI is decoupled (Bun built-ins only, zero external deps) so it ships as a standalone global binary — see `cli/README.md`.
+- UI chrome is English (repo-artifact rule); `title`/`problem`/`content`/justifications are whatever language you author — write them in the user's language.
+- The page loads its display fonts from Google Fonts with full system fallbacks; offline it degrades gracefully.
+- The CLI is decoupled (Bun built-ins only, zero external deps) — see `cli/README.md`.

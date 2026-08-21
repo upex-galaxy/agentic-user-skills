@@ -5,7 +5,7 @@
     {
       "title": "Human-in-the-loop",
       "description": "Skills that let the AI collect structured, anchored feedback from the user mid-conversation.",
-      "skills": ["wokitoki"]
+      "skills": ["mkd"]
     },
     {
       "title": "Evaluation",

@@ -1,253 +1,178 @@
-# WokiToki — Worked examples
+# MKD — Worked examples
 
-Four copy-pasteable specs: a pure decision-set, a pure long report, a hybrid, and an answerable table. Each is followed by an example Result (one plausible set of user answers). Field contract → `./schema.md`.
+Copy-pasteable specs. Write the file to `~/.mkd/spec-<name>.json`, run
+`bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-<name>.json`, and the deck lands at
+`~/.mkd/deck-<name>.html`.
 
-Run any of them with: write the spec to `~/.toki/spec-<name>.json`, then `toki ~/.toki/spec-<name>.json`, then parse stdout.
-
-The user can also **paste images** from the clipboard into any response textarea (block, table row, or the expand panel). Pasted images come back in that answer's `images[]` as **absolute `~/.toki/` file paths** (e.g. `~/.toki/<name>-img-<blockId>-1.png`) you can `Read` — never inline base64. The `images` key is present only when at least one image was attached. See `./schema.md` § Pasted images.
+Author `title` / `problem` / `content` / justifications in the USER'S language —
+the examples below are in English for the repo, but a Spanish-speaking user gets
+a Spanish deck.
 
 ---
 
-## 1. Pure decision-set
+## 1. Post-audit decision deck (the canonical use)
 
-Several questions, no report paragraphs. Mixes `single`, `multi`, and `toggle`. Some controls/text are required, some are not.
-
-### Spec
+Decisions with context balloons, severity chips, a recommended option with an
+explicit WHY, and an intro with stat tiles.
 
 ```json
 {
-  "title": "Auth implementation — decisions",
-  "intro": "Pick the approach for each decision. Add context where it helps.",
-  "submitLabel": "Lock decisions",
-  "blocks": [
+  "session": "audit-skills-alignment",
+  "source": ".session/pbi-refactor/audit.md",
+  "title": "Catch-Up: audit decisions",
+  "intro": {
+    "headline": "8 decisions await you after the audit",
+    "body": "Five auditors swept the skills and docs. **93 findings are mechanical** (already verified); these decisions need your call before anything is touched.",
+    "stats": [
+      { "n": 115, "label": "verified findings" },
+      { "n": 93, "label": "mechanical, ready" },
+      { "n": 8, "label": "decisions for you" }
+    ]
+  },
+  "items": [
     {
-      "id": "token-strategy",
-      "content": "Which **token strategy** do we use?",
-      "controls": {
-        "type": "single",
-        "options": [
-          { "value": "jwt", "label": "JWT stateless" },
-          { "value": "session", "label": "Server-side session" }
-        ],
-        "required": true
-      },
-      "text": { "required": false, "placeholder": "Optional rationale" }
+      "id": "D1",
+      "type": "decision",
+      "title": "Do container issues also carry components?",
+      "severity": "medium",
+      "scope": "test-documentation",
+      "problem": "Doctrine mandates **components** on Tests and bugs. The payloads that create **containers** (Test Plan, Execution, Set) carry none, and nobody ever decided whether they should.",
+      "context": [
+        {
+          "title": "What is a component in Jira?",
+          "body": "A tag for a **functional module** of the app (Cart, Auth, Checkout). It feeds the per-module coverage dashboards."
+        }
+      ],
+      "options": [
+        {
+          "key": "A",
+          "label": "Mandatory on Plans and Executions, optional on Sets",
+          "justification": "A plan/execution is 1:1 with its Story, so the module is **inherited for free** and module dashboards extend to plans. Sets cross modules by design; forcing them creates arbitrary picks. **Recommended**: maximum filter value, zero artificial decisions.",
+          "recommended": true
+        },
+        {
+          "key": "B",
+          "label": "Mandatory everywhere, Sets included",
+          "justification": "Total consistency — no payload without the field. Cost: Sets accumulate long component lists with little real filter value."
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## 2. Mixed deck — decision + question + report + table
+
+One deck can interleave all four item types; each is one screen.
+
+```json
+{
+  "session": "release-readiness",
+  "title": "Release 2.4 — your input",
+  "items": [
+    {
+      "id": "D1",
+      "type": "decision",
+      "title": "Ship with the flaky checkout test?",
+      "severity": "high",
+      "problem": "The release gate is green except **one flaky test** (12% failure rate) in checkout.",
+      "options": [
+        {
+          "key": "A",
+          "label": "Quarantine it and ship",
+          "justification": "Unblocks the release today; the test moves to the flaky board with an owner. Cost: checkout loses one automated guard until it is fixed. **Recommended** because the covered path also has manual smoke coverage.",
+          "recommended": true
+        },
+        {
+          "key": "B",
+          "label": "Hold the release until it is fixed",
+          "justification": "No coverage gap ever ships. Cost: release slips at least 2 days and the fix owner is on PTO."
+        }
+      ],
+      "allowCustom": true
     },
     {
-      "id": "providers",
-      "content": "Which **social providers** ship in v1?",
+      "id": "Q1",
+      "type": "question",
+      "title": "Which environments get the canary?",
+      "content": "The canary can roll to any subset of regions **before** the full rollout.",
       "controls": {
         "type": "multi",
+        "required": true,
         "options": [
-          { "value": "google", "label": "Google" },
-          { "value": "github", "label": "GitHub" },
-          { "value": "apple", "label": "Apple" }
-        ],
-        "required": true
+          { "value": "us-east", "label": "us-east" },
+          { "value": "eu-west", "label": "eu-west" },
+          { "value": "ap-south", "label": "ap-south" }
+        ]
       },
-      "text": { "required": false }
+      "text": { "placeholder": "Constraints or timing notes" }
     },
     {
-      "id": "mfa",
-      "content": "Require **MFA** at launch?",
-      "controls": { "type": "toggle", "required": false },
-      "text": { "required": true, "placeholder": "Why / why not?" }
-    }
-  ]
-}
-```
-
-### Example Result
-
-```json
-{
-  "submittedAt": "2026-05-30T10:00:00.000Z",
-  "blocks": [
-    { "id": "token-strategy", "controlAnswer": "jwt", "text": "Stateless scales horizontally", "quotes": ["token strategy"] },
-    { "id": "providers", "controlAnswer": ["google", "github"], "text": "", "quotes": [] },
-    { "id": "mfa", "controlAnswer": false, "text": "Defer to v2 — adds onboarding friction", "quotes": ["MFA"] }
-  ],
-  "meta": { "answered": 3, "total": 3 }
-}
-```
-
-Decode: `single` → `string`, `multi` → `string[]`, `toggle` → `boolean`.
-
----
-
-## 2. Pure long report
-
-No controls anywhere — every block is a report paragraph. The user reacts paragraph-by-paragraph with free text and highlight-to-quote. `controlAnswer` is always `null`.
-
-### Spec
-
-```json
-{
-  "title": "Migration plan — review point by point",
-  "intro": "React to each section. Highlight any phrase to quote it back to me.",
-  "submitLabel": "Send my notes",
-  "blocks": [
-    {
-      "id": "summary",
-      "content": "## Summary\nWe move the orders service off the shared Postgres onto its own instance, behind a read replica for reporting queries.",
-      "text": { "required": false, "placeholder": "Reaction to the summary" }
+      "id": "R1",
+      "type": "report",
+      "title": "What changed since 2.3",
+      "content": "### Highlights\n\n- Checkout latency **-18%** (p95)\n- New payment provider behind a flag\n- 3 breaking API deprecations, all with shims\n\nHighlight anything you want to react to and add your comments.",
+      "text": { "placeholder": "Reactions, concerns, questions" }
     },
     {
-      "id": "risk",
-      "content": "## Risk\nThe cutover needs a 15-minute write freeze. Reporting reads can fail over to the replica during that window, but write traffic must drain first.",
-      "text": { "required": true, "placeholder": "Is a 15-minute freeze acceptable?" }
-    },
-    {
-      "id": "rollback",
-      "content": "## Rollback\nIf replication lag exceeds 30s post-cutover, we repoint the app back to the shared instance and re-sync deltas overnight.",
-      "text": { "required": false }
-    }
-  ]
-}
-```
-
-### Example Result
-
-```json
-{
-  "submittedAt": "2026-05-30T10:05:00.000Z",
-  "blocks": [
-    { "id": "summary", "controlAnswer": null, "text": "Agree on the dedicated instance", "quotes": ["read replica for reporting queries"] },
-    { "id": "risk", "controlAnswer": null, "text": "15 min is fine off-peak, not during business hours", "quotes": ["15-minute write freeze"] },
-    { "id": "rollback", "controlAnswer": null, "text": "", "quotes": [] }
-  ],
-  "meta": { "answered": 2, "total": 3 }
-}
-```
-
-Note `meta.answered` is 2: the `rollback` block was left fully untouched (no control on a report block, empty text), so it does not count.
-
----
-
-## 3. Hybrid
-
-Questions and report paragraphs mixed in one spec. The report blocks carry `controlAnswer: null`; the question blocks carry their typed answer.
-
-### Spec
-
-```json
-{
-  "title": "Release readiness — context + decisions",
-  "intro": "Read the context blocks, then make the two calls at the end.",
-  "submitLabel": "Submit readiness",
-  "blocks": [
-    {
-      "id": "context-coverage",
-      "content": "## Test coverage\nE2E covers the checkout happy path and two failure paths. Payment-webhook retries are NOT yet covered.",
-      "text": { "required": false, "placeholder": "Any concern about this gap?" }
-    },
-    {
-      "id": "go-no-go",
-      "content": "Given the coverage gap above, do we **ship Friday**?",
-      "controls": {
-        "type": "single",
-        "options": [
-          { "value": "go", "label": "Go — ship Friday" },
-          { "value": "hold", "label": "Hold — cover webhooks first" }
-        ],
-        "required": true
-      },
-      "text": { "required": true, "placeholder": "Justify the call" }
-    },
-    {
-      "id": "flags",
-      "content": "Which features stay **behind a flag** at launch?",
-      "controls": {
-        "type": "multi",
-        "options": [
-          { "value": "gift-cards", "label": "Gift cards" },
-          { "value": "express-pay", "label": "Express pay" }
-        ],
-        "required": false
-      },
-      "text": { "required": false }
-    }
-  ]
-}
-```
-
-### Example Result
-
-```json
-{
-  "submittedAt": "2026-05-30T10:10:00.000Z",
-  "blocks": [
-    { "id": "context-coverage", "controlAnswer": null, "text": "Webhook retry gap is a launch blocker for me", "quotes": ["Payment-webhook retries are NOT yet covered"] },
-    { "id": "go-no-go", "controlAnswer": "hold", "text": "Cover the webhook path first — too risky otherwise", "quotes": [] },
-    { "id": "flags", "controlAnswer": ["express-pay"], "text": "", "quotes": [] }
-  ],
-  "meta": { "answered": 3, "total": 3 }
-}
-```
-
-Decode by block: `context-coverage` is a report block → `null`; `go-no-go` is `single` → `string`; `flags` is `multi` → `string[]`. The `quotes` on `context-coverage` anchor the user's blocker to the exact sentence it is about.
-
----
-
-## 4. Answerable table
-
-One block whose `table` makes **each row independently answerable**. Every row gets the same `rowControls` (here a `single` verdict) plus a `rowText` note, in a trailing "Answer" column. The user can highlight any **cell** to quote it — that quote attaches to the row, not the block. `content` is an optional markdown intro shown above the table.
-
-The result for a table block carries `controlAnswer: null` and `text: ""` at the block level (inert), and the real data in `rows[]` — one `RowResult` per row, in order. Block-level `quotes` would only ever hold quotes from the intro `content`.
-
-### Spec
-
-```json
-{
-  "title": "Endpoint risk review",
-  "intro": "Give each endpoint a verdict and a note. Highlight any cell to quote it.",
-  "submitLabel": "Submit review",
-  "blocks": [
-    {
-      "id": "endpoints",
-      "content": "## Critical endpoints\nReview each row independently.",
+      "id": "T1",
+      "type": "table",
+      "title": "Deprecation shims — keep or drop per API",
+      "content": "One verdict per row. Quote any cell to anchor a comment to it.",
       "table": {
-        "columns": ["Endpoint", "Method", "Current coverage"],
+        "columns": ["API", "Consumers left", "Shim cost"],
         "rows": [
-          { "id": "login", "cells": ["/auth/login", "POST", "Happy path + lockout"] },
-          { "id": "refresh", "cells": ["/auth/refresh", "POST", "None"] },
-          { "id": "logout", "cells": ["/auth/logout", "POST", "Happy path"] }
+          { "id": "api-v1-login", "cells": ["/v1/login", "3", "low"] },
+          { "id": "api-v1-cart", "cells": ["/v1/cart", "0", "high"] }
         ],
         "rowControls": {
           "type": "single",
           "options": [
-            { "value": "ok", "label": "OK to ship" },
-            { "value": "risk", "label": "Needs coverage" }
-          ],
-          "required": true
+            { "value": "keep", "label": "Keep shim" },
+            { "value": "drop", "label": "Drop now" }
+          ]
         },
-        "rowText": { "required": false, "placeholder": "Note (optional)" }
+        "rowText": { "placeholder": "Why / conditions" }
       }
     }
   ]
 }
 ```
 
-### Example Result
+---
+
+## 3. Report-only deck (long explanation, point-by-point reactions)
+
+Splitting a long report into `report` items gives the user one section per
+screen — the Catch-Up way to collect anchored reactions.
 
 ```json
 {
-  "submittedAt": "2026-05-30T10:15:00.000Z",
-  "blocks": [
-    {
-      "id": "endpoints",
-      "controlAnswer": null,
-      "text": "",
-      "quotes": [],
-      "rows": [
-        { "id": "login", "controlAnswer": "ok", "text": "", "quotes": [] },
-        { "id": "refresh", "controlAnswer": "risk", "text": "Add refresh-token rotation tests before ship", "quotes": ["None"] },
-        { "id": "logout", "controlAnswer": "ok", "text": "", "quotes": [] }
-      ]
-    }
-  ],
-  "meta": { "answered": 1, "total": 1 }
+  "session": "arch-review-feedback",
+  "title": "Architecture review — react per section",
+  "intro": { "headline": "4 sections, react to each one" },
+  "items": [
+    { "id": "S1", "type": "report", "title": "Data layer", "content": "…markdown…" },
+    { "id": "S2", "type": "report", "title": "Auth model", "content": "…markdown…" },
+    { "id": "S3", "type": "report", "title": "Caching strategy", "content": "…markdown…" },
+    { "id": "S4", "type": "report", "title": "Open risks", "content": "…markdown…", "text": { "required": true, "placeholder": "Your verdict on the risks" } }
+  ]
 }
 ```
 
-Decode: the table block is `controlAnswer: null` / `text: ""` (inert) and holds the answers in `rows[]`. Each row's `controlAnswer` is the `single` verdict (`"ok"` / `"risk"`); `rows[].quotes` holds phrases highlighted from THAT row's cells (here `"None"` from the `refresh` coverage cell). `meta` counts the whole table as ONE block — `answered: 1` because at least one row was answered.
+---
+
+## 4. `--wait` variant (same-turn answer)
+
+Any spec works in `--wait` mode — only the invocation changes:
+
+```bash
+bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-release-readiness.json --wait --timeout 120
+```
+
+The CLI blocks, the footer gains a **Send to Claude** button (label via
+`submitLabel`), stdout carries ONLY the Result JSON, and pasted images come
+back as `~/.mkd/...` file paths. Use it when the next step cannot proceed
+without the answer; otherwise prefer the non-blocking default.

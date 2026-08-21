@@ -1,96 +1,113 @@
-# `toki` — WokiToki interactive feedback CLI
+# `mkd` — MKD (Make Decision) decision-deck CLI
 
-WokiToki (`toki`) is a local, blocking human-in-the-loop feedback CLI. An AI agent (or any caller) writes a **spec** JSON describing a set of blocks — questions and/or report paragraphs — and runs `toki`. The CLI serves a dark web UI, opens the browser, and waits for the user to answer. On submit it writes a **Result** JSON to stdout (and a backup file) and exits. The caller reads stdout and continues.
+MKD is a local decision-deck CLI. An AI agent (or any caller) writes a **spec**
+JSON describing a deck of items — decisions with justified options, questions,
+report sections, answerable tables — and runs the CLI with Bun. The CLI renders
+a self-contained browser page where the user works through the deck **one
+screen at a time** (progress rail, arrow keys, skip, live stats, localStorage
+persistence, light/dark theme).
 
-The branding is "walkie-talkie": back-and-forth, one answer per thing. Everything is one engine — a spec is a list of `blocks`; a block with `controls` is a question, a block without is a report paragraph, and a mix is a hybrid form.
+Two modes:
+
+- **copy (default, non-blocking):** render `~/.mkd/deck-<name>.html`, open the
+  browser, exit 0. The user presses **Copy JSON** whenever they finish and
+  pastes the Result into the chat.
+- **`--wait` (blocking):** serve the same page over loopback HTTP, await the
+  browser's `POST /submit` (guarded by a per-run `x-mkd-token`), print the
+  Result JSON to stdout, exit 0. Only this mode supports clipboard-image paste
+  (the server persists the bytes to `~/.mkd/` files).
 
 ## Decoupling guarantee
 
-`skills/wokitoki/cli/` imports **only Bun built-ins** — no repo aliases, no `cli/lib/*`, **zero external npm dependencies**. The HTTP server is native `Bun.serve`; the markdown renderer is a small hand-rolled function; spec validation is hand-rolled (no zod). This is intentional so the tool can be extracted to a standalone global package later without a rewrite.
+`skills/mkd/cli/` imports **only Bun built-ins** — no repo aliases, no external
+npm dependencies. The HTTP server is native `Bun.serve`; the markdown renderer
+and spec validation are hand-rolled. UI assets are embedded via
+`with { type: 'text' }` imports. This keeps the skill independently
+extractable.
 
-## Install / run
-
-Inside this repo:
+## Run (no install)
 
 ```bash
-toki <specPath>                              # global compiled binary (built on first use)
-bun skills/wokitoki/cli/index.ts <specPath>  # direct, run-from-source fallback
+bun skills/mkd/cli/index.ts <specPath> [flags]
 ```
 
-It ships as a single self-contained binary (`bun build --compile`, assets embedded), built lazily by the skill on first use — see `../references/setup.md`. The run-from-source fallback works the same with any Bun runtime; no build step.
+There is no compiled binary and no PATH entry — the AI runs it straight from
+the skill directory (`.claude/skills/mkd/cli/index.ts` in a consumer repo).
 
 ## Flags
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `<specPath>` | — | **Required** positional. Path to a spec JSON file. |
-| `--port <n>` | `4747` | Preferred port. Auto-increments to the next free port (up to ~20 attempts) if busy. |
-| `--timeout <min>` | `1440` | Minutes to wait for a submission (default 24h). Fractional allowed (e.g. `0.5`). No submit in the window → exit 1. |
-| `--no-open` | off | Do not auto-open the browser. The waiting URL is still printed to stderr so you can open it manually. |
+| `--wait` | off | Blocking mode: serve + await submit + print Result to stdout. |
+| `--port <n>` | `4747` | `--wait` only. Auto-increments past a busy port (~20 attempts). |
+| `--timeout <min>` | `1440` | `--wait` only. Minutes to wait (fractional ok). No submit → exit 1. |
+| `--no-open` | off | Do not auto-open the browser (path/URL still printed to stderr). |
 | `--help` | — | Print usage to stderr and exit 0. |
 
 ## Spec + Result contract (brief)
 
-A spec is `{ title, intro?, submitLabel?, blocks[] }`. Each block is `{ id, content, controls?, text?, table? }`:
+A spec is `{ session, source?, title, intro?, submitLabel?, items[] }`. Each
+item is one of:
 
-- `controls` **absent** → report paragraph. **Present** → question.
-- `controls.type` is `single` (radio), `multi` (checkbox), or `toggle` (boolean, no `options`). `single`/`multi` need a non-empty `options[]` of `{ value, label }`.
-- `text` (a `{ required, placeholder? }`) is always rendered; `text.required` is decided per block.
-- `table` (a `{ columns, rows, rowControls?, rowText? }`) makes the block an **answerable table** — each row is independently answerable (its own controls + textarea), and the user can highlight any **cell** to quote it back against that row. Mutually exclusive with `controls`/`text`; `content` stays allowed as an intro above the table. A table block's result carries `rows[]` (one `RowResult` per row) and an inert block-level answer.
+- `decision` — `problem` (markdown) + `context[]` balloons + `options[]`, where
+  **every option carries a non-empty `justification`** (validator-enforced) and
+  at most one is `recommended`. Optional custom option + a note field.
+- `question` — markdown `content` + `controls` (`single` | `multi` | `toggle`)
+  + a free-text field.
+- `report` — a markdown section with a free-text reaction field.
+- `table` — `{ columns, rows, rowControls?, rowText? }`; each row answers
+  independently via a popover; cells are highlight-to-quote sources.
 
-The Result is `{ submittedAt, blocks[], meta }`. Each result block is `{ id, controlAnswer, text, quotes }`:
-
-- `controlAnswer`: `string` (single) | `string[]` (multi) | `boolean` (toggle) | `null` (report block).
-- `text`: the user's free-text (`""` if untouched).
-- `quotes`: phrases the user highlighted from the block `content`, anchoring the reply.
-- `images`: present only when the user **pasted images** onto that block (or table row) — each entry is an absolute `~/.toki/` file path the AI can read. See below.
-- `meta`: `{ answered, total }` — `answered` counts blocks with any control selection and/or non-empty text.
-
-### Pasted images
-
-The user can paste a clipboard image into any response textarea (a block, a table row, or the expand-to-write panel). Each pasted image is sent to the server as a `data:` URL, then the CLI decodes it and writes the bytes to `~/.toki/<name>-img-<blockId>[-<rowId>]-<n>.<ext>` (ids sanitized to `[A-Za-z0-9._-]`; extension from the mime). The corresponding `images[]` entry in the **final** result (stdout + backup) is rewritten from the data URL to that **file path**, so the AI reads a file instead of inline base64. A failed image write is logged to stderr and dropped (never breaks the handshake). Full contract: `schema.ts` + `../references/schema.md`.
-
-The full field-by-field contract and validation rules live in `schema.ts` (the source of truth) and are mirrored for the AI in `../references/schema.md`. Worked example specs + results: `../references/examples.md`.
+The Result is `{ session, source?, submittedAt, stats, items[] }` with
+per-type answer fields and `status: answered | skipped | pending` per item.
+`stats` carries `total / answered / skipped / recFollowed / overridden /
+custom`. Full field-by-field contract and validation rules: `schema.ts` (the
+source of truth), mirrored in `../references/schema.md`. Worked specs:
+`../references/examples.md`.
 
 ## stdout discipline
 
-stdout carries **only** the final Result JSON — a single object, emitted once. Every banner, the waiting URL, port-fallback notices, the result-backup path, and all errors go to **stderr** (`console.error`). The CLI never calls `console.log`. This lets a caller `JSON.parse` stdout cleanly without stripping noise.
+stdout carries **only** the `--wait` Result JSON — a single object, emitted
+once. Copy mode writes nothing to stdout. Every banner, path, URL and error
+goes to **stderr** (`console.error`); the CLI never calls `console.log`. This
+lets a caller `JSON.parse` stdout cleanly.
 
-A backup copy of the Result is also written to `~/.toki/result-<name>.json` (where `<name>` is derived from a `spec-<name>.json` filename, otherwise a short epoch id). The stdout copy is authoritative.
+`--wait` also writes a backup to `~/.mkd/result-<name>.json` (`<name>` derived
+from a `spec-<name>.json` filename, else a short epoch id). The stdout copy is
+authoritative; the server reshapes the browser payload against the spec
+(unknown items dropped, stats recomputed) before it is emitted.
 
 ## Exit codes
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Submitted OK — Result JSON on stdout. |
-| `1` | Timeout (no submission within `--timeout`) or a runtime error. SIGINT (Ctrl-C) exits `130`. |
-| `2` | Spec file unreadable, or failed validation (stderr: `[toki] invalid spec at <path>: …`). |
+| `0` | Copy mode: deck rendered + opened. `--wait`: submitted, Result on stdout. |
+| `1` | `--wait` timeout or a runtime error. SIGINT (Ctrl-C) exits `130`. |
+| `2` | Spec file unreadable, or failed validation (stderr: `[mkd] invalid spec at <path>: …`). |
 
 ## Markdown subset supported
 
-Block `content` and the spec `intro` are rendered by a dependency-free renderer (`markdown.ts`). Source HTML special characters are escaped first, then markdown transforms run on top, so AI/user content can never inject live markup.
+`problem`, `content`, balloon bodies, intro body and option justifications are
+rendered by a dependency-free renderer (`markdown.ts`). Source HTML special
+characters are escaped first, then markdown transforms run on top, so AI/user
+content can never inject live markup.
 
-Supported:
-
-- ATX headings, levels 1–6 (`#` … `######`)
-- Bold (`**…**`), italic (`*…*` or `_…_`)
-- Inline code (`` `…` ``) and fenced code blocks (```` ```lang ````), kept verbatim
-- Links `[text](url)` — `http`/`https`/`mailto` only (other schemes drop to plain text)
-- Unordered lists (`- ` / `* `) and ordered lists (`1. `)
-- Blank-line-separated paragraphs (a single newline becomes `<br>`)
-
-Out of scope (rendered as escaped plain text): tables, images, nested blockquotes, and nested lists deeper than one level.
+Supported: ATX headings 1-6, bold, italic, inline code, fenced code blocks,
+`http`/`https`/`mailto` links, one-level lists, paragraphs (single newline →
+`<br>`). Out of scope (escaped plain text): md tables, images, nested
+blockquotes, deep-nested lists.
 
 ## File layout
 
 ```
-skills/wokitoki/cli/
-  index.ts     # CLI entry: parseArgs, read+validate spec, serve, open browser, await, write+print result, exit codes
-  server.ts    # Bun.serve: GET / -> page | POST /submit -> resolve; port fallback, timeout, SIGINT teardown
-  render.ts    # builds the full HTML document from a normalized spec (inline CSS + JS + spec JSON)
-  schema.ts    # Spec / Block / Controls / TextField / Result types + hand-rolled validateSpec (source of truth)
+skills/mkd/cli/
+  index.ts     # CLI entry: parse args, validate spec, copy mode (render+open+exit) / --wait (serve+await+print)
+  server.ts    # Bun.serve: GET / -> page | POST /submit -> shape against spec + resolve; token gate, timeout
+  render.ts    # builds the full deck HTML (header/rail, one card per item, footer bar, inline CSS+JS+spec)
+  schema.ts    # Spec / Item / Result types + hand-rolled validateSpec (source of truth, hard rule lives here)
   markdown.ts  # minimal markdown -> HTML (dependency-free)
-  ui/app.css   # dark theme (string asset inlined by render.ts)
-  ui/app.js    # client logic: controls, highlight-quote, paste-to-attach images, focus drawer, validation, submit
+  ui/app.css   # deck stylesheet: verdigris+amber tokens, light/dark, all components
+  ui/app.js    # client logic: deck navigation, per-type builders, quotes, images, persistence, JSON/copy/submit
   README.md    # this file
 ```
