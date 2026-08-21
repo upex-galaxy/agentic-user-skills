@@ -1,5 +1,5 @@
 /**
- * WokiToki (`toki`) - minimal Markdown -> HTML renderer.
+ * MKD (`mkd`) - minimal Markdown -> HTML renderer.
  *
  * Pure, synchronous, dependency-free. Used server-side by `render.ts` to turn
  * the AI-authored block `content` (and spec `intro`) into safe HTML.

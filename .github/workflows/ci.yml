@@ -22,5 +22,25 @@ jobs:
         run: bun run types:check
       - name: Lint
         run: bun run lint:check
-      - name: Compile standalone binary (asset-embed smoke)
-        run: bun build --compile skills/wokitoki/cli/index.ts --outfile /tmp/toki
+      - name: CLI smoke (render a deck in copy mode)
+        run: |
+          cat > /tmp/spec-ci.json <<'EOF'
+          {
+            "session": "ci-smoke",
+            "title": "CI Smoke Deck",
+            "items": [
+              {
+                "id": "D1",
+                "type": "decision",
+                "title": "Smoke decision",
+                "problem": "CI needs to know the deck renders.",
+                "options": [
+                  { "key": "A", "label": "Yes", "justification": "It proves the render pipeline end to end.", "recommended": true },
+                  { "key": "B", "label": "No", "justification": "It would leave the pipeline unverified." }
+                ]
+              }
+            ]
+          }
+          EOF
+          bun skills/mkd/cli/index.ts /tmp/spec-ci.json --no-open
+          test -s ~/.mkd/deck-ci.html
