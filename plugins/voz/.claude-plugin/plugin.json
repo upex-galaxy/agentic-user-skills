@@ -1,0 +1,49 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "voz",
+  "displayName": "Voz",
+  "version": "0.1.0",
+  "description": "Speaks a short spoken summary of every reply, without changing the reply itself. Local TTS by default; nothing is ever recorded.",
+  "author": { "name": "UPEX Galaxy", "url": "https://github.com/upex-galaxy" },
+  "homepage": "https://github.com/upex-galaxy/agentic-user-skills/tree/main/plugins/voz",
+  "repository": "https://github.com/upex-galaxy/agentic-user-skills",
+  "license": "MIT",
+  "keywords": ["voice", "tts", "accessibility", "kokoro", "elevenlabs"],
+  "userConfig": {
+    "PROVIDER": {
+      "type": "string",
+      "title": "Speech provider",
+      "description": "kokoro (local, free) or elevenlabs (cloud, paid)",
+      "default": "kokoro"
+    },
+    "KOKORO_URL": {
+      "type": "string",
+      "title": "Kokoro endpoint",
+      "description": "OpenAI-compatible /v1/audio/speech endpoint",
+      "default": "http://127.0.0.1:8880"
+    },
+    "VOICE": {
+      "type": "string",
+      "title": "Voice",
+      "description": "Kokoro voice id. af_heart / af_sky for English, ef_dora / em_alex for Spanish",
+      "default": "af_heart"
+    },
+    "SPEED": {
+      "type": "number",
+      "title": "Speech rate",
+      "description": "1.0 is normal. Below 1 is slower, above is faster",
+      "default": 1.0
+    },
+    "ELEVENLABS_API_KEY": {
+      "type": "string",
+      "title": "ElevenLabs API key",
+      "description": "Only needed when the provider is elevenlabs",
+      "sensitive": true
+    },
+    "ELEVENLABS_VOICE_ID": {
+      "type": "string",
+      "title": "ElevenLabs voice id",
+      "description": "Only needed when the provider is elevenlabs"
+    }
+  }
+}

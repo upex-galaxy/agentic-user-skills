@@ -1,0 +1,25 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "upex-agentic",
+  "description": "User-level agentic tooling from UPEX Galaxy. Cross-agent skills installable with the skills CLI, plus Claude Code plugins for what skills cannot carry: lifecycle hooks.",
+  "owner": {
+    "name": "UPEX Galaxy",
+    "url": "https://github.com/upex-galaxy"
+  },
+  "metadata": {
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "voz",
+      "displayName": "Voz",
+      "source": "./plugins/voz",
+      "description": "Speaks a short spoken summary of every reply, without changing the reply itself. Local TTS by default.",
+      "version": "0.1.0",
+      "author": { "name": "UPEX Galaxy" },
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": ["voice", "tts", "accessibility"]
+    }
+  ]
+}
