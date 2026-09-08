@@ -1,14 +1,24 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
-  "name": "voz",
-  "displayName": "Voz",
+  "name": "readback",
+  "displayName": "Readback",
   "version": "0.1.0",
-  "description": "Speaks a short spoken summary of every reply, without changing the reply itself. Local TTS by default; nothing is ever recorded.",
-  "author": { "name": "UPEX Galaxy", "url": "https://github.com/upex-galaxy" },
-  "homepage": "https://github.com/upex-galaxy/agentic-user-skills/tree/main/plugins/voz",
+  "description": "Reads back a short spoken summary at the end of every reply, without changing the reply itself. Local TTS by default; nothing is ever recorded.",
+  "author": {
+    "name": "UPEX Galaxy",
+    "url": "https://github.com/upex-galaxy"
+  },
+  "homepage": "https://github.com/upex-galaxy/agentic-user-skills/tree/main/plugins/readback",
   "repository": "https://github.com/upex-galaxy/agentic-user-skills",
   "license": "MIT",
-  "keywords": ["voice", "tts", "accessibility", "kokoro", "elevenlabs"],
+  "keywords": [
+    "voice",
+    "tts",
+    "accessibility",
+    "readback",
+    "kokoro",
+    "elevenlabs"
+  ],
   "userConfig": {
     "PROVIDER": {
       "type": "string",

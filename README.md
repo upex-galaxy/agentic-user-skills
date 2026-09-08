@@ -31,12 +31,12 @@ That is a different install path, in the same repo:
 
 ```bash
 /plugin marketplace add upex-galaxy/agentic-user-skills
-/plugin install voz@upex-agentic
+/plugin install readback@upex-agentic
 ```
 
 | Plugin | Command | What it is |
 | --- | --- | --- |
-| [`voz`](plugins/voz/README.md) | `/voz:voz` | Speaks a short spoken summary at the end of every reply, **without changing the reply itself**. Output only — no microphone, no conversation loop. Local TTS by default (Kokoro on `127.0.0.1`), ElevenLabs optional with automatic fallback. Hooks `Stop` and `UserPromptSubmit`; per-session switch; fails silent by design. |
+| [`readback`](plugins/readback/README.md) | `/readback:speak` | Speaks a short spoken summary at the end of every reply, **without changing the reply itself**. Output only — no microphone, no conversation loop. Local TTS by default (Kokoro on `127.0.0.1`), ElevenLabs optional with automatic fallback. Hooks `Stop` and `UserPromptSubmit`; per-session switch; fails silent by design. |
 
 ### Skills or plugin?
 

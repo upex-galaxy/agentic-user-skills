@@ -16,9 +16,9 @@ import os
 import re
 import sys
 
-PLUGIN_ROOT = os.environ.get("VOZ_PLUGIN_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DATA_DIR = os.environ.get("VOZ_DATA_DIR", os.path.expanduser("~/.claude/voz-data"))
-MAX_CHARS = int(os.environ.get("VOZ_MAX_CHARS", "1200"))
+PLUGIN_ROOT = os.environ.get("READBACK_PLUGIN_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DATA_DIR = os.environ.get("READBACK_DATA_DIR", os.path.expanduser("~/.claude/readback-data"))
+MAX_CHARS = int(os.environ.get("READBACK_MAX_CHARS", "1200"))
 
 # Marker: a markdown quote whose first line starts with the speaker emoji.
 MARK = re.compile(r"^>\s*\U0001F50A\s*(.*)$")

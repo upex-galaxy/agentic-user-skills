@@ -11,15 +11,22 @@
   },
   "plugins": [
     {
-      "name": "voz",
-      "displayName": "Voz",
-      "source": "./plugins/voz",
-      "description": "Speaks a short spoken summary of every reply, without changing the reply itself. Local TTS by default.",
+      "name": "readback",
+      "displayName": "Readback",
+      "source": "./plugins/readback",
+      "description": "Reads back a short spoken summary at the end of every reply, without changing the reply itself. Local TTS by default.",
       "version": "0.1.0",
-      "author": { "name": "UPEX Galaxy" },
+      "author": {
+        "name": "UPEX Galaxy"
+      },
       "license": "MIT",
       "category": "productivity",
-      "keywords": ["voice", "tts", "accessibility"]
+      "keywords": [
+        "voice",
+        "tts",
+        "accessibility",
+        "readback"
+      ]
     }
   ]
 }

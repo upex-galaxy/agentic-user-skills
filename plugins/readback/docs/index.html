@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Readback — how it works</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper:#EDF1F2; --surface:#fff; --surface-2:#E3E9EB;
+    --ink:#0F1A1F; --ink-soft:#4A5D65; --ink-faint:#7B8D95; --rule:#CFDADD;
+    --signal:#0E7C86; --signal-dim:#D4E8EA;
+    --yes:#2E6E4F; --warn:#9A6B0C; --no:#9E3232;
+    --yes-bg:#DCEAE2; --warn-bg:#F1E6CC; --no-bg:#F0DCDC;
+    --shadow:0 1px 2px rgba(15,26,31,.06),0 8px 24px -12px rgba(15,26,31,.18);
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --paper:#0D1417; --surface:#141E22; --surface-2:#1B282D;
+    --ink:#DFE8EA; --ink-soft:#9DB0B7; --ink-faint:#6D8189; --rule:#26363C;
+    --signal:#4FBCC6; --signal-dim:#16333A;
+    --yes:#6FC79A; --warn:#D9AE55; --no:#E08585;
+    --yes-bg:#163025; --warn-bg:#322914; --no-bg:#331B1B;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.7);
+  }}
+  :root[data-theme="dark"] {
+    --paper:#0D1417; --surface:#141E22; --surface-2:#1B282D;
+    --ink:#DFE8EA; --ink-soft:#9DB0B7; --ink-faint:#6D8189; --rule:#26363C;
+    --signal:#4FBCC6; --signal-dim:#16333A;
+    --yes:#6FC79A; --warn:#D9AE55; --no:#E08585;
+    --yes-bg:#163025; --warn-bg:#322914; --no-bg:#331B1B;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.7);
+  }
+  *{box-sizing:border-box} html{scroll-behavior:smooth}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+    font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 24px 96px}
+  .col{max-width:68ch}
+  h1,h2,h3{text-wrap:balance;margin:0}
+  h1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+     font-size:clamp(2.6rem,6vw,4rem);line-height:1.02;letter-spacing:-.015em}
+  h2{font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+     font-size:clamp(1.7rem,3.2vw,2.3rem);line-height:1.12}
+  h3{font-size:1rem;font-weight:600;margin:28px 0 8px}
+  p{margin:0 0 1.05em}
+  a{color:var(--signal);text-underline-offset:2px}
+  :focus-visible{outline:2px solid var(--signal);outline-offset:3px;border-radius:2px}
+  .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--signal);margin:0 0 14px}
+  header.top{padding:72px 0 0}
+  .lede{font-size:1.2rem;line-height:1.55;color:var(--ink-soft);max-width:60ch;margin:22px 0 0}
+  section{margin-top:64px;scroll-margin-top:24px}
+  hr.rule{height:1px;background:var(--rule);border:0;margin:0 0 28px}
+  nav.toc{margin:34px 0 0;display:flex;flex-wrap:wrap;gap:8px}
+  nav.toc a{font-family:"IBM Plex Mono",monospace;font-size:.74rem;text-decoration:none;
+    background:var(--surface);border:1px solid var(--rule);border-radius:100px;
+    padding:5px 13px;color:var(--ink-soft)}
+  nav.toc a:hover{border-color:var(--signal);color:var(--signal)}
+  pre{background:var(--surface);border:1px solid var(--rule);border-radius:3px;
+    padding:16px 18px;overflow-x:auto;margin:20px 0;
+    font-family:"IBM Plex Mono",monospace;font-size:.8rem;line-height:1.6}
+  code{font-family:"IBM Plex Mono",monospace;font-size:.875em;
+    background:var(--surface-2);padding:1px 5px;border-radius:3px}
+  pre code{background:none;padding:0;font-size:1em}
+  .cmt{color:var(--ink-faint)}
+  .scroll{overflow-x:auto;margin:22px 0}
+  table{border-collapse:collapse;width:100%;font-size:.87rem}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--rule);vertical-align:top}
+  thead th{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--ink-faint);font-weight:500;white-space:nowrap;
+    border-bottom:1px solid var(--ink-faint)}
+  tbody tr:last-child td{border-bottom:0}
+  .rowhead{font-weight:600;white-space:nowrap}
+  .pill{display:inline-block;padding:2px 9px;border-radius:100px;
+    font-family:"IBM Plex Mono",monospace;font-size:.68rem;font-weight:500;white-space:nowrap}
+  .p-yes{background:var(--yes-bg);color:var(--yes)}
+  .p-warn{background:var(--warn-bg);color:var(--warn)}
+  .p-no{background:var(--no-bg);color:var(--no)}
+  .note{background:var(--surface);border:1px solid var(--rule);border-left:4px solid var(--signal);
+    border-radius:3px;padding:20px 24px;margin:24px 0;box-shadow:var(--shadow)}
+  .note h3{margin-top:0}
+  .note p:last-child{margin-bottom:0}
+  .warnbox{border-left-color:var(--warn)}
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:22px 0}
+  ol.steps>li{counter-increment:s;position:relative;padding-left:44px;margin-bottom:18px}
+  ol.steps>li::before{content:counter(s);position:absolute;left:0;top:-1px;
+    width:27px;height:27px;border-radius:100px;background:var(--signal-dim);color:var(--signal);
+    display:flex;align-items:center;justify-content:center;
+    font-family:"IBM Plex Mono",monospace;font-size:.76rem;font-weight:500}
+  ol.steps>li>strong{display:block;margin-bottom:2px}
+  ul.plain{padding-left:20px} ul.plain li{margin-bottom:8px}
+  .diagram{font-family:"IBM Plex Mono",monospace;font-size:.76rem;line-height:1.7;
+    color:var(--ink-soft);white-space:pre;overflow-x:auto;
+    background:var(--surface);border:1px solid var(--rule);border-radius:3px;padding:20px}
+  .diagram b{color:var(--ink);font-weight:500}
+  .diagram i{color:var(--signal);font-style:normal}
+  footer{margin-top:76px;padding-top:24px;border-top:1px solid var(--rule);
+    font-family:"IBM Plex Mono",monospace;font-size:.73rem;color:var(--ink-faint)}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow">Plugin documentation</p>
+  <h1>Readback</h1>
+  <p class="lede">
+    Your agent reads back what it just did, in two or three spoken sentences, at the
+    end of every reply. The reply itself does not change. Nothing listens to you.
+  </p>
+  <nav class="toc">
+    <a href="#what">What it does</a>
+    <a href="#cycle">The turn cycle</a>
+    <a href="#sessions">Multiple sessions</a>
+    <a href="#install">Install</a>
+    <a href="#engines">Speech engines</a>
+    <a href="#pron">Pronunciation</a>
+    <a href="#commands">Commands</a>
+    <a href="#trouble">When it does not speak</a>
+    <a href="#privacy">Privacy</a>
+  </nav>
+</header>
+
+<section id="what">
+  <hr class="rule">
+  <h2>What it does, and what it is not</h2>
+  <div class="col">
+    <p>
+      You work exactly as you do now. You type, or you dictate with your editor's own
+      dictation. The agent answers in full, with its tables, its code and its detail.
+    </p>
+    <p>
+      On top of that, a voice tells you the outcome: <em>what happened and what comes
+      next</em>, in a couple of sentences. You can act on it without reading the whole
+      reply first, and read the detail only when you need it.
+    </p>
+  </div>
+
+  <div class="note warnbox">
+    <h3>This is not a voice conversation</h3>
+    <p>
+      There is no microphone, no wake word, no listening loop, no push-to-talk. Readback
+      is <strong>output only</strong>. Nothing is ever recorded, and no permission dialog
+      is ever raised.
+    </p>
+  </div>
+
+  <div class="col">
+    <h3>How the spoken line is produced</h3>
+    <p>
+      The agent writes it itself, as the last line of its reply, marked with a speaker
+      emoji in a quote block:
+    </p>
+  </div>
+
+<pre><code>&gt; 🔊 Fixed the token expiry check in the middleware, it used
+&gt;    less-than instead of less-or-equal. Run the type check
+&gt;    before you push.</code></pre>
+
+  <div class="col">
+    <p>
+      That line is visible in your terminal too, so it doubles as a summary you can read.
+      The plugin lifts it out, cleans the markdown, and sends it to a speech engine.
+    </p>
+    <p>
+      This matters for two reasons. It costs nothing extra: no second model, no extra
+      latency, no per-turn charge. And the summary is written by the model that did the
+      work, with full context, rather than by something guessing from the outside.
+    </p>
+  </div>
+</section>
+
+<section id="cycle">
+  <hr class="rule">
+  <h2>The turn cycle</h2>
+  <div class="col">
+    <p>Two hooks, one at each end of the turn.</p>
+  </div>
+
+<div class="diagram">  you send a message
+        │
+        ▼
+  <b>UserPromptSubmit hook</b>
+        │  is there a sentinel file for this session?
+        ├── no ──▶ prints nothing. Session behaves exactly as always.
+        └── yes ─▶ injects the instruction to close with a <i>🔊</i> line
+        │
+        ▼
+  the agent answers normally, ending with that line
+        │
+        ▼
+  <b>Stop hook</b>
+        │  reads <i>last_assistant_message</i> straight from its own payload
+        │  extracts the <i>🔊</i> line, applies the pronunciation map
+        │
+        ├── nothing marked ──▶ silence, exit 0
+        │
+        ▼
+  POST to the speech engine ──▶ audio plays in the background
+</div>
+
+  <div class="col">
+    <p>
+      The <code>Stop</code> hook <strong>returns control in under half a second</strong>.
+      Generating and playing the audio happen detached, so your session is never blocked
+      waiting for a voice.
+    </p>
+  </div>
+
+  <div class="note">
+    <h3>It fails silent, always</h3>
+    <p>
+      Readback is off, no line was marked, the speech engine is down, the provider
+      returns an error, no audio player exists: every one of those paths exits quietly
+      with status 0. A voice problem can never interrupt your work or fail your turn.
+    </p>
+  </div>
+</section>
+
+<section id="sessions">
+  <hr class="rule">
+  <h2>Multiple sessions at once</h2>
+  <div class="col">
+    <p>
+      This is the part worth reading carefully if you run several agents in parallel,
+      one per worktree or one per task.
+    </p>
+
+    <h3>Each session decides on its own</h3>
+    <p>
+      The switch is a file named after the session id, inside the plugin's data
+      directory. Turning readback on in one session creates that session's file and
+      touches nothing else.
+    </p>
+  </div>
+
+<pre><code>&lt;data dir&gt;/sessions/
+├── d80a037b-17c3-…    <span class="cmt">← this one speaks</span>
+└── 4f21ba9c-88de-…    <span class="cmt">← and this one</span>
+                       <span class="cmt">every other session: silent</span></code></pre>
+
+  <div class="col">
+    <p>
+      The hooks still fire in <em>every</em> session, because they are installed
+      globally. In a session with no sentinel they find nothing and exit immediately.
+      That costs a few milliseconds and produces no output, no context, no sound.
+    </p>
+
+    <h3>So can more than one session speak? Yes</h3>
+    <p>
+      There is no limit, and no notion of one session "holding" the voice. Turn it on in
+      three sessions and all three will speak.
+    </p>
+
+    <h3>They queue, they do not overlap</h3>
+    <p>
+      Two sessions finishing at the same moment would talk over each other, which is
+      unusable. A lock in the data directory prevents it: the second one waits for the
+      first to finish, then plays. You hear both, one after the other, complete.
+    </p>
+    <p>
+      A lock older than five minutes is treated as dead and reclaimed, so a crashed
+      session can never leave the voice stuck for the others.
+    </p>
+  </div>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Situation</th><th>What happens</th></tr></thead>
+    <tbody>
+      <tr><td class="rowhead">One session on, three off</td><td>Only that one speaks. The others never touch audio.</td></tr>
+      <tr><td class="rowhead">Three sessions on, finishing apart</td><td>Each speaks when its turn ends. Normal.</td></tr>
+      <tr><td class="rowhead">Three sessions on, finishing together</td><td>They queue. You hear all three in sequence, none cut off.</td></tr>
+      <tr><td class="rowhead">A speaking session crashes</td><td>Its lock expires after five minutes and the rest carry on.</td></tr>
+      <tr><td class="rowhead">A subagent finishes inside a session</td><td>Nothing is spoken. Only the main agent's message is ever read.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note warnbox">
+    <h3>Practical advice</h3>
+    <p>
+      Turning it on in every parallel session is technically fine and acoustically
+      exhausting: several voices in a row, and you cannot tell which agent is talking.
+      Turn it on in the session you are actually watching. Leave the background workers
+      silent and read their output when you get to them.
+    </p>
+  </div>
+
+  <div class="col">
+    <p>
+      The <code>list</code> action shows every session currently speaking, which is how
+      you find one you forgot about.
+    </p>
+  </div>
+</section>
+
+<section id="install">
+  <hr class="rule">
+  <h2>Install</h2>
+
+  <ol class="steps">
+    <li>
+      <strong>Add the marketplace and install the plugin</strong>
+      Once per machine.
+    </li>
+    <li>
+      <strong>Get a speech engine running</strong>
+      The plugin ships no model and downloads nothing. Without an engine it stays silent.
+    </li>
+    <li>
+      <strong>Turn it on where you want it</strong>
+      Per session. It takes effect on your next message.
+    </li>
+  </ol>
+
+<pre><code><span class="cmt"># 1</span>
+/plugin marketplace add upex-galaxy/agentic-user-skills
+/plugin install readback@upex-agentic
+
+<span class="cmt"># 2 — a local engine, about two minutes</span>
+uvx voice-mode-install --yes
+voicemode service install kokoro
+
+<span class="cmt"># 3</span>
+/readback:speak on</code></pre>
+
+  <div class="col">
+    <p>
+      Step 2 installs <a href="https://github.com/mbailey/voicemode">VoiceMode</a>, which
+      runs Kokoro as a background service. You do not need the rest of VoiceMode, and you
+      are not obliged to use it at all: any OpenAI-compatible
+      <code>/v1/audio/speech</code> server works. Point <code>KOKORO_URL</code> at yours
+      in <code>/plugin</code> → readback → Configure.
+    </p>
+    <p>
+      Verify everything with <code>/readback:speak doctor</code>, which reports the
+      engine, the audio player, and where your files live.
+    </p>
+  </div>
+
+  <h3>Requirements</h3>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Needs</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td class="rowhead">Claude Code</td><td>The only hard requirement. Codex and OpenCode are not packaged.</td></tr>
+      <tr><td class="rowhead">bash, python3, curl</td><td>Ship with macOS and most Linux distributions.</td></tr>
+      <tr><td class="rowhead">An audio player</td><td>Resolved at runtime: <code>afplay</code>, <code>mpg123</code>, <code>ffplay</code>, <code>paplay</code>, <code>aplay</code>, or PowerShell.</td></tr>
+      <tr><td class="rowhead">A speech endpoint</td><td>Local Kokoro by default, or an ElevenLabs key.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Platform</th><th>Status</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td class="rowhead">macOS</td><td><span class="pill p-yes">tested</span></td><td>Uses <code>afplay</code>, ships with the OS</td></tr>
+      <tr><td class="rowhead">Linux</td><td><span class="pill p-warn">untested</span></td><td>Needs one of <code>mpg123</code>, <code>ffplay</code>, <code>paplay</code>, <code>aplay</code></td></tr>
+      <tr><td class="rowhead">Windows (Git Bash / WSL)</td><td><span class="pill p-warn">untested</span></td><td>Falls back to <code>powershell.exe</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="col">
+    <p>
+      "Untested" means exactly that, not "broken". The code paths exist and are
+      deliberate; nobody has run them on those systems yet.
+    </p>
+  </div>
+</section>
+
+<section id="engines">
+  <hr class="rule">
+  <h2>Speech engines</h2>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th></th><th>Kokoro (default)</th><th>ElevenLabs</th></tr></thead>
+    <tbody>
+      <tr><td class="rowhead">Where it runs</td><td>Your machine, <code>127.0.0.1</code></td><td>Their API, over the internet</td></tr>
+      <tr><td class="rowhead">Cost</td><td>Free</td><td>Paid, per character</td></tr>
+      <tr><td class="rowhead">Memory</td><td>~150 MB idle</td><td>None</td></tr>
+      <tr><td class="rowhead">Speed</td><td>Faster than real time</td><td>Fast, plus network</td></tr>
+      <tr><td class="rowhead">Quality</td><td>Clear but robotic. 82M parameters</td><td>Considerably more natural</td></tr>
+      <tr><td class="rowhead">Works offline</td><td><span class="pill p-yes">yes</span></td><td><span class="pill p-no">no</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="col">
+    <p>
+      Selecting ElevenLabs never risks silence: if the key is missing, the request fails,
+      or the response is not audio, readback falls back to Kokoro automatically and says
+      nothing about it. The failed response is saved in the data directory if you want
+      to look.
+    </p>
+    <p>
+      Kokoro voices are per language, with the language in the id: <code>af_</code> and
+      <code>am_</code> for English, <code>ef_</code> and <code>em_</code> for Spanish,
+      and so on. The default is <code>af_heart</code>. If your agent answers you in
+      Spanish, set <code>ef_dora</code> or the voice will read Spanish with an English
+      accent.
+    </p>
+  </div>
+</section>
+
+<section id="pron">
+  <hr class="rule">
+  <h2>Pronunciation</h2>
+  <div class="col">
+    <p>
+      Small speech models mangle technical terms embedded in another language.
+      "Supabase" comes out as a native word, "n8n" as noise. This is not a voice quality
+      problem, it is a letters-to-sounds problem, and paying for a better engine does not
+      reliably fix it.
+    </p>
+    <p>
+      So the text is rewritten before it reaches the engine. The rules are plain text,
+      applied on word boundaries, case-insensitive, longest pattern first:
+    </p>
+  </div>
+
+<pre><code>middleware      mídelwer
+Supabase        Supabéis
+n8n             ene ocho ene</code></pre>
+
+  <div class="col">
+    <p>
+      Nothing on your screen changes. It is a layer between the text and the speaker, so
+      it works the same with any provider.
+    </p>
+    <p>
+      The plugin ships 50 rules, tuned for Spanish speech reading English technical
+      terms. <strong>Add your own</strong> in a <code>pronunciation.txt</code> inside the
+      data directory (<code>doctor</code> prints the exact path). Yours are applied last,
+      win on conflict, and survive plugin updates.
+    </p>
+  </div>
+</section>
+
+<section id="commands">
+  <hr class="rule">
+  <h2>Commands and settings</h2>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td class="rowhead"><code>/readback:speak on</code></td><td>Enable for this session. Warns if no engine is reachable.</td></tr>
+      <tr><td class="rowhead"><code>/readback:speak off</code></td><td>Disable for this session.</td></tr>
+      <tr><td class="rowhead"><code>/readback:speak status</code></td><td>Whether this session is speaking.</td></tr>
+      <tr><td class="rowhead"><code>/readback:speak list</code></td><td>Every session currently speaking.</td></tr>
+      <tr><td class="rowhead"><code>/readback:speak doctor</code></td><td>Engine, player, rules, paths.</td></tr>
+      <tr><td class="rowhead"><code>/readback:speak docs</code></td><td>Open this page.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="col">
+    <p>Settings live in <code>/plugin</code> → readback → Configure. No file editing.</p>
+  </div>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Setting</th><th>Default</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td class="rowhead">PROVIDER</td><td><code>kokoro</code></td><td><code>kokoro</code> or <code>elevenlabs</code></td></tr>
+      <tr><td class="rowhead">KOKORO_URL</td><td><code>http://127.0.0.1:8880</code></td><td>Where the local engine listens</td></tr>
+      <tr><td class="rowhead">VOICE</td><td><code>af_heart</code></td><td>Voice id. <code>ef_dora</code> for Spanish</td></tr>
+      <tr><td class="rowhead">SPEED</td><td><code>1.0</code></td><td>Below 1 is slower</td></tr>
+      <tr><td class="rowhead">ELEVENLABS_API_KEY</td><td>—</td><td>Stored in secure storage</td></tr>
+      <tr><td class="rowhead">ELEVENLABS_VOICE_ID</td><td>—</td><td>Required with the elevenlabs provider</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="trouble">
+  <hr class="rule">
+  <h2>When it does not speak</h2>
+  <div class="col">
+    <p>
+      Start with <code>/readback:speak doctor</code>. It answers most of this in one
+      screen.
+    </p>
+  </div>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="rowhead">Nothing at all, ever</td>
+        <td>No speech engine answering</td>
+        <td><code>doctor</code> will say NOT READY. Install Kokoro, or fix <code>KOKORO_URL</code>.</td>
+      </tr>
+      <tr>
+        <td class="rowhead">Silent right after turning it on</td>
+        <td>Working as designed</td>
+        <td>It starts on your <em>next</em> message, not the one that enabled it.</td>
+      </tr>
+      <tr>
+        <td class="rowhead">Speaks sometimes, not always</td>
+        <td>The agent skipped the marked line</td>
+        <td>Expected on trivial turns. If it happens constantly, the reminder is not reaching the model: check that the plugin is enabled.</td>
+      </tr>
+      <tr>
+        <td class="rowhead">Technical terms sound wrong</td>
+        <td>Missing pronunciation rules</td>
+        <td>Add them to your own <code>pronunciation.txt</code>. <code>doctor</code> prints the path.</td>
+      </tr>
+      <tr>
+        <td class="rowhead">Wrong accent for the language</td>
+        <td>Voice belongs to another language</td>
+        <td>Kokoro voice ids carry the language as a prefix. Pick one that matches.</td>
+      </tr>
+      <tr>
+        <td class="rowhead">You hear everything twice</td>
+        <td>A second installation is also hooked</td>
+        <td>An older manual setup in <code>settings.json</code> alongside the plugin. Remove one.</td>
+      </tr>
+      <tr>
+        <td class="rowhead">Voices overlap</td>
+        <td>Should not happen</td>
+        <td>The lock serialises playback. If it persists, delete the stale lock directory shown by <code>doctor</code>.</td>
+      </tr>
+      <tr>
+        <td class="rowhead">Stops after many turns</td>
+        <td>The engine recycled itself</td>
+        <td>Some Kokoro setups terminate after a fixed number of requests and take ~15s to come back. Raise that limit in the service config.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="privacy">
+  <hr class="rule">
+  <h2>Privacy</h2>
+  <div class="col">
+    <p>
+      No microphone is ever opened. Nothing you say or type is recorded, and no audio is
+      kept: the generated file is deleted right after it plays.
+    </p>
+    <p>
+      The only text that leaves the process is the spoken line itself, and with the
+      default provider it travels to <code>127.0.0.1</code> — your own machine. Choosing
+      ElevenLabs sends that one line to their API instead. Everything else is identical.
+    </p>
+    <p>
+      Your session ids appear as filenames in the data directory, and nothing else is
+      stored there beyond your own pronunciation rules.
+    </p>
+  </div>
+</section>
+
+<footer>
+  readback · part of <a href="https://github.com/upex-galaxy/agentic-user-skills">agentic-user-skills</a> · MIT ·
+  This page ships with the plugin and works offline · <code>/readback:speak docs</code>
+</footer>
+
+</div>
+</body>
+</html>

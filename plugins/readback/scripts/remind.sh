@@ -4,7 +4,7 @@
 # With no sentinel it prints nothing and the session behaves exactly as always.
 set -uo pipefail
 
-DATA_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/voz-data}"
+DATA_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/readback-data}"
 payload=$(cat)
 
 sid=$(printf '%s' "$payload" | python3 -c '

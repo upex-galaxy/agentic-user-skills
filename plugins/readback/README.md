@@ -1,4 +1,4 @@
-# voz
+# readback
 
 Speaks a short spoken summary at the end of every reply, **without changing the reply itself**.
 
@@ -13,16 +13,22 @@ output only.
 
 ```
 /plugin marketplace add upex-galaxy/agentic-user-skills
-/plugin install voz@upex-agentic
+/plugin install readback@upex-agentic
 ```
 
 Then, in any session you want it:
 
 ```
-/voz:voz on
+/readback:speak on
 ```
 
-It takes effect on your **next** message. Turn it off with `/voz:voz off`.
+It takes effect on your **next** message. Turn it off with `/readback:speak off`.
+
+Full documentation ships with the plugin and opens in your browser, offline:
+
+```
+/readback:speak docs
+```
 
 ## Requirements
 
@@ -40,13 +46,13 @@ That installs [VoiceMode](https://github.com/mbailey/voicemode), which runs Koko
 background service (~150 MB of RAM, 0% CPU idle). You do not need the rest of VoiceMode.
 
 **ElevenLabs (optional, cloud, paid).** Set the provider and your key in
-`/plugin` → voz → Configure. Falls back to Kokoro automatically if the key is missing
+`/plugin` → readback → Configure. Falls back to Kokoro automatically if the key is missing
 or the request fails, so you are never left mute.
 
 Check everything with:
 
 ```
-/voz:voz doctor
+/readback:speak doctor
 ```
 
 ## Compatibility
@@ -95,7 +101,7 @@ engine. It is a plain text layer, so it works with any provider.
 
 The base map is tuned for **Spanish speech reading English terms**. Add your own rules,
 or rules for another language, in a `pronunciation.txt` inside the plugin's data
-directory (`/voz:voz doctor` prints the exact path). Yours are applied last, win on
+directory (`/readback:speak doctor` prints the exact path). Yours are applied last, win on
 conflict, and survive plugin updates.
 
 ```
@@ -106,7 +112,7 @@ n8n             ene ocho ene
 
 ## Settings
 
-All configurable from `/plugin` → voz → Configure.
+All configurable from `/plugin` → readback → Configure.
 
 | Setting | Default | What it does |
 | --- | --- | --- |

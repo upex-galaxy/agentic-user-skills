@@ -2,7 +2,7 @@
 # Stop hook: speaks the marked line of the last message, if this session has voice on.
 # Never fails outward: any problem ends in silence, with exit 0.
 #
-# Providers (VOZ_PROVIDER):
+# Providers (READBACK_PROVIDER):
 #   kokoro      local, free, OpenAI-compatible endpoint. Default.
 #   elevenlabs  cloud, paid.
 # A failing provider falls back to kokoro: a worse voice beats no voice.
@@ -10,25 +10,25 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(dirname "$HERE")}"
-DATA_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/voz-data}"
+DATA_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/readback-data}"
 LOCKDIR="$DATA_DIR/speak.lock.d"
 
 # Values come from the plugin's userConfig, exported by Claude Code as
 # CLAUDE_PLUGIN_OPTION_*. The VOZ_* variables override them for local testing.
-PROVIDER="${VOZ_PROVIDER:-${CLAUDE_PLUGIN_OPTION_PROVIDER:-kokoro}}"
-export KOKORO_URL="${VOZ_KOKORO_URL:-${CLAUDE_PLUGIN_OPTION_KOKORO_URL:-http://127.0.0.1:8880}}"
-export VOICE="${VOZ_VOICE:-${CLAUDE_PLUGIN_OPTION_VOICE:-af_heart}}"
-export SPEED="${VOZ_SPEED:-${CLAUDE_PLUGIN_OPTION_SPEED:-1.0}}"
-export EL_VOICE_ID="${VOZ_EL_VOICE_ID:-${CLAUDE_PLUGIN_OPTION_ELEVENLABS_VOICE_ID:-}}"
-export EL_MODEL="${VOZ_EL_MODEL:-eleven_flash_v2_5}"
+PROVIDER="${READBACK_PROVIDER:-${CLAUDE_PLUGIN_OPTION_PROVIDER:-kokoro}}"
+export KOKORO_URL="${READBACK_KOKORO_URL:-${CLAUDE_PLUGIN_OPTION_KOKORO_URL:-http://127.0.0.1:8880}}"
+export VOICE="${READBACK_VOICE:-${CLAUDE_PLUGIN_OPTION_VOICE:-af_heart}}"
+export SPEED="${READBACK_SPEED:-${CLAUDE_PLUGIN_OPTION_SPEED:-1.0}}"
+export EL_VOICE_ID="${READBACK_EL_VOICE_ID:-${CLAUDE_PLUGIN_OPTION_ELEVENLABS_VOICE_ID:-}}"
+export EL_MODEL="${READBACK_EL_MODEL:-eleven_flash_v2_5}"
 
 mkdir -p "$DATA_DIR/sessions"
 payload=$(cat)
 
-[ "${VOZ_DEBUG:-0}" = "1" ] && printf '%s\n' "$payload" >> "$DATA_DIR/debug.log"
+[ "${READBACK_DEBUG:-0}" = "1" ] && printf '%s\n' "$payload" >> "$DATA_DIR/debug.log"
 
 text=$(printf '%s' "$payload" | \
-  VOZ_PLUGIN_ROOT="$PLUGIN_ROOT" VOZ_DATA_DIR="$DATA_DIR" \
+  READBACK_PLUGIN_ROOT="$PLUGIN_ROOT" READBACK_DATA_DIR="$DATA_DIR" \
   python3 "$PLUGIN_ROOT/scripts/extract.py" 2>/dev/null)
 [ -z "${text:-}" ] && exit 0
 
