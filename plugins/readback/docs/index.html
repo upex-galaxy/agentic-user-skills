@@ -97,6 +97,36 @@
   footer{margin-top:76px;padding-top:24px;border-top:1px solid var(--rule);
     font-family:"IBM Plex Mono",monospace;font-size:.73rem;color:var(--ink-faint)}
   @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+
+  /* --- diagram tokens (light) --- */
+  :root{
+    --dg-paper:#EDF1F2; --dg-surface:#fff; --dg-ink:#0F1A1F; --dg-muted:#4A5D65;
+    --dg-soft:#7B8D95; --dg-line:rgba(15,26,31,.14); --dg-line-2:rgba(15,26,31,.24);
+    --dg-wash:rgba(15,26,31,.02); --dg-wash-2:rgba(15,26,31,.06);
+    --dg-input:rgba(74,93,101,.10); --dg-optional:rgba(15,26,31,.02);
+    --dg-external:rgba(15,26,31,.03); --dg-ext-stroke:rgba(15,26,31,.30);
+    --dg-accent:#0E7C86; --dg-accent-tint:#D4E8EA;
+  }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+    --dg-paper:#0D1417; --dg-surface:#141E22; --dg-ink:#DFE8EA; --dg-muted:#9DB0B7;
+    --dg-soft:#6D8189; --dg-line:rgba(223,232,234,.16); --dg-line-2:rgba(223,232,234,.26);
+    --dg-wash:rgba(223,232,234,.04); --dg-wash-2:rgba(223,232,234,.08);
+    --dg-input:rgba(157,176,183,.12); --dg-optional:rgba(223,232,234,.03);
+    --dg-external:rgba(223,232,234,.04); --dg-ext-stroke:rgba(223,232,234,.30);
+    --dg-accent:#4FBCC6; --dg-accent-tint:#16333A;
+  }}
+  :root[data-theme="dark"]{
+    --dg-paper:#0D1417; --dg-surface:#141E22; --dg-ink:#DFE8EA; --dg-muted:#9DB0B7;
+    --dg-soft:#6D8189; --dg-line:rgba(223,232,234,.16); --dg-line-2:rgba(223,232,234,.26);
+    --dg-wash:rgba(223,232,234,.04); --dg-wash-2:rgba(223,232,234,.08);
+    --dg-input:rgba(157,176,183,.12); --dg-optional:rgba(223,232,234,.03);
+    --dg-external:rgba(223,232,234,.04); --dg-ext-stroke:rgba(223,232,234,.30);
+    --dg-accent:#4FBCC6; --dg-accent-tint:#16333A;
+  }
+  figure.dg{margin:28px 0;overflow-x:auto}
+  figure.dg svg{display:block;width:100%;min-width:640px;height:auto}
+  figure.dg figcaption{font-family:"IBM Plex Mono",monospace;font-size:.72rem;
+    color:var(--ink-faint);margin-top:10px;letter-spacing:.04em}
 </style>
 </head>
 <body>
@@ -178,27 +208,100 @@
     <p>Two hooks, one at each end of the turn.</p>
   </div>
 
-<div class="diagram">  you send a message
-        │
-        ▼
-  <b>UserPromptSubmit hook</b>
-        │  is there a sentinel file for this session?
-        ├── no ──▶ prints nothing. Session behaves exactly as always.
-        └── yes ─▶ injects the instruction to close with a <i>🔊</i> line
-        │
-        ▼
-  the agent answers normally, ending with that line
-        │
-        ▼
-  <b>Stop hook</b>
-        │  reads <i>last_assistant_message</i> straight from its own payload
-        │  extracts the <i>🔊</i> line, applies the pronunciation map
-        │
-        ├── nothing marked ──▶ silence, exit 0
-        │
-        ▼
-  POST to the speech engine ──▶ audio plays in the background
-</div>
+<figure class="dg">
+<svg viewBox="0 0 900 480" role="img" aria-labelledby="rb-cycle-title rb-cycle-desc">
+  <title id="rb-cycle-title">The turn cycle, hook by hook</title>
+  <desc id="rb-cycle-desc">Sequence diagram: the user's prompt passes through the UserPromptSubmit hook, which injects an instruction only when the session has readback on. The agent replies in full, then the Stop hook takes the marked line from its payload and hands it to the speech engine, which plays the audio.</desc>
+  <defs>
+    <marker id="rb1-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="var(--dg-muted)"/>
+    </marker>
+    <marker id="rb1-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="var(--dg-accent)"/>
+    </marker>
+    <marker id="rb1-arrow-open" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polyline points="0 0, 8 3, 0 6" fill="none" stroke="var(--dg-muted)" stroke-width="1.2"/>
+    </marker>
+  </defs>
+
+  <!-- lifelines -->
+  <line x1="80"  y1="64" x2="80"  y2="396" stroke="var(--dg-line)" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="248" y1="64" x2="248" y2="396" stroke="var(--dg-line)" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="440" y1="64" x2="440" y2="396" stroke="var(--dg-line)" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="632" y1="64" x2="632" y2="396" stroke="var(--dg-line)" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="808" y1="64" x2="808" y2="396" stroke="var(--dg-line)" stroke-width="1" stroke-dasharray="3,3"/>
+
+  <!-- opt fragment -->
+  <rect x="224" y="124" width="240" height="88" rx="4" fill="var(--dg-wash)" stroke="var(--dg-line-2)" stroke-width="1"/>
+  <rect x="224" y="124" width="40" height="16" rx="2" fill="var(--dg-paper)" stroke="var(--dg-line-2)" stroke-width="1"/>
+  <text x="244" y="136" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.12em">OPT</text>
+  <text x="236" y="158" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace" letter-spacing="0.04em">[sentinel exists for this session]</text>
+
+  <!-- messages (drawn before boxes) -->
+  <line x1="80"  y1="104" x2="240" y2="104" stroke="var(--dg-muted)" stroke-width="1" marker-end="url(#rb1-arrow)"/>
+  <line x1="248" y1="192" x2="432" y2="192" stroke="var(--dg-muted)" stroke-width="1" marker-end="url(#rb1-arrow)"/>
+  <line x1="440" y1="248" x2="88"  y2="248" stroke="var(--dg-muted)" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#rb1-arrow)"/>
+  <line x1="440" y1="296" x2="624" y2="296" stroke="var(--dg-muted)" stroke-width="1" marker-end="url(#rb1-arrow)"/>
+  <line x1="632" y1="336" x2="800" y2="336" stroke="var(--dg-muted)" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#rb1-arrow-open)"/>
+  <line x1="808" y1="376" x2="88"  y2="376" stroke="var(--dg-accent)" stroke-width="1.2" marker-end="url(#rb1-arrow-accent)"/>
+
+  <!-- activation bars -->
+  <rect x="436" y="184" width="8" height="120" fill="var(--dg-wash-2)" stroke="var(--dg-muted)" stroke-width="0.8"/>
+  <rect x="628" y="288" width="8" height="56"  fill="var(--dg-wash-2)" stroke="var(--dg-muted)" stroke-width="0.8"/>
+  <rect x="804" y="328" width="8" height="56"  fill="var(--dg-wash-2)" stroke="var(--dg-muted)" stroke-width="0.8"/>
+
+  <!-- message labels -->
+  <rect x="128" y="84"  width="64"  height="12" rx="2" fill="var(--dg-paper)"/>
+  <text x="160" y="93"  fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.06em">PROMPT</text>
+  <rect x="288" y="172" width="104" height="12" rx="2" fill="var(--dg-paper)"/>
+  <text x="340" y="181" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.06em">+ INSTRUCTION</text>
+  <rect x="216" y="228" width="88"  height="12" rx="2" fill="var(--dg-paper)"/>
+  <text x="260" y="237" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.06em">FULL REPLY</text>
+  <rect x="480" y="276" width="112" height="12" rx="2" fill="var(--dg-paper)"/>
+  <text x="536" y="285" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.06em">LAST MESSAGE</text>
+  <rect x="676" y="316" width="80"  height="12" rx="2" fill="var(--dg-paper)"/>
+  <text x="716" y="325" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.06em">SPOKEN LINE</text>
+  <rect x="404" y="356" width="88"  height="12" rx="2" fill="var(--dg-paper)"/>
+  <text x="448" y="365" fill="var(--dg-accent)" font-size="8" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.06em">AUDIO PLAYS</text>
+
+  <!-- actors -->
+  <rect x="32"  y="16" width="96"  height="44" rx="6" fill="var(--dg-paper)"/>
+  <rect x="32"  y="16" width="96"  height="44" rx="6" fill="var(--dg-input)" stroke="var(--dg-soft)" stroke-width="1"/>
+  <text x="80"  y="43" fill="var(--dg-ink)" font-size="12" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">You</text>
+
+  <rect x="172" y="16" width="152" height="44" rx="6" fill="var(--dg-paper)"/>
+  <rect x="172" y="16" width="152" height="44" rx="6" fill="var(--dg-surface)" stroke="var(--dg-ink)" stroke-width="1"/>
+  <text x="248" y="36" fill="var(--dg-ink)" font-size="12" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">Prompt hook</text>
+  <text x="248" y="50" fill="var(--dg-muted)" font-size="9" font-family="'IBM Plex Mono',monospace" text-anchor="middle">UserPromptSubmit</text>
+
+  <rect x="384" y="16" width="112" height="44" rx="6" fill="var(--dg-paper)"/>
+  <rect x="384" y="16" width="112" height="44" rx="6" fill="var(--dg-surface)" stroke="var(--dg-ink)" stroke-width="1"/>
+  <text x="440" y="43" fill="var(--dg-ink)" font-size="12" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">Agent</text>
+
+  <rect x="572" y="16" width="120" height="44" rx="6" fill="var(--dg-paper)"/>
+  <rect x="572" y="16" width="120" height="44" rx="6" fill="var(--dg-surface)" stroke="var(--dg-ink)" stroke-width="1"/>
+  <text x="632" y="36" fill="var(--dg-ink)" font-size="12" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">Stop hook</text>
+  <text x="632" y="50" fill="var(--dg-muted)" font-size="9" font-family="'IBM Plex Mono',monospace" text-anchor="middle">&lt; 0.5s</text>
+
+  <rect x="744" y="16" width="128" height="44" rx="6" fill="var(--dg-paper)"/>
+  <rect x="744" y="16" width="128" height="44" rx="6" fill="var(--dg-accent-tint)" stroke="var(--dg-accent)" stroke-width="1"/>
+  <text x="808" y="36" fill="var(--dg-ink)" font-size="12" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">Speech engine</text>
+  <text x="808" y="50" fill="var(--dg-muted)" font-size="9" font-family="'IBM Plex Mono',monospace" text-anchor="middle">127.0.0.1:8880</text>
+
+  <!-- legend -->
+  <line x1="32" y1="424" x2="868" y2="424" stroke="var(--dg-line)" stroke-width="0.8"/>
+  <text x="32"  y="444" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace" letter-spacing="0.14em">LEGEND</text>
+  <line x1="112" y1="440" x2="144" y2="440" stroke="var(--dg-muted)" stroke-width="1"/>
+  <text x="152" y="444" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace">CALL</text>
+  <line x1="216" y1="440" x2="248" y2="440" stroke="var(--dg-muted)" stroke-width="1" stroke-dasharray="5,4"/>
+  <text x="256" y="444" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace">RETURN</text>
+  <line x1="336" y1="440" x2="368" y2="440" stroke="var(--dg-muted)" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#rb1-arrow-open)"/>
+  <text x="384" y="444" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace">ASYNC, NOT AWAITED</text>
+  <line x1="552" y1="440" x2="584" y2="440" stroke="var(--dg-accent)" stroke-width="1.2"/>
+  <text x="592" y="444" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace">WHAT YOU HEAR</text>
+</svg>
+<figcaption>The prompt hook decides whether the turn will speak. The Stop hook never blocks: it hands the line off and returns.</figcaption>
+</figure>
 
   <div class="col">
     <p>
@@ -239,6 +342,105 @@
 ├── d80a037b-17c3-…    <span class="cmt">← this one speaks</span>
 └── 4f21ba9c-88de-…    <span class="cmt">← and this one</span>
                        <span class="cmt">every other session: silent</span></code></pre>
+
+<figure class="dg">
+<svg viewBox="0 0 900 460" role="img" aria-labelledby="rb-sessions-title rb-sessions-desc">
+  <title id="rb-sessions-title">Several sessions, one voice</title>
+  <desc id="rb-sessions-desc">Fan-in diagram: any number of sessions can have readback on and each finishes independently, but a single lock serves one at a time, so simultaneous endings queue instead of overlapping. A lock older than five minutes is reclaimed.</desc>
+  <defs>
+    <marker id="rb2-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="var(--dg-muted)"/>
+    </marker>
+    <marker id="rb2-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="var(--dg-accent)"/>
+    </marker>
+  </defs>
+
+  <!-- arrows first -->
+  <line x1="180" y1="90"  x2="296" y2="90"  stroke="var(--dg-muted)" stroke-width="1" marker-end="url(#rb2-arrow)"/>
+  <line x1="180" y1="170" x2="296" y2="170" stroke="var(--dg-muted)" stroke-width="1" marker-end="url(#rb2-arrow)"/>
+  <line x1="180" y1="250" x2="296" y2="250" stroke="var(--dg-muted)" stroke-width="1" marker-end="url(#rb2-arrow)"/>
+
+  <path d="M 440 90 H 464 a 8 8 0 0 1 8 8 V 155 a 8 8 0 0 0 8 8 H 528"
+        fill="none" stroke="var(--dg-muted)" stroke-width="1" marker-end="url(#rb2-arrow)"/>
+  <path d="M 440 170 H 480 a 8 8 0 0 1 8 8 V 174 a 8 8 0 0 0 8 8 H 528"
+        fill="none" stroke="var(--dg-muted)" stroke-width="1" marker-end="url(#rb2-arrow)"/>
+  <path d="M 440 250 H 496 a 8 8 0 0 0 8 -8 V 209 a 8 8 0 0 1 8 -8 H 528"
+        fill="none" stroke="var(--dg-muted)" stroke-width="1" marker-end="url(#rb2-arrow)"/>
+
+  <line x1="672" y1="182" x2="728" y2="182" stroke="var(--dg-accent)" stroke-width="1.2" marker-end="url(#rb2-arrow-accent)"/>
+
+  <!-- queue container -->
+  <rect x="296" y="56" width="144" height="228" rx="6" fill="var(--dg-wash)" stroke="var(--dg-line-2)" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="368" y="44" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.14em">TURN ENDS</text>
+
+  <!-- sources -->
+  <rect x="32" y="64" width="148" height="52" rx="6" fill="var(--dg-paper)"/>
+  <rect x="32" y="64" width="148" height="52" rx="6" fill="var(--dg-input)" stroke="var(--dg-soft)" stroke-width="1"/>
+  <rect x="40" y="70" width="36" height="12" rx="2" fill="transparent" stroke="var(--dg-soft)" stroke-width="0.8"/>
+  <text x="58" y="79" fill="var(--dg-muted)" font-size="7" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.08em">ON</text>
+  <text x="106" y="104" fill="var(--dg-ink)" font-size="12" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">Session A</text>
+
+  <rect x="32" y="144" width="148" height="52" rx="6" fill="var(--dg-paper)"/>
+  <rect x="32" y="144" width="148" height="52" rx="6" fill="var(--dg-input)" stroke="var(--dg-soft)" stroke-width="1"/>
+  <rect x="40" y="150" width="36" height="12" rx="2" fill="transparent" stroke="var(--dg-soft)" stroke-width="0.8"/>
+  <text x="58" y="159" fill="var(--dg-muted)" font-size="7" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.08em">ON</text>
+  <text x="106" y="184" fill="var(--dg-ink)" font-size="12" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">Session B</text>
+
+  <rect x="32" y="224" width="148" height="52" rx="6" fill="var(--dg-paper)"/>
+  <rect x="32" y="224" width="148" height="52" rx="6" fill="var(--dg-input)" stroke="var(--dg-soft)" stroke-width="1"/>
+  <rect x="40" y="230" width="36" height="12" rx="2" fill="transparent" stroke="var(--dg-soft)" stroke-width="0.8"/>
+  <text x="58" y="239" fill="var(--dg-muted)" font-size="7" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.08em">ON</text>
+  <text x="106" y="264" fill="var(--dg-ink)" font-size="12" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">Session C</text>
+
+  <!-- silent session, aggregated -->
+  <rect x="32" y="304" width="148" height="48" rx="6" fill="var(--dg-optional)" stroke="var(--dg-line-2)" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="106" y="326" fill="var(--dg-muted)" font-size="11" font-weight="500" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">Every other session</text>
+  <text x="106" y="341" fill="var(--dg-muted)" font-size="9" font-family="'IBM Plex Mono',monospace" text-anchor="middle">no sentinel, silent</text>
+
+  <!-- queue slots -->
+  <rect x="312" y="68"  width="112" height="44" rx="4" fill="var(--dg-surface)" stroke="var(--dg-ink)" stroke-width="1"/>
+  <text x="368" y="88"  fill="var(--dg-ink)" font-size="11" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">spoken line</text>
+  <text x="368" y="102" fill="var(--dg-muted)" font-size="9" font-family="'IBM Plex Mono',monospace" text-anchor="middle">from A</text>
+
+  <rect x="312" y="148" width="112" height="44" rx="4" fill="var(--dg-surface)" stroke="var(--dg-ink)" stroke-width="1"/>
+  <text x="368" y="168" fill="var(--dg-ink)" font-size="11" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">spoken line</text>
+  <text x="368" y="182" fill="var(--dg-muted)" font-size="9" font-family="'IBM Plex Mono',monospace" text-anchor="middle">from B</text>
+
+  <rect x="312" y="228" width="112" height="44" rx="4" fill="var(--dg-surface)" stroke="var(--dg-ink)" stroke-width="1"/>
+  <text x="368" y="248" fill="var(--dg-ink)" font-size="11" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">spoken line</text>
+  <text x="368" y="262" fill="var(--dg-muted)" font-size="9" font-family="'IBM Plex Mono',monospace" text-anchor="middle">from C</text>
+
+  <!-- the lock: the bottleneck -->
+  <rect x="528" y="140" width="144" height="84" rx="6" fill="var(--dg-paper)"/>
+  <rect x="528" y="140" width="144" height="84" rx="6" fill="var(--dg-accent-tint)" stroke="var(--dg-accent)" stroke-width="1"/>
+  <rect x="536" y="146" width="52" height="12" rx="2" fill="transparent" stroke="var(--dg-accent)" stroke-width="0.8"/>
+  <text x="562" y="155" fill="var(--dg-accent)" font-size="7" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.08em">LOCK</text>
+  <text x="600" y="186" fill="var(--dg-ink)" font-size="12" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">1 at a time</text>
+  <text x="600" y="204" fill="var(--dg-muted)" font-size="9" font-family="'IBM Plex Mono',monospace" text-anchor="middle">stale after 5 min</text>
+
+  <!-- output -->
+  <rect x="728" y="152" width="140" height="60" rx="6" fill="var(--dg-paper)"/>
+  <rect x="728" y="152" width="140" height="60" rx="6" fill="var(--dg-surface)" stroke="var(--dg-ink)" stroke-width="1"/>
+  <text x="798" y="178" fill="var(--dg-ink)" font-size="12" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">Your speakers</text>
+  <text x="798" y="194" fill="var(--dg-muted)" font-size="9" font-family="'IBM Plex Mono',monospace" text-anchor="middle">A, then B, then C</text>
+
+  <!-- arrow label -->
+  <rect x="464" y="112" width="72" height="12" rx="2" fill="var(--dg-paper)"/>
+  <text x="500" y="121" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.06em">THEY WAIT</text>
+
+  <!-- legend -->
+  <line x1="32" y1="396" x2="868" y2="396" stroke="var(--dg-line)" stroke-width="0.8"/>
+  <text x="32"  y="416" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace" letter-spacing="0.14em">LEGEND</text>
+  <rect x="112" y="408" width="14" height="10" rx="2" fill="var(--dg-input)" stroke="var(--dg-soft)" stroke-width="1"/>
+  <text x="134" y="416" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace">READBACK ON</text>
+  <rect x="248" y="408" width="14" height="10" rx="2" fill="var(--dg-optional)" stroke="var(--dg-line-2)" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="270" y="416" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace">SILENT, UNAFFECTED</text>
+  <rect x="424" y="408" width="14" height="10" rx="2" fill="var(--dg-accent-tint)" stroke="var(--dg-accent)" stroke-width="1"/>
+  <text x="446" y="416" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace">THE ONE CONSTRAINT</text>
+</svg>
+<figcaption>Sessions are independent; the lock is the only shared resource. Nothing is dropped when they collide, it is deferred.</figcaption>
+</figure>
 
   <div class="col">
     <p>
@@ -405,6 +607,110 @@ voicemode service install kokoro
       accent.
     </p>
   </div>
+
+<figure class="dg" id="dg3">
+<svg viewBox="0 0 900 700" role="img" aria-labelledby="rb-fallback-title rb-fallback-desc">
+  <title id="rb-fallback-title">Provider cascade and its fallbacks</title>
+  <desc id="rb-fallback-desc">Flowchart: if ElevenLabs is configured it is tried first, and any failure falls through to the local Kokoro engine. If no engine answers at all, the hook exits silently instead of raising an error, so a voice problem never interrupts the session.</desc>
+  <defs>
+    <marker id="rb3-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="var(--dg-muted)"/>
+    </marker>
+    <marker id="rb3-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="var(--dg-accent)"/>
+    </marker>
+  </defs>
+
+  <!-- connectors first -->
+  <line x1="240" y1="64"  x2="240" y2="104" stroke="var(--dg-muted)" stroke-width="1" marker-end="url(#rb3-arrow)"/>
+  <line x1="296" y1="144" x2="472" y2="144" stroke="var(--dg-muted)" stroke-width="1" marker-end="url(#rb3-arrow)"/>
+  <line x1="240" y1="184" x2="240" y2="256" stroke="var(--dg-muted)" stroke-width="1" marker-end="url(#rb3-arrow)"/>
+  <line x1="560" y1="172" x2="560" y2="224" stroke="var(--dg-muted)" stroke-width="1" marker-end="url(#rb3-arrow)"/>
+  <line x1="504" y1="264" x2="256" y2="264" stroke="var(--dg-muted)" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#rb3-arrow)"/>
+  <path d="M 616 264 H 624 a 8 8 0 0 1 8 8 V 456 a 8 8 0 0 0 8 8 H 664"
+        fill="none" stroke="var(--dg-accent)" stroke-width="1.2" marker-end="url(#rb3-arrow-accent)"/>
+  <line x1="240" y1="272" x2="240" y2="336" stroke="var(--dg-muted)" stroke-width="1" marker-end="url(#rb3-arrow)"/>
+  <line x1="240" y1="392" x2="240" y2="444" stroke="var(--dg-muted)" stroke-width="1" marker-end="url(#rb3-arrow)"/>
+  <line x1="296" y1="484" x2="664" y2="484" stroke="var(--dg-accent)" stroke-width="1.2" marker-end="url(#rb3-arrow-accent)"/>
+  <line x1="240" y1="524" x2="240" y2="576" stroke="var(--dg-muted)" stroke-width="1" marker-end="url(#rb3-arrow)"/>
+
+  <!-- merge dot -->
+  <circle cx="240" cy="264" r="4" fill="var(--dg-ink)"/>
+
+  <!-- start -->
+  <rect x="152" y="20" width="176" height="44" rx="20" fill="var(--dg-paper)"/>
+  <rect x="152" y="20" width="176" height="44" rx="20" fill="var(--dg-input)" stroke="var(--dg-soft)" stroke-width="1"/>
+  <text x="240" y="47" fill="var(--dg-ink)" font-size="12" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">A line to speak</text>
+
+  <!-- D1 -->
+  <path d="M 240 104 L 296 144 L 240 184 L 184 144 Z" fill="var(--dg-paper)"/>
+  <path d="M 240 104 L 296 144 L 240 184 L 184 144 Z" fill="var(--dg-surface)" stroke="var(--dg-ink)" stroke-width="1"/>
+  <text x="240" y="140" fill="var(--dg-ink)" font-size="11" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">ElevenLabs</text>
+  <text x="240" y="154" fill="var(--dg-ink)" font-size="11" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">configured?</text>
+
+  <!-- ElevenLabs step -->
+  <rect x="472" y="116" width="176" height="56" rx="6" fill="var(--dg-paper)"/>
+  <rect x="472" y="116" width="176" height="56" rx="6" fill="var(--dg-external)" stroke="var(--dg-ext-stroke)" stroke-width="1"/>
+  <rect x="480" y="122" width="44" height="12" rx="2" fill="transparent" stroke="var(--dg-ext-stroke)" stroke-width="0.8"/>
+  <text x="502" y="131" fill="var(--dg-muted)" font-size="7" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.08em">CLOUD</text>
+  <text x="560" y="158" fill="var(--dg-ink)" font-size="12" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">Ask ElevenLabs</text>
+
+  <!-- D2 -->
+  <path d="M 560 224 L 616 264 L 560 304 L 504 264 Z" fill="var(--dg-paper)"/>
+  <path d="M 560 224 L 616 264 L 560 304 L 504 264 Z" fill="var(--dg-surface)" stroke="var(--dg-ink)" stroke-width="1"/>
+  <text x="560" y="260" fill="var(--dg-ink)" font-size="11" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">Real audio</text>
+  <text x="560" y="274" fill="var(--dg-ink)" font-size="11" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">came back?</text>
+
+  <!-- Kokoro step -->
+  <rect x="152" y="336" width="176" height="56" rx="6" fill="var(--dg-paper)"/>
+  <rect x="152" y="336" width="176" height="56" rx="6" fill="var(--dg-surface)" stroke="var(--dg-ink)" stroke-width="1"/>
+  <rect x="160" y="342" width="44" height="12" rx="2" fill="transparent" stroke="var(--dg-ink)" stroke-width="0.8"/>
+  <text x="182" y="351" fill="var(--dg-muted)" font-size="7" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.08em">LOCAL</text>
+  <text x="240" y="378" fill="var(--dg-ink)" font-size="12" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">Ask Kokoro</text>
+
+  <!-- D3 -->
+  <path d="M 240 444 L 296 484 L 240 524 L 184 484 Z" fill="var(--dg-paper)"/>
+  <path d="M 240 444 L 296 484 L 240 524 L 184 484 Z" fill="var(--dg-surface)" stroke="var(--dg-ink)" stroke-width="1"/>
+  <text x="240" y="480" fill="var(--dg-ink)" font-size="11" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">Engine</text>
+  <text x="240" y="494" fill="var(--dg-ink)" font-size="11" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">answering?</text>
+
+  <!-- play -->
+  <rect x="664" y="462" width="176" height="44" rx="20" fill="var(--dg-paper)"/>
+  <rect x="664" y="462" width="176" height="44" rx="20" fill="var(--dg-accent-tint)" stroke="var(--dg-accent)" stroke-width="1"/>
+  <text x="752" y="489" fill="var(--dg-ink)" font-size="12" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">You hear it</text>
+
+  <!-- silence -->
+  <rect x="152" y="576" width="176" height="44" rx="20" fill="var(--dg-paper)"/>
+  <rect x="152" y="576" width="176" height="44" rx="20" fill="var(--dg-optional)" stroke="var(--dg-line-2)" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="240" y="597" fill="var(--dg-muted)" font-size="11" font-weight="600" font-family="'IBM Plex Sans',sans-serif" text-anchor="middle">Silence</text>
+  <text x="240" y="611" fill="var(--dg-muted)" font-size="9" font-family="'IBM Plex Mono',monospace" text-anchor="middle">exit 0, never an error</text>
+
+  <!-- branch labels -->
+  <rect x="352" y="122" width="32" height="12" rx="2" fill="var(--dg-paper)"/>
+  <text x="368" y="131" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.06em">YES</text>
+  <rect x="252" y="208" width="28" height="12" rx="2" fill="var(--dg-paper)"/>
+  <text x="266" y="217" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.06em">NO</text>
+  <rect x="344" y="242" width="112" height="12" rx="2" fill="var(--dg-paper)"/>
+  <text x="400" y="251" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.06em">NO, FALL BACK</text>
+  <rect x="632" y="242" width="32" height="12" rx="2" fill="var(--dg-paper)"/>
+  <text x="648" y="251" fill="var(--dg-accent)" font-size="8" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.06em">YES</text>
+  <rect x="440" y="462" width="32" height="12" rx="2" fill="var(--dg-paper)"/>
+  <text x="456" y="471" fill="var(--dg-accent)" font-size="8" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.06em">YES</text>
+  <rect x="252" y="548" width="28" height="12" rx="2" fill="var(--dg-paper)"/>
+  <text x="266" y="557" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace" text-anchor="middle" letter-spacing="0.06em">NO</text>
+
+  <!-- legend -->
+  <line x1="32" y1="644" x2="868" y2="644" stroke="var(--dg-line)" stroke-width="0.8"/>
+  <text x="32"  y="664" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace" letter-spacing="0.14em">LEGEND</text>
+  <line x1="112" y1="660" x2="144" y2="660" stroke="var(--dg-accent)" stroke-width="1.2"/>
+  <text x="152" y="664" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace">HAPPY PATH</text>
+  <line x1="272" y1="660" x2="304" y2="660" stroke="var(--dg-muted)" stroke-width="1" stroke-dasharray="5,4"/>
+  <text x="312" y="664" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace">FALLBACK, SILENT TO YOU</text>
+  <rect x="520" y="654" width="14" height="10" rx="2" fill="var(--dg-optional)" stroke="var(--dg-line-2)" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="542" y="664" fill="var(--dg-muted)" font-size="8" font-family="'IBM Plex Mono',monospace">NEVER INTERRUPTS THE SESSION</text>
+</svg>
+<figcaption>Every branch that is not the happy path ends in either the local engine or silence. None of them ends in an error.</figcaption>
+</figure>
 </section>
 
 <section id="pron">
