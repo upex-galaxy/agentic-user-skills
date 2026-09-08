@@ -1,0 +1,62 @@
+# Pronunciation map for the speech engine.
+# Format:  pattern<two spaces or tab>replacement
+# Applied with word boundaries, case-insensitive, right before the text
+# reaches the TTS engine. It never touches what you see on screen.
+#
+# Works with any provider: it is a text layer, not an engine feature.
+#
+# This base file is tuned for SPANISH speech reading English technical terms,
+# which is where small TTS models fail hardest. Add your own rules in:
+#   <plugin data dir>/pronunciation.txt
+# Those are applied last and win on conflict. Yours survive plugin updates.
+
+middleware      mídelwer
+Supabase        Supabéis
+checkout        chékaut
+deploy          diplói
+deployment      diplóiment
+staging         stéiying
+build           bild
+commit          comít
+merge           merch
+merge request   merch rikuést
+pull request    pul rikuést
+branch          branch
+hook            juk
+hooks           juks
+endpoint        éndpoint
+backend         bákend
+frontend        frónt-end
+framework       fréimwork
+frameworks      fréimworks
+workflow        wérkflou
+workflows       wérkflous
+worktree        wérktri
+webhook         wébjuk
+webhooks        wébjuks
+dashboard       dáshbord
+testing         tésting
+query           cuéri
+queries         cuéris
+release         rilís
+script          script
+type-check      taip chek
+linter          línter
+Playwright      Pléirait
+Vercel          Versél
+Next.js         Next yéi ese
+n8n             ene ocho ene
+Jira            Yíra
+Slack           Slak
+Stripe          Straip
+Kokoro          Kokóro
+Whisper         Wísper
+QA              cu a
+API             a pe i
+JSON            yeisón
+YAML            yámel
+UUID            u u i de
+CLI             ce ele i
+MCP             eme ce pe
+UI              u i
+UX              u equis
