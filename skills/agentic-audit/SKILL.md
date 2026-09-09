@@ -150,18 +150,68 @@ Never invent a decimal to make a total look better. If two axes are 4 and four a
 version can't be compared to the next one, and comparison over time is most of the value for a mentor.
 
 **`lens=external`** → build the HTML from `assets/report-template.html`. It is a single self-contained
-file: inline CSS, screenshots embedded as base64 data URIs, no external requests, so it survives being
-dropped into Slack, email, or a browser with no network. Structure:
+file: inline CSS, embedded base64 fonts, inline SVG, no external requests of any kind, so it survives
+being dropped into Slack, email, or a browser with no network. Its eight sections:
 
 1. Masthead: who it's for, who it's from, date, what was audited
 2. Verdict: overall score and one sentence that stands alone
 3. What was examined, including what could not be reached
 4. Score per axis
-5. What is above the median — specific, quoted from their own work, not generic praise
-6. Findings, ordered by return on effort, each with the fix
-7. Subject-specific deep dive (the architecture question, the seam, whatever this project's real fork is)
-8. Next moves: a short numbered list they could start tomorrow
-9. Close: something genuinely good, and the offer to re-run
+5. History: the project's own timeline, when its shape explains a finding
+6. What is above the median — specific, quoted from their own work, not generic praise
+7. Findings, ordered by return on effort, each with the fix
+8. Subject-specific deep dive (the architecture question, the seam, whatever this project's real fork is),
+   then next moves, then a close: something genuinely good, and the offer to re-run
+
+Two mechanical steps that are easy to skip and shouldn't be:
+
+- **Inline the fonts.** Replace the `/* {{FONTS}} */` line with the whole of `assets/fonts-inline.css`
+  (Instrument Serif + Geist + Geist Mono as base64, ~111 KB). The file header has the one-line command.
+  Skipping it doesn't break the page — it falls back to system fonts — but the serif masthead is the
+  document's signature.
+- **Never hardcode a colour in the SVG.** Diagrams use the `f-*` / `s-*` classes bound to the same CSS
+  custom properties as the prose, which is what makes the light/dark toggle recolour them in one move.
+  A stray `fill="#4f5d75"` renders as a hole in dark mode.
+
+### Diagrams
+
+The template ships three diagram scaffolds with real geometry. **Three is the ceiling, not the target** —
+delete any figure that doesn't clear the bar below, and follow the `diagram-design` skill's rule that a
+diagram is done when nothing can be removed.
+
+| Diagram | Earns its place when | Delete it when |
+|---|---|---|
+| **Timeline** (§ History) | The project's history explains a finding: a break date, a stall, a burst | The history is uneventful, or the dates aren't load-bearing |
+| **Quadrant** (§ Findings) | 4+ findings whose impact and effort genuinely differ | Fewer than 4 findings, or they all sit in one corner |
+| **Architecture, two zones** (§ Deep dive) | The fork is structural: something is connected and something that should be isn't | The fork is a judgment call, not a topology |
+
+Rules that keep them honest:
+
+- **Timeline spacing is proportional to elapsed time**, never cosmetic. `x = 80 + (date − t0)/(t1 − t0) × 840`.
+  A cluster is information; faking even spacing throws it away.
+- **Quadrant: exactly one accent item**, the do-first. Labels sit below their dots and never cross an axis.
+- **Architecture: exactly one accent node**, the hinge where the working and missing chains meet. Sparse
+  dash (`2,6`) means a relationship that should exist and does not; regular dash (`4,3`) is a return flow.
+- **Don't chart the six scores.** Radar caps at 5 axes and polar needs a cyclic order; audit axes have
+  neither. The HTML score bars already are the right representation, and a second one is duplication.
+- **When a 3-column table says the same thing, use the table.** A two-project config comparison beat a
+  sequence diagram in the worked example, and that is the normal outcome, not the exception.
+
+Verify the result in a browser before delivering — `/playwright-cli` over loopback, since `file://` comes
+back blank. Check both themes and both widths:
+
+```bash
+cd <report dir> && python3 -m http.server 8791 --bind 127.0.0.1 & sleep 2
+playwright-cli -s=audit open --browser=chrome
+playwright-cli -s=audit resize 1440 1000
+playwright-cli -s=audit goto http://127.0.0.1:8791/<report>.html
+playwright-cli -s=audit --raw eval "() => JSON.stringify({docW:document.documentElement.scrollWidth, winW:innerWidth})"
+playwright-cli -s=audit screenshot "#bifurcacion .dg-fig" --filename=arch.png
+playwright-cli -s=audit --raw eval "() => { document.documentElement.setAttribute('data-theme','dark'); return 'dark' }"
+```
+
+Look for label masks sitting on their own connector (the 6-10px gap rule), labels that read as boxes in
+dark mode, and any element escaping its `.dg-scroll` wrapper at 390 px.
 
 Writing register for `external`: second person, the user's voice, mirroring the user's language. Quote
 the author's own code or comments when praising: "you wrote X, and that's why Y" lands, "great job on
