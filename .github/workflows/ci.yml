@@ -22,6 +22,8 @@ jobs:
         run: bun run types:check
       - name: Lint
         run: bun run lint:check
+      - name: Tests
+        run: bun run test
       - name: CLI smoke (render a deck in copy mode)
         run: |
           cat > /tmp/spec-ci.json <<'EOF'
@@ -42,5 +44,5 @@ jobs:
             ]
           }
           EOF
-          bun skills/mkd/cli/index.ts /tmp/spec-ci.json --no-open
+          bun skills/mkd/cli/index.ts /tmp/spec-ci.json --copy --no-open
           test -s ~/.mkd/deck-ci.html

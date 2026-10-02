@@ -31,7 +31,8 @@
     "lint:check": "eslint .",
     "lint:fix": "eslint --fix .",
     "types:check": "tsc --noEmit",
-    "repo:check": "bun run lint:check && bun run types:check"
+    "test": "bun test",
+    "repo:check": "bun run lint:check && bun run types:check && bun run test"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^4.16.0",
