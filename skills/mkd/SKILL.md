@@ -1,6 +1,6 @@
 ---
 name: mkd
-description: "MKD (`mkd` — Make Decision) — a local, browser-based decision-deck CLI the AI drives to collect structured human feedback: decisions with justified options, questions, report reactions and answerable tables, one screen at a time (Slack Catch-Up style). WHEN to use: the AI has MORE THAN ~3 decision points or a long multi-section report/plan that needs the user's verdict point by point. It beats `AskUserQuestion` (capped at ~4 questions × ~4 options, terminal-bound, no rich free-text, cannot show reference content) and beats an inline prose questionnaire (unanchored replies the AI must guess-map back). HOW it works: the AI writes a spec JSON of `items` (`decision` | `question` | `report` | `table`), runs `bun <skill-dir>/cli/index.ts <specPath>` (no install, no binary), and the CLI renders a self-contained deck page under `~/.mkd/`, opens the browser and EXITS immediately — the user answers at their own pace (progress rail, arrow keys, skip = decide later, live stats, localStorage persistence) and pastes the copied Result JSON back into the chat, which the AI treats as the execution contract. Add `--wait` only when the answer is needed the same turn (blocking loopback server, Result JSON on stdout). HARD RULE: every decision option MUST carry a written justification (value + cost), and the recommended option's justification must state WHY it is recommended — the validator rejects options without one. Triggers on: `mkd`, `make decision`, `decision deck`, `catch-up`, `catchup`, `decision form`, `feedback UI`, `ask me point by point`, `let me answer in the browser`, `review this plan point by point`, `react to each section`, `more than three questions`, `decisiones de auditoría`, `tomar decisiones`. Use this skill even when the user does not say `mkd` — if the task is to collect granular decisions or anchored feedback on many points, this is the right tool. Do NOT use for: a trivial 1-2 option pick or a single yes/no (use `AskUserQuestion`), or any non-interactive / CI / one-shot output where there is no human at a browser."
+description: "MKD (`mkd` — Make Decision) — a local, browser-based decision-deck CLI the AI drives to collect structured human feedback: decisions with justified options, questions, report reactions and answerable tables, one screen at a time (Slack Catch-Up style). WHEN to use: the AI has MORE THAN ~3 decision points or a long multi-section report/plan that needs the user's verdict point by point. It beats `AskUserQuestion` (capped at ~4 questions × ~4 options, terminal-bound, no rich free-text, cannot show reference content) and beats an inline prose questionnaire (unanchored replies the AI must guess-map back). HOW it works: the AI writes a spec JSON of `items` (`decision` | `question` | `report` | `table`), runs `bun <skill-dir>/cli/index.ts <specPath>` (no install, no binary), and the CLI renders a self-contained deck page under `~/.mkd/`, opens the browser and EXITS immediately — the user answers at their own pace (progress rail, arrow keys, skip = decide later, live stats, localStorage persistence) and pastes the copied Result JSON back into the chat, which the AI treats as the execution contract. Inside Orca (multi-agent IDE) the default changes: the CLI serves the deck, opens it in a browser tab bound to the current worktree and BLOCKS until the user presses Send, then prints the Result JSON on stdout, so the AI must run it in the background (`--copy` restores the copy-paste flow). Add `--wait` outside Orca only when the answer is needed the same turn (blocking loopback server, Result JSON on stdout). HARD RULE: every decision option MUST carry a written justification (value + cost), and the recommended option's justification must state WHY it is recommended — the validator rejects options without one. Triggers on: `mkd`, `make decision`, `decision deck`, `catch-up`, `catchup`, `decision form`, `feedback UI`, `ask me point by point`, `let me answer in the browser`, `review this plan point by point`, `react to each section`, `more than three questions`, `decisiones de auditoría`, `tomar decisiones`. Use this skill even when the user does not say `mkd` — if the task is to collect granular decisions or anchored feedback on many points, this is the right tool. Do NOT use for: a trivial 1-2 option pick or a single yes/no (use `AskUserQuestion`), or any non-interactive / CI / one-shot output where there is no human at a browser."
 license: MIT
 compatibility: [claude-code, opencode, cursor, codex]
 allowed-tools: Bash(bun:*), Bash(command:*)
@@ -16,7 +16,7 @@ This skill needs **no install step**: there is no compiled binary and nothing ad
 ## Running it (no install)
 
 ```bash
-bun "<skill-dir>/cli/index.ts" <specPath> [--wait] [--no-open] [--port <n>] [--timeout <min>]
+bun "<skill-dir>/cli/index.ts" <specPath> [--wait | --copy] [--no-open] [--port <n>] [--timeout <min>]
 ```
 
 `<skill-dir>` is this skill's install directory:
@@ -97,7 +97,36 @@ When authoring `decision` items:
 
 Full contract (every field, defaults, validation rules) → `references/schema.md`. Worked copy-pasteable specs → `references/examples.md`.
 
-## Exact invocation — default (copy mode, non-blocking)
+## Which flow runs: Orca or not
+
+The CLI checks for Orca before it opens anything. Orca counts as present when `ORCA_TERMINAL_HANDLE` is set (the process runs in an Orca-managed terminal) or when `orca status --json` reports a reachable runtime. The executable is resolved the way Orca's own `orca-cli` skill does it: `ORCA_CLI_COMMAND`, then `orca-dev` in an Orca dev checkout, then `orca-ide` on Linux outside a managed terminal (bare `orca` there is usually the GNOME screen reader), then `orca`. A failed check counts as "no Orca" and prints nothing.
+
+| Environment | Flags | What happens |
+| --- | --- | --- |
+| No Orca | none | **copy mode**: render, open the system browser, exit 0. Unchanged. |
+| No Orca | `--wait` | serve, open the system browser, block until submit |
+| Orca | none | **Orca flow**: serve, open a tab bound to the current worktree, block until the user presses **Send to Claude**, Result JSON on stdout |
+| Orca | `--copy` | copy mode, system browser, exit 0 (the old flow) |
+| any | `--no-open` | same mode as above, but nothing is opened; the path or URL goes to stderr |
+
+The tab is bound with `--worktree path:<git toplevel of the cwd>`, so run the CLI from inside the checkout the user is working in. After `orca tab create` the CLI reads `orca tab list` and checks that the tab exists and its `loadError` is null. If the tab cannot be created or the page fails to load, the CLI closes any tab it created, opens the system browser instead and says so on stderr. When the run ends (submit, timeout, Ctrl-C or SIGTERM) it closes the tab it opened; if the close fails, stderr says the tab now points to a dead server.
+
+## Exact invocation — inside Orca (default there)
+
+The CLI blocks until the user submits, so never run it in the foreground: a foreground call would hold the agent's turn for up to 24h.
+
+1. **Write the spec** to `~/.mkd/spec-<name>.json`.
+2. **Run it in the background**, from the user's checkout:
+   - **Claude Code**: Bash tool with `run_in_background: true` on `bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-<name>.json`. The harness notifies you when the process exits; read its stdout then. Measured on Orca 1.4.190.
+   - **OpenCode / Codex / Cursor** (unverified: none was measured): start it detached with the shell, output under `~/.mkd/`: `nohup bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-<name>.json > ~/.mkd/stdout-<name>.json 2> ~/.mkd/stderr-<name>.log &`. The redirect truncates the log, so once `~/.mkd/stderr-<name>.log` contains `result written to`, this run's submit has landed: read `~/.mkd/result-<name>.json` (the same Result as stdout). If the harness cannot keep a background process alive, pass `--copy` and use the copy-mode steps below.
+3. **Tell the user** the deck is open in a tab next to this terminal and that **Send to Claude** returns the answers directly, with nothing to copy. Then end the turn or keep working.
+4. **When the process exits**, act on the exit code (table under `--wait`). Exit 0 means stdout holds the Result JSON: treat it as the execution contract, exactly as in copy mode.
+
+**Stable port, persistent answers.** Each deck gets its own port in 4747-4946, derived from `<name>` in `spec-<name>.json` (else from `session`). A half-answered deck reopened from the same spec lands on the same origin, so its saved answers come back. If that port is busy the CLI binds the next free one and says on stderr that answers saved on the original port will not show. `--port <n>` overrides the derived port.
+
+**One copy of a deck at a time.** Browser storage is per origin and per browser engine: the same deck in the system browser and in an Orca tab (or as a `file://` page and over loopback) keeps two sets of answers that never merge. The CLI remembers where it last opened each deck (`~/.mkd/opened-<name>.json`) and warns on stderr when this run opens it somewhere else; when you see that warning, tell the user which copy is live. It also says so when an earlier `~/.mkd/result-<name>.json` backup exists (the next submit overwrites it).
+
+## Exact invocation — default outside Orca (copy mode, non-blocking)
 
 1. **Write the spec** to `~/.mkd/spec-<name>.json` (that filename makes the page land at `~/.mkd/deck-<name>.html`). Keeping it under `~/.mkd/` keeps the repo clean.
 2. **Run:** `bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-<name>.json`. The CLI validates, renders a self-contained page, opens the browser, and **exits 0 immediately**. Nothing lands on stdout.
@@ -106,12 +135,12 @@ Full contract (every field, defaults, validation rules) → `references/schema.m
 
 ## `--wait` (blocking, same-turn answer)
 
-Use only when the AI genuinely needs the answer in the same turn to continue:
+Outside Orca, use it only when the AI genuinely needs the answer in the same turn to continue. Inside Orca this is already the default flow.
 
-- `bun "<skill-dir>/cli/index.ts" <specPath> --wait` serves the deck over loopback (`--port`, default 4747, auto-increments) with a per-run `x-mkd-token` submit gate, waits for the browser's submit (`--timeout <min>`, default 1440 = 24h), then prints the Result JSON to **stdout** (the ONLY thing on stdout; banners/errors go to stderr) and writes a backup to `~/.mkd/result-<name>.json`.
-- Image paste (clipboard → attachment) works **only** in `--wait` mode: entries in `images` arrive as absolute file paths under `~/.mkd/` the AI can `Read`. Copy mode disables paste (no server to persist bytes).
+- `bun "<skill-dir>/cli/index.ts" <specPath> --wait` serves the deck over loopback (`--port`, default: the deck's stable port in 4747-4946, auto-increments) with a per-run `x-mkd-token` submit gate, waits for the browser's submit (`--timeout <min>`, default 1440 = 24h), then prints the Result JSON to **stdout** (the ONLY thing on stdout; banners/errors go to stderr) and writes a backup to `~/.mkd/result-<name>.json`.
+- Image paste (clipboard → attachment) works **only** in wait mode (`--wait` or the Orca flow): entries in `images` arrive as absolute file paths under `~/.mkd/` the AI can `Read`. Copy mode disables paste (no server to persist bytes).
 
-Exit codes and absence protocol (`--wait`):
+Exit codes and absence protocol (`--wait` and the Orca flow):
 
 | Exit | Meaning | What the AI does |
 | --- | --- | --- |
@@ -119,6 +148,7 @@ Exit codes and absence protocol (`--wait`):
 | 1 | timeout with NO submission (or runtime error) | user is AWAY, not an error — post a standby note, offer to relaunch |
 | 2 | bad spec (unreadable / failed validation) | fix the spec at the reported path, re-run |
 | 130 | Ctrl-C | the user cancelled — ask what they want next |
+| 143 | SIGTERM (the harness or someone killed the background process) | relaunch with the same spec; the stable port brings saved answers back |
 
 ## Reading the Result
 

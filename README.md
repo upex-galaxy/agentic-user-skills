@@ -19,7 +19,7 @@ A user-level skill loads automatically in every project — no per-repo wiring.
 | Skill | Command | What it is |
 | --- | --- | --- |
 | [`agentic-audit`](skills/agentic-audit/SKILL.md) | — | An **evidence-based project auditor**: reads a whole repo (git history, context artifacts, agent config, tracker mirror, tests, CI) and drives the live app, then scores six axes 0-5 and writes a self-contained HTML evaluation. Two modes: `subject` (`dev` \| `qa` \| `pair`) picks the rubric, `lens` (`external` \| `internal`) picks the register and deliverable. Read-only on the target. |
-| [`mkd`](skills/mkd/SKILL.md) | `bun cli/index.ts` (no install) | **MKD (Make Decision)** — a browser-based **decision-deck CLI**: the AI writes a spec of items (decision / question / report / answerable table) and the CLI renders a Catch-Up-style deck — one screen per item, options with **written justifications**, a ★ recommended badge, custom option, skip, quotes, live stats, localStorage persistence. Default flow is non-blocking copy-paste (the user pastes the Result JSON into the chat as the execution contract); `--wait` keeps a blocking same-turn handshake. Successor of `wokitoki`/`toki`. |
+| [`mkd`](skills/mkd/SKILL.md) | `bun cli/index.ts` (no install) | **MKD (Make Decision)** — a browser-based **decision-deck CLI**: the AI writes a spec of items (decision / question / report / answerable table) and the CLI renders a Catch-Up-style deck — one screen per item, options with **written justifications**, a ★ recommended badge, custom option, skip, quotes, live stats, localStorage persistence. Default flow is non-blocking copy-paste (the user pastes the Result JSON into the chat as the execution contract); `--wait` keeps a blocking same-turn handshake. Inside Orca the deck opens in a worktree-bound tab and **Send to Claude** returns the Result on stdout, with no copy step (`--copy` opts out). Successor of `wokitoki`/`toki`. |
 
 ## Plugins (Claude Code)
 
@@ -84,7 +84,7 @@ agentic-user-skills/
 ## Toolchain
 
 - **Bun** runs the TypeScript directly.
-- Gates: `bun run types:check` (`tsc --noEmit`) and `bun run lint:check` (ESLint, `@antfu/eslint-config`).
+- Gates: `bun run types:check` (`tsc --noEmit`), `bun run lint:check` (ESLint, `@antfu/eslint-config`) and `bun run test` (`bun test`); `bun run repo:check` runs all three.
 
 ## License
 
