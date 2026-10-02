@@ -4,15 +4,18 @@
  *
  * Two modes:
  *
- * - DEFAULT (copy mode, non-blocking): read + validate a spec, render the
- *   self-contained deck HTML to `~/.mkd/deck-<name>.html`, open it in the
- *   browser, and EXIT 0 immediately. The user answers at their own pace and
- *   pastes the copied result JSON back into the chat. Nothing is written to
- *   stdout.
+ * - copy mode (non-blocking; the default OUTSIDE Orca, `--copy` forces it):
+ *   read + validate a spec, render the self-contained deck HTML to
+ *   `~/.mkd/deck-<name>.html`, open it in the browser, and EXIT 0
+ *   immediately. The user answers at their own pace and pastes the copied
+ *   result JSON back into the chat. Nothing is written to stdout.
  *
- * - `--wait` (blocking): serve the deck over loopback HTTP, await the
- *   browser's `POST /submit`, then write the result backup and print the
- *   result JSON to stdout - the AI parses it the same turn.
+ * - wait mode (blocking; `--wait`, and the default INSIDE Orca): serve the
+ *   deck over loopback HTTP on a stable per-deck port, await the browser's
+ *   `POST /submit`, then write the result backup and print the result JSON
+ *   to stdout - the AI parses it the same turn. Inside Orca the page opens
+ *   in a browser tab bound to the current worktree (see `orca.ts`), falling
+ *   back to the system browser when the tab cannot open or load.
  *
  * STDOUT DISCIPLINE (load-bearing): the ONLY thing ever written to
  * process.stdout in the entire tool is the final result JSON, emitted once
@@ -27,8 +30,10 @@
 
 import type { Result } from './schema.ts';
 import type { ServeHandle } from './server.ts';
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { closeOrcaTab, derivePort, detectOrca, openOrcaTab, resolveMode, worktreeSelector } from './orca.ts';
 import { render } from './render.ts';
 import { SpecError, validateSpec } from './schema.ts';
 import { serve, TimeoutError } from './server.ts';
@@ -101,18 +106,27 @@ USAGE
 ARGUMENTS
   specPath            Path to a spec JSON file (required)
 
+DEFAULT MODE
+  Inside Orca (ORCA_TERMINAL_HANDLE set, or \`orca status\` reports a reachable
+  runtime): wait mode, deck opened in an Orca browser tab bound to the current
+  worktree. The CLI BLOCKS until submit - run it in the background.
+  Anywhere else: copy mode, system browser, exits immediately.
+
 OPTIONS
   --wait             Blocking mode: serve the deck, await the browser submit,
-                     print the result JSON to stdout (default: render a static
-                     page, open it, exit immediately - the user copies the JSON)
-  --port <n>         --wait only: preferred port (default: 4747, auto-increments)
-  --timeout <min>    --wait only: minutes to wait (fractional ok, default: 1440 = 24h)
-  --no-open          Do not auto-open the browser (still prints the page path/URL)
+                     print the result JSON to stdout
+  --copy             Copy mode even inside Orca: render a static page, open it
+                     in the system browser, exit immediately (the user copies
+                     the JSON)
+  --port <n>         wait mode: preferred port (default: stable per deck in
+                     4747-4946, auto-increments on collision)
+  --timeout <min>    wait mode: minutes to wait (fractional ok, default: 1440 = 24h)
+  --no-open          Do not open anything (still prints the page path/URL)
   --help             Show this help
 
 OUTPUT
   copy mode:  writes ~/.mkd/deck-<name>.html and exits 0. Nothing on stdout.
-  --wait:     on submit, writes ~/.mkd/result-<name>.json and prints the result
+  wait mode:  on submit, writes ~/.mkd/result-<name>.json and prints the result
               JSON to stdout (the ONLY thing on stdout).
   Banners/paths/errors always go to stderr.
 
@@ -120,8 +134,9 @@ EXIT CODES
   0  ok    1  timeout/runtime    2  spec validation
 `;
 
-const DEFAULT_PORT = 4747;
 const DEFAULT_TIMEOUT_MINUTES = 1440;
+/** Pause after a submit before closing the Orca tab, so the done screen shows. */
+const DONE_SCREEN_MS = 800;
 
 // ============================================================================
 // MAIN
@@ -143,9 +158,15 @@ async function main(): Promise<void> {
   }
 
   const wait = getBoolFlag(flags, 'wait');
-  const port = parsePort(getFlag(flags, 'port'));
+  const copy = getBoolFlag(flags, 'copy');
+  const explicitPort = parsePort(getFlag(flags, 'port'));
   const timeoutMinutes = parseTimeout(getFlag(flags, 'timeout'));
   const noOpen = getBoolFlag(flags, 'no-open');
+
+  if (wait && copy) {
+    console.error('[mkd] error: --wait and --copy are mutually exclusive.');
+    process.exit(2);
+  }
 
   // Read + validate the spec.
   let raw: unknown;
@@ -172,13 +193,35 @@ async function main(): Promise<void> {
 
   // Short run id for the fallback filenames + logging.
   const id = Date.now().toString(36);
-  const name = deriveName(specPath, id);
+  const specName = specNameFromPath(specPath);
+  const name = specName ?? id;
 
-  if (!wait) {
-    await runCopyMode(spec, name, noOpen);
+  // `--copy` never needs Orca, so it never pays for the detection spawn.
+  const orca = copy
+    ? { detected: false, via: null, cmd: [] }
+    : await detectOrca(process.env, process.platform);
+  const choice = resolveMode({ wait, copy, noOpen }, orca.detected);
+
+  if (backupExists(name)) {
+    console.error(`[mkd] note: a result backup from an earlier submit of this deck exists at ${resultPath(name)} (it is overwritten on the next submit).`);
+  }
+
+  if (choice.mode === 'copy') {
+    await runCopyMode(spec, name, choice.opener !== 'none');
     return;
   }
-  await runWaitMode(spec, name, port, timeoutMinutes, noOpen);
+  if (orca.detected && !wait) {
+    console.error('[mkd] Orca detected: serving the deck and waiting for the submit (pass --copy for the copy-paste flow).');
+  }
+  // Stable per deck: the spec name when the file is `spec-<name>.json`, else
+  // the session slug (the epoch fallback would change every run).
+  const port = explicitPort ?? derivePort(specName ?? spec.session);
+  await runWaitMode(spec, name, {
+    port,
+    timeoutMinutes,
+    opener: choice.opener,
+    orcaCmd: orca.cmd,
+  });
 }
 
 // ============================================================================
@@ -188,7 +231,7 @@ async function main(): Promise<void> {
 async function runCopyMode(
   spec: ReturnType<typeof validateSpec>,
   name: string,
-  noOpen: boolean,
+  open: boolean,
 ): Promise<void> {
   const html = render(spec, { mode: 'copy' });
   const pagePath = join(MKD_HOME, `deck-${sanitizeForFilename(name)}.html`);
@@ -202,10 +245,11 @@ async function runCopyMode(
     process.exit(1);
   }
 
-  if (!noOpen) {
+  if (open) {
+    await noteOriginChange(name, `system@file://${pagePath}`);
     openBrowser(pagePath);
   }
-  console.error(`[mkd] deck written to ${pagePath}${noOpen ? '' : ' (opened in the browser)'}`);
+  console.error(`[mkd] deck written to ${pagePath}${open ? ' (opened in the browser)' : ''}`);
   console.error('[mkd] the user answers at their own pace and pastes the copied result JSON into the chat.');
   process.exit(0);
 }
@@ -214,34 +258,77 @@ async function runCopyMode(
 // WAIT MODE (--wait, blocking)
 // ============================================================================
 
+interface WaitOptions {
+  port: number
+  timeoutMinutes: number
+  opener: 'orca' | 'system' | 'none'
+  orcaCmd: string[]
+}
+
 async function runWaitMode(
   spec: ReturnType<typeof validateSpec>,
   name: string,
-  port: number,
-  timeoutMinutes: number,
-  noOpen: boolean,
+  opts: WaitOptions,
 ): Promise<void> {
   let handle: ServeHandle | null = null;
-  let boundUrl = `http://localhost:${port}/`;
+  let boundUrl = `http://localhost:${opts.port}/`;
+  let boundPort = opts.port;
+  // The Orca tab this run opened, closed again on every exit path.
+  let tab: { pageId: string, selector: string } | null = null;
 
-  const onSigint = (): void => {
-    console.error('\n[mkd] interrupted (SIGINT). Stopping server.');
-    handle?.stop();
-    process.exit(130);
+  const releaseTab = async (): Promise<void> => {
+    if (!tab) {
+      return;
+    }
+    const current = tab;
+    tab = null;
+    const closed = await closeOrcaTab({ cmd: opts.orcaCmd, ...current });
+    console.error(closed
+      ? `[mkd] closed the Orca tab ${current.pageId}.`
+      : `[mkd] could not close the Orca tab ${current.pageId}: it now points to a dead server. Close it by hand, or rerun mkd on this spec (same port, so the saved answers come back).`);
   };
+
+  const onSignal = (signal: NodeJS.Signals, code: number): void => {
+    console.error(`\n[mkd] interrupted (${signal}). Stopping server.`);
+    handle?.stop();
+    void releaseTab().finally(() => process.exit(code));
+  };
+  const onSigint = (): void => onSignal('SIGINT', 130);
+  const onSigterm = (): void => onSignal('SIGTERM', 143);
   process.on('SIGINT', onSigint);
+  process.on('SIGTERM', onSigterm);
 
   handle = serve(spec, {
-    port,
-    timeoutMs: timeoutMinutes * 60000,
+    port: opts.port,
+    timeoutMs: opts.timeoutMinutes * 60000,
     render: (normalized, submitToken) =>
       render(normalized, { mode: 'wait', submitToken }),
     onListening: (info) => {
       boundUrl = info.url;
+      boundPort = info.port;
     },
   });
 
-  if (!noOpen) {
+  if (boundPort !== opts.port) {
+    console.error(`[mkd] port ${opts.port} (this deck's stable port) was busy; bound ${boundPort} instead. Answers saved under ${opts.port} will not show on this origin.`);
+  }
+
+  if (opts.opener === 'orca') {
+    const selector = await worktreeSelector(process.cwd());
+    const opened = await openOrcaTab({ cmd: opts.orcaCmd, url: boundUrl, selector });
+    if (opened.ok) {
+      tab = { pageId: opened.pageId, selector };
+      await noteOriginChange(name, `orca@${boundUrl}`);
+      console.error(`[mkd] deck opened in an Orca tab (${selector}, page ${opened.pageId}).`);
+    }
+    else {
+      console.error(`[mkd] could not open the deck in an Orca tab: ${opened.reason}. Opening the system browser instead.`);
+      await noteOriginChange(name, `system@${boundUrl}`);
+      openBrowser(boundUrl);
+    }
+  }
+  else if (opts.opener === 'system') {
+    await noteOriginChange(name, `system@${boundUrl}`);
     openBrowser(boundUrl);
   }
   console.error(`[mkd] open this URL to respond: ${boundUrl}`);
@@ -253,12 +340,15 @@ async function runWaitMode(
   catch (error) {
     if (error instanceof TimeoutError) {
       console.error(`[mkd] ${error.message}`);
+      await releaseTab();
       process.exit(1);
     }
+    await releaseTab();
     throw error;
   }
   finally {
     process.off('SIGINT', onSigint);
+    process.off('SIGTERM', onSigterm);
   }
 
   // Decode any user-pasted images (data URLs in transit) to `~/.mkd/` files
@@ -267,7 +357,7 @@ async function runWaitMode(
   // can Read - never inline base64. Mutates `result`.
   await persistImages(result, name);
 
-  const outPath = join(MKD_HOME, `result-${sanitizeForFilename(name)}.json`);
+  const outPath = resultPath(name);
   try {
     await Bun.write(outPath, `${JSON.stringify(result, null, 2)}\n`);
     console.error(`[mkd] result written to ${outPath}`);
@@ -279,6 +369,10 @@ async function runWaitMode(
 
   // THE single stdout write. Nothing else ever touches stdout.
   process.stdout.write(JSON.stringify(result));
+  if (tab) {
+    await Bun.sleep(DONE_SCREEN_MS);
+    await releaseTab();
+  }
   process.exit(0);
 }
 
@@ -384,9 +478,9 @@ async function persistImageList(
 // HELPERS
 // ============================================================================
 
-function parsePort(raw: string | undefined): number {
+function parsePort(raw: string | undefined): number | undefined {
   if (raw === undefined) {
-    return DEFAULT_PORT;
+    return undefined;
   }
   const value = Number.parseInt(raw, 10);
   if (!Number.isFinite(value) || value <= 0 || value > 65535) {
@@ -411,12 +505,45 @@ function parseTimeout(raw: string | undefined): number {
 /**
  * Derive the deck/result name. A spec named `spec-NAME.json` yields `NAME`
  * (so `~/.mkd/spec-audit.json` -> `~/.mkd/deck-audit.html` +
- * `~/.mkd/result-audit.json`). Otherwise fall back to the short epoch id.
+ * `~/.mkd/result-audit.json`). Otherwise null: the caller falls back to the
+ * short epoch id.
  */
-function deriveName(specPath: string, id: string): string {
+function specNameFromPath(specPath: string): string | null {
   const base = specPath.split(/[/\\]/).pop() ?? specPath;
   const match = /^spec-(.+)\.json$/.exec(base);
-  return match ? match[1] : id;
+  return match ? match[1] : null;
+}
+
+function resultPath(name: string): string {
+  return join(MKD_HOME, `result-${sanitizeForFilename(name)}.json`);
+}
+
+function backupExists(name: string): boolean {
+  return existsSync(resultPath(name));
+}
+
+/**
+ * Browser storage is per origin AND per engine: the same deck opened in the
+ * system browser and in an Orca tab (or as file:// and over loopback) keeps
+ * two sets of answers that never merge. Remember where each deck was last
+ * opened (`~/.mkd/opened-<name>.json`) and say so when this run opens it
+ * somewhere else.
+ */
+async function noteOriginChange(name: string, where: string): Promise<void> {
+  const markerPath = join(MKD_HOME, `opened-${sanitizeForFilename(name)}.json`);
+  try {
+    const marker = Bun.file(markerPath);
+    if (await marker.exists()) {
+      const previous = (await marker.json() as { where?: unknown }).where;
+      if (typeof previous === 'string' && previous !== where) {
+        console.error(`[mkd] note: this deck was last opened at ${previous}; answers saved there do not carry over to ${where}. Keep ONE copy open and close the other.`);
+      }
+    }
+    await Bun.write(markerPath, `${JSON.stringify({ where, at: new Date().toISOString() })}\n`);
+  }
+  catch {
+    // Advisory only - never block the deck on the marker.
+  }
 }
 
 /** Open a URL or a local file path in the default browser, cross-platform. */

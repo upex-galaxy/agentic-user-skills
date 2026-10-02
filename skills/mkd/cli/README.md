@@ -9,13 +9,22 @@ persistence, light/dark theme).
 
 Two modes:
 
-- **copy (default, non-blocking):** render `~/.mkd/deck-<name>.html`, open the
-  browser, exit 0. The user presses **Copy JSON** whenever they finish and
-  pastes the Result into the chat.
-- **`--wait` (blocking):** serve the same page over loopback HTTP, await the
-  browser's `POST /submit` (guarded by a per-run `x-mkd-token`), print the
-  Result JSON to stdout, exit 0. Only this mode supports clipboard-image paste
-  (the server persists the bytes to `~/.mkd/` files).
+- **copy (default outside Orca, non-blocking):** render
+  `~/.mkd/deck-<name>.html`, open the browser, exit 0. The user presses
+  **Copy JSON** whenever they finish and pastes the Result into the chat.
+- **wait (`--wait`, and the default inside Orca):** serve the same page over
+  loopback HTTP, await the browser's `POST /submit` (guarded by a per-run
+  `x-mkd-token`), print the Result JSON to stdout, exit 0. Only this mode
+  supports clipboard-image paste (the server persists the bytes to `~/.mkd/`
+  files).
+
+Inside Orca (`ORCA_TERMINAL_HANDLE` set, or `orca status --json` reports a
+reachable runtime) the wait-mode page opens in a browser tab bound to the
+current worktree (`orca tab create --worktree path:<git toplevel>`), checked
+with `orca tab list` (tab present, `loadError` null), and closed again when the
+run ends. Any failure falls back to the system browser with a stderr note.
+`orca.ts` holds that logic; every spawn goes through an injectable runner so
+`orca.test.ts` covers it without Orca installed.
 
 ## Decoupling guarantee
 
@@ -39,10 +48,11 @@ the skill directory (`.claude/skills/mkd/cli/index.ts` in a consumer repo).
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `<specPath>` | — | **Required** positional. Path to a spec JSON file. |
-| `--wait` | off | Blocking mode: serve + await submit + print Result to stdout. |
-| `--port <n>` | `4747` | `--wait` only. Auto-increments past a busy port (~20 attempts). |
-| `--timeout <min>` | `1440` | `--wait` only. Minutes to wait (fractional ok). No submit → exit 1. |
-| `--no-open` | off | Do not auto-open the browser (path/URL still printed to stderr). |
+| `--wait` | off (on inside Orca) | Blocking mode: serve + await submit + print Result to stdout. |
+| `--copy` | off | Copy mode even inside Orca. Mutually exclusive with `--wait` (exit 2). |
+| `--port <n>` | stable per deck | Wait mode only. Default derived from the deck name in 4747-4946; auto-increments past a busy port (~20 attempts) and says so. |
+| `--timeout <min>` | `1440` | Wait mode only. Minutes to wait (fractional ok). No submit → exit 1. |
+| `--no-open` | off | Open nothing, neither browser nor Orca tab (path/URL still printed to stderr). |
 | `--help` | — | Print usage to stderr and exit 0. |
 
 ## Spec + Result contract (brief)
@@ -83,7 +93,7 @@ authoritative; the server reshapes the browser payload against the spec
 | Code | Meaning |
 | --- | --- |
 | `0` | Copy mode: deck rendered + opened. `--wait`: submitted, Result on stdout. |
-| `1` | `--wait` timeout or a runtime error. SIGINT (Ctrl-C) exits `130`. |
+| `1` | Wait-mode timeout or a runtime error. SIGINT (Ctrl-C) exits `130`, SIGTERM `143`. |
 | `2` | Spec file unreadable, or failed validation (stderr: `[mkd] invalid spec at <path>: …`). |
 
 ## Markdown subset supported
@@ -102,7 +112,9 @@ blockquotes, deep-nested lists.
 
 ```
 skills/mkd/cli/
-  index.ts     # CLI entry: parse args, validate spec, copy mode (render+open+exit) / --wait (serve+await+print)
+  index.ts     # CLI entry: parse args, validate spec, copy mode (render+open+exit) / wait mode (serve+await+print)
+  orca.ts      # Orca detection, worktree selector, stable port, tab open/verify/close (injectable runner)
+  orca.test.ts # bun test: detection, selector, port derivation, mode choice, tab fallback (mocked spawns)
   server.ts    # Bun.serve: GET / -> page | POST /submit -> shape against spec + resolve; token gate, timeout
   render.ts    # builds the full deck HTML (header/rail, one card per item, footer bar, inline CSS+JS+spec)
   schema.ts    # Spec / Item / Result types + hand-rolled validateSpec (source of truth, hard rule lives here)
