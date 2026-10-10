@@ -2,7 +2,7 @@
 /**
  * MKD (`mkd`) - CLI entry point.
  *
- * Two modes:
+ * Three modes:
  *
  * - copy mode (non-blocking; the default OUTSIDE Orca, `--copy` forces it):
  *   read + validate a spec, render the self-contained deck HTML to
@@ -17,10 +17,19 @@
  *   in a browser tab bound to the current worktree (see `orca.ts`), falling
  *   back to the system browser when the tab cannot open or load.
  *
- * STDOUT DISCIPLINE (load-bearing): the ONLY thing ever written to
- * process.stdout in the entire tool is the final result JSON, emitted once
- * here in --wait mode. Everything else - banners, paths, URLs, errors - goes
- * to stderr via console.error. NEVER use console.log (it writes to stdout).
+ * - artifact mode (`--artifact`, Claude Code only): render a claude.ai
+ *   Artifact page fragment to `~/.mkd/artifact-<name>.html`, print its path
+ *   on stdout, open nothing and exit 0. The agent publishes it with its own
+ *   `Artifact` tool (a CLI cannot call harness tools); the page's Send
+ *   button writes the result to the artifact's db and wakes the watching
+ *   session. Never the default: `CLAUDECODE=1` proves the harness, not that
+ *   this session has the Artifact tool, so the agent opts in (SKILL.md).
+ *
+ * STDOUT DISCIPLINE (load-bearing): process.stdout carries exactly one
+ * machine-readable value per run, emitted once: the result JSON in --wait
+ * mode, the fragment path in artifact mode, nothing in copy mode. Everything
+ * else - banners, paths, URLs, errors - goes to stderr via console.error.
+ * NEVER use console.log (it writes to stdout).
  *
  * Exit codes (repo convention): 0 ok | 1 timeout/runtime | 2 spec validation.
  *
@@ -34,7 +43,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { closeOrcaTab, derivePort, detectOrca, openOrcaTab, resolveMode, worktreeSelector } from './orca.ts';
-import { render } from './render.ts';
+import { artifactDocId, render } from './render.ts';
 import { SpecError, validateSpec } from './schema.ts';
 import { serve, TimeoutError } from './server.ts';
 
@@ -55,7 +64,7 @@ interface ParsedArgs {
 
 // Flags that take a value; everything else is boolean and never consumes the
 // next token (so `mkd --no-open <spec>` keeps <spec> as a positional).
-const VALUE_FLAGS = new Set(['port', 'timeout']);
+const VALUE_FLAGS = new Set(['port', 'timeout', 'title-prefix']);
 
 function parseArgs(args: string[]): ParsedArgs {
   const positional: string[] = [];
@@ -111,8 +120,15 @@ DEFAULT MODE
   runtime): wait mode, deck opened in an Orca browser tab bound to the current
   worktree. The CLI BLOCKS until submit - run it in the background.
   Anywhere else: copy mode, system browser, exits immediately.
+  Claude Code with the Artifact tool: pass --artifact (never automatic).
 
 OPTIONS
+  --artifact         Render a claude.ai Artifact page fragment to
+                     ~/.mkd/artifact-<name>.html, print its path on stdout,
+                     open nothing, exit 0. Publish it with the Artifact tool
+                     and capabilities {db: {}, comments: {}}
+  --title-prefix <s> artifact mode: page title becomes "<s> · <spec title>"
+                     (pass the session name)
   --wait             Blocking mode: serve the deck, await the browser submit,
                      print the result JSON to stdout
   --copy             Copy mode even inside Orca: render a static page, open it
@@ -128,6 +144,8 @@ OUTPUT
   copy mode:  writes ~/.mkd/deck-<name>.html and exits 0. Nothing on stdout.
   wait mode:  on submit, writes ~/.mkd/result-<name>.json and prints the result
               JSON to stdout (the ONLY thing on stdout).
+  artifact:   writes ~/.mkd/artifact-<name>.html and prints that path to stdout
+              (the ONLY thing on stdout).
   Banners/paths/errors always go to stderr.
 
 EXIT CODES
@@ -159,12 +177,22 @@ async function main(): Promise<void> {
 
   const wait = getBoolFlag(flags, 'wait');
   const copy = getBoolFlag(flags, 'copy');
+  const artifact = getBoolFlag(flags, 'artifact');
+  const titlePrefix = getFlag(flags, 'title-prefix');
   const explicitPort = parsePort(getFlag(flags, 'port'));
   const timeoutMinutes = parseTimeout(getFlag(flags, 'timeout'));
   const noOpen = getBoolFlag(flags, 'no-open');
 
   if (wait && copy) {
     console.error('[mkd] error: --wait and --copy are mutually exclusive.');
+    process.exit(2);
+  }
+  if (artifact && (wait || copy)) {
+    console.error('[mkd] error: --artifact cannot be combined with --wait or --copy.');
+    process.exit(2);
+  }
+  if (flags['title-prefix'] !== undefined && (!artifact || titlePrefix === undefined)) {
+    console.error('[mkd] error: --title-prefix takes a value and only applies with --artifact.');
     process.exit(2);
   }
 
@@ -196,11 +224,21 @@ async function main(): Promise<void> {
   const specName = specNameFromPath(specPath);
   const name = specName ?? id;
 
+  if (artifact) {
+    // Stable per deck, so a re-run republishes to the same artifact: the spec
+    // name when the file is `spec-<name>.json`, else the session slug.
+    await runArtifactMode(spec, specName ?? spec.session, titlePrefix);
+    return;
+  }
+
   // `--copy` never needs Orca, so it never pays for the detection spawn.
   const orca = copy
     ? { detected: false, via: null, cmd: [] }
     : await detectOrca(process.env, process.platform);
   const choice = resolveMode({ wait, copy, noOpen }, orca.detected);
+  if (process.env.CLAUDECODE === '1') {
+    console.error('[mkd] note: running under Claude Code. If this session has the Artifact tool, --artifact returns the answers through a claude.ai artifact with no copy-paste and no local server (SKILL.md, "Exact invocation — Claude Code (artifact mode)").');
+  }
 
   if (backupExists(name)) {
     console.error(`[mkd] note: a result backup from an earlier submit of this deck exists at ${resultPath(name)} (it is overwritten on the next submit).`);
@@ -251,6 +289,36 @@ async function runCopyMode(
   }
   console.error(`[mkd] deck written to ${pagePath}${open ? ' (opened in the browser)' : ''}`);
   console.error('[mkd] the user answers at their own pace and pastes the copied result JSON into the chat.');
+  process.exit(0);
+}
+
+// ============================================================================
+// ARTIFACT MODE (--artifact, non-blocking, Claude Code)
+// ============================================================================
+
+async function runArtifactMode(
+  spec: ReturnType<typeof validateSpec>,
+  name: string,
+  titlePrefix: string | undefined,
+): Promise<void> {
+  const html = render(spec, { mode: 'artifact', titlePrefix });
+  const pagePath = join(MKD_HOME, `artifact-${sanitizeForFilename(name)}.html`);
+
+  try {
+    await Bun.write(pagePath, html);
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[mkd] error: could not write ${pagePath}: ${message}`);
+    process.exit(1);
+  }
+
+  const docId = artifactDocId(spec.session);
+  console.error(`[mkd] artifact page written to ${pagePath}`);
+  console.error('[mkd] publish it with the Artifact tool: file_path = that path, capabilities = {db: {}, comments: {}}; then arm the watch (ArtifactComments watch).');
+  console.error(`[mkd] on Send the answers land in ArtifactData collection "results", doc_id "${docId}", field "result" (the Result JSON).`);
+  // THE single stdout write in artifact mode.
+  process.stdout.write(`${pagePath}\n`);
   process.exit(0);
 }
 

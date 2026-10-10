@@ -9,12 +9,17 @@
  * then builds the interactive parts (deck navigation, options, controls,
  * textareas, quote chips, JSON panel, submit) at runtime from `window.__MKD__`.
  *
- * Two render modes:
+ * Three render modes:
  * - `copy` (default): a SELF-CONTAINED page written to `~/.mkd/` and opened
  *   from `file://`. No server, no token; the user copies the result JSON into
  *   the chat.
  * - `wait`: the same page served over loopback HTTP with a per-run submit
  *   token; a "Send to Claude" button POSTs the result to `/submit`.
+ * - `artifact`: a claude.ai Artifact page FRAGMENT (title first, no doctype /
+ *   html / head / body / meta: the Artifact tool wraps the page itself). The
+ *   "Send to Claude" button writes the result to the artifact's `db`
+ *   capability and notifies the watching Claude Code session through the
+ *   `comments` capability (see `ui/app.js`).
  *
  * The two vanilla UI assets are inlined as text via Bun import attributes
  * (`with { type: 'text' }`) - a Bun built-in, so this honors the decoupling
@@ -30,9 +35,26 @@ import APP_CSS from './ui/app.css' with { type: 'text' };
 import APP_JS from './ui/app.js' with { type: 'text' };
 
 export interface RenderOptions {
-  mode: 'copy' | 'wait'
+  mode: 'copy' | 'wait' | 'artifact'
   /** Per-run submit token; required (non-empty) in `wait` mode. */
   submitToken?: string
+  /**
+   * `artifact` mode: prepended to the page `<title>` as `<prefix> · <title>`
+   * (the artifact's name in the claude.ai gallery), typically the name of
+   * the session that published it.
+   */
+  titlePrefix?: string
+}
+
+/**
+ * The artifact `db` document id the result is written under: the spec's
+ * `session`, reduced to the characters a db path segment accepts
+ * (letters, digits and `_ - . ~ : @ +`, at most 200 bytes, never `.` or
+ * `..` alone). A typical slug session passes through unchanged.
+ */
+export function artifactDocId(session: string): string {
+  const id = session.replace(/[^\w.~:@+-]/g, '-').slice(0, 200);
+  return id === '.' || id === '..' ? `deck${id}` : id;
 }
 
 // ============================================================================
@@ -263,23 +285,23 @@ export function render(spec: NormalizedSpec, opts: RenderOptions): string {
     .join('\n');
 
   const submitButton
-    = mode === 'wait'
+    = mode !== 'copy'
       ? `\n        <button type="button" class="mkd-bar__btn mkd-bar__btn--primary" id="mkd-submit" disabled>${escapeHtml(spec.submitLabel)}</button>`
       : '';
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${title}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
+  // The artifact page learns the db document it writes to; the copy/wait
+  // script line stays exactly as it always was.
+  const artifactGlobals
+    = mode === 'artifact'
+      ? `window.__MKD_RESULT_DOC__ = ${embedJson(`results/${artifactDocId(spec.session)}`)};`
+      : '';
+
+  const assets = `  <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="${FONTS_HREF}">
-  <style>${APP_CSS}</style>
-</head>
-<body>
-  <main id="mkd-app" data-mode="${mode}">
+  <style>${APP_CSS}</style>`;
+
+  const app = `  <main id="mkd-app" data-mode="${mode}">
     <header class="mkd-header">
       <div class="mkd-brand">
         <span class="mkd-brand__logo" aria-label="MKD - Make Decision">MKD</span>
@@ -343,8 +365,31 @@ ${cards}
     <div class="mkd-rowpop-layer" id="mkd-rowpop-layer"></div>
     <div class="mkd-done" id="mkd-done" hidden>Submitted. You can close this tab.</div>
   </main>
-  <script>window.__MKD__ = ${embedJson(spec)};window.__MKD_MODE__ = ${embedJson(mode)};window.__MKD_TOKEN__ = ${embedJson(submitToken)};</script>
-  <script>${APP_JS}</script>
+  <script>window.__MKD__ = ${embedJson(spec)};window.__MKD_MODE__ = ${embedJson(mode)};window.__MKD_TOKEN__ = ${embedJson(submitToken)};${artifactGlobals}</script>
+  <script>${APP_JS}</script>`;
+
+  if (mode === 'artifact') {
+    // The Artifact tool wraps the page in its own doctype/head/body skeleton
+    // (charset + viewport included) and scans the first 8 KB for the title,
+    // so the fragment opens with it.
+    const prefix = opts.titlePrefix?.trim();
+    const pageTitle = escapeHtml(prefix ? `${prefix} · ${spec.title}` : spec.title);
+    return `<title>${pageTitle}</title>
+${assets}
+${app}
+`;
+  }
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${title}</title>
+${assets}
+</head>
+<body>
+${app}
 </body>
 </html>
 `;
