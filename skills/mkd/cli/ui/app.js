@@ -15,6 +15,11 @@
  *   conversation).
  * - 'wait': served over loopback HTTP. A submit button POSTs the result to
  *   /submit with the per-run token; images are allowed (persisted server-side).
+ * - 'artifact': published as a claude.ai Artifact. The submit button writes
+ *   the result to the artifact's `db` capability (`window.__MKD_RESULT_DOC__`)
+ *   and posts a "Send to Claude" comment through the `comments` capability,
+ *   which wakes the Claude Code session watching the artifact. Image paste is
+ *   disabled (no server to persist the bytes); Copy JSON stays the fallback.
  *
  * Answers persist to localStorage (keyed by spec.session) so closing and
  * reopening the page never loses work. Images are NOT persisted (quota).
@@ -35,8 +40,15 @@
     : { session: '', title: '', submitLabel: 'Send to Claude', items: [] };
 
   const items = Array.isArray(spec.items) ? spec.items : [];
-  const mode = window.__MKD_MODE__ === 'wait' ? 'wait' : 'copy';
+  const mode = window.__MKD_MODE__ === 'wait' || window.__MKD_MODE__ === 'artifact'
+    ? window.__MKD_MODE__
+    : 'copy';
   const submitToken = typeof window.__MKD_TOKEN__ === 'string' ? window.__MKD_TOKEN__ : '';
+  const resultDoc = typeof window.__MKD_RESULT_DOC__ === 'string' ? window.__MKD_RESULT_DOC__ : '';
+  /** wait + artifact: a submit button sends the result; copy mode copies it. */
+  const canSubmit = mode !== 'copy';
+  /** Only wait mode has a server to persist pasted image bytes. */
+  const canPasteImages = mode === 'wait';
 
   const EXPAND_OPEN_CLASS = 'is-open';
   const CUSTOM_KEY = 'CUSTOM';
@@ -572,9 +584,9 @@
     start.addEventListener('click', () => go(0));
     nav.appendChild(start);
 
-    // In --wait mode the intro's closing line should point at the submit
-    // button rather than copy-paste.
-    if (mode === 'wait') {
+    // In --wait / artifact mode the intro's closing line should point at the
+    // submit button rather than copy-paste.
+    if (canSubmit) {
       const finishLine = byId('mkd-legend-finish');
       if (finishLine) {
         finishLine.textContent = `When you are done, press "${spec.submitLabel}" in the footer to send your answers back.`;
@@ -636,7 +648,7 @@
     summaryCard.appendChild(rows);
 
     const legend = el('p', 'mkd-legend');
-    legend.textContent = mode === 'wait'
+    legend.textContent = canSubmit
       ? `Last step: press "${spec.submitLabel}" in the footer. Skipped items stay as "skipped" — decide later, not a rejection.`
       : 'Last step: press "Copy JSON" in the footer and paste it into the chat. Skipped items stay as "skipped" — decide later, not a rejection.';
     summaryCard.appendChild(legend);
@@ -648,7 +660,7 @@
     nav.appendChild(back);
     nav.appendChild(el('span', 'mkd-card__nav-spacer'));
     const cta = el('button', 'mkd-btn mkd-btn--primary', { type: 'button' });
-    if (mode === 'wait') {
+    if (canSubmit) {
       cta.textContent = spec.submitLabel;
       cta.addEventListener('click', () => {
         if (submitBtn) {
@@ -758,7 +770,7 @@
       });
     }
 
-    if (mode === 'wait') {
+    if (canPasteImages) {
       host.appendChild(buildImagesArea({ key: item.id }));
     }
     host.appendChild(buildNoteField(item));
@@ -826,7 +838,7 @@
     }
     host.appendChild(buildQuotesArea(target));
     host.appendChild(buildTextarea(item.text, target, () => openExpand(item.id)));
-    if (mode === 'wait') {
+    if (canPasteImages) {
       host.appendChild(buildImagesArea(target));
     }
     hydrateQuotes(target.key, state[item.id].quotes);
@@ -929,7 +941,7 @@
       closeRowPop();
       openExpand(key);
     }));
-    if (mode === 'wait') {
+    if (canPasteImages) {
       pop.appendChild(buildImagesArea(target));
     }
 
@@ -1333,7 +1345,7 @@
 
     // Paste an image from the clipboard -> capture it as an attachment
     // (--wait mode only; a copy-mode page has no server to persist bytes).
-    if (mode === 'wait') {
+    if (canPasteImages) {
       textarea.addEventListener('paste', event => handleImagePaste(event, target.key));
     }
 
@@ -2077,12 +2089,12 @@
     }
   }
 
-  // ---- --wait submit ----
+  // ---- --wait / artifact submit ----
 
   let submitting = false;
 
   async function submit() {
-    if (mode !== 'wait' || submitting) {
+    if (!canSubmit || submitting) {
       return;
     }
     if (items.some(item => !itemSatisfied(item))) {
@@ -2096,6 +2108,13 @@
 
     const result = buildResult();
     try {
+      if (mode === 'artifact') {
+        const notified = await sendToArtifact(result);
+        showDone(notified
+          ? 'Sent. Claude has your answers and is picking them up.'
+          : 'Saved, but Claude was not notified. Tell Claude in the chat that the deck is answered.');
+        return;
+      }
       const response = await fetch('/submit', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-mkd-token': submitToken },
@@ -2109,7 +2128,9 @@
     catch (error) {
       submitting = false;
       if (submitError) {
-        submitError.textContent = 'Could not submit. Check the terminal is still running and try again.';
+        submitError.textContent = mode === 'artifact'
+          ? artifactErrorMessage(error)
+          : 'Could not submit. Check the terminal is still running and try again.';
         submitError.hidden = false;
       }
       refreshAll();
@@ -2117,8 +2138,65 @@
     }
   }
 
-  function showDone() {
+  /** Thrown when this view cannot run the artifact `db` capability. */
+  const NO_DB = 'mkd:no-db';
+
+  /**
+   * Artifact mode: store the result in the artifact's database, then post a
+   * "Send to Claude" comment so the Claude Code session watching the
+   * artifact wakes up and reads it. Resolves whether Claude was notified;
+   * rejects only when the answers could NOT be saved. The notice is
+   * best-effort: once the db write lands the answers are safe, and Claude
+   * can still be told in the chat.
+   */
+  async function sendToArtifact(result) {
+    const runtime = window.claude;
+    const db = runtime && typeof runtime.use === 'function' ? await runtime.use('db') : null;
+    if (!db || !resultDoc) {
+      throw new Error(NO_DB);
+    }
+    await db.doc(resultDoc).set({
+      session: spec.session || '',
+      submittedAt: result.submittedAt,
+      result: JSON.stringify(result),
+    });
+
+    try {
+      const comments = await runtime.use('comments');
+      if (!comments || (await comments.canSendToClaude()) !== 'available') {
+        return false;
+      }
+      const s = result.stats;
+      const anchor = await comments.anchorFor(submitBtn || document.body);
+      await comments.sendToClaude({
+        anchor,
+        text: `Deck answered: ${s.answered} answered, ${s.skipped} skipped of ${s.total}. Result JSON is in the db document ${resultDoc} (field "result").`,
+      });
+      return true;
+    }
+    catch (error) {
+      console.warn('mkd: could not notify Claude', error);
+      return false;
+    }
+  }
+
+  /** User-facing reason an artifact submit failed (answers NOT saved). */
+  function artifactErrorMessage(error) {
+    if (error instanceof Error && error.message === NO_DB) {
+      return 'Sending is not available in this view. Press "Copy JSON" and paste it into the chat.';
+    }
+    const code = error && typeof error.code === 'string' ? error.code : '';
+    if (code === 'not_granted' || code === 'revoked' || code === 'capability_disabled' || code === 'capability_removed') {
+      return 'Saving is not available in this view. Press "Copy JSON" and paste it into the chat.';
+    }
+    return `Could not save your answers${code ? ` (${code})` : ''}. Try again, or press "Copy JSON" and paste it into the chat.`;
+  }
+
+  function showDone(message) {
     if (doneEl) {
+      if (message) {
+        doneEl.textContent = message;
+      }
       doneEl.hidden = false;
     }
     closeExpand();
@@ -2215,7 +2293,7 @@
         autoGrowExpandInput();
       });
 
-      if (mode === 'wait') {
+      if (canPasteImages) {
         expandInput.addEventListener('paste', (event) => {
           const key = currentExpandKey;
           if (!key) {
@@ -2275,7 +2353,7 @@
       // Cmd/Ctrl+Enter: submit (--wait) or copy the JSON (copy mode).
       if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
         event.preventDefault();
-        if (mode === 'wait') {
+        if (canSubmit) {
           void submit();
         }
         else {
@@ -2319,7 +2397,7 @@
     const modKey = isMacPlatform() ? '\u2318' : 'Ctrl';
     const rows = [
       { action: 'Previous / next screen', keys: ['\u2190', '\u2192'] },
-      { action: mode === 'wait' ? 'Submit answers' : 'Copy the result JSON', keys: [modKey, 'Enter'] },
+      { action: canSubmit ? 'Submit answers' : 'Copy the result JSON', keys: [modKey, 'Enter'] },
       { action: 'Close panel / popover / legend', keys: ['Esc'] },
       { action: 'Quote selected text', keys: ['select', 'quote'] },
       { action: 'Toggle this legend', keys: ['?'] },

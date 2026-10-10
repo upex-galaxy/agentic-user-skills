@@ -176,3 +176,17 @@ The CLI blocks, the footer gains a **Send to Claude** button (label via
 `submitLabel`), stdout carries ONLY the Result JSON, and pasted images come
 back as `~/.mkd/...` file paths. Use it when the next step cannot proceed
 without the answer; otherwise prefer the non-blocking default.
+
+## 5. `--artifact` variant (Claude Code)
+
+Any spec works as a claude.ai artifact too:
+
+```bash
+bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-release-readiness.json --artifact --title-prefix my-session
+# stdout: /Users/<you>/.mkd/artifact-release-readiness.html
+```
+
+Publish that path with the `Artifact` tool and `capabilities: {db: {}, comments: {}}`,
+confirm the watch says **auto-replies armed**, and on the wake-up read
+`ArtifactData` `get` (`collection: "results"`, `doc_id`: the spec's `session`).
+Full steps: `SKILL.md`, "Exact invocation — Claude Code (artifact mode)".
