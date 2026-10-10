@@ -1,6 +1,6 @@
 ---
 name: mkd
-description: "MKD (`mkd` — Make Decision) — a local, browser-based decision-deck CLI the AI drives to collect structured human feedback: decisions with justified options, questions, report reactions and answerable tables, one screen at a time (Slack Catch-Up style). WHEN to use: the AI has MORE THAN ~3 decision points or a long multi-section report/plan that needs the user's verdict point by point. It beats `AskUserQuestion` (capped at ~4 questions × ~4 options, terminal-bound, no rich free-text, cannot show reference content) and beats an inline prose questionnaire (unanchored replies the AI must guess-map back). HOW it works: the AI writes a spec JSON of `items` (`decision` | `question` | `report` | `table`), runs `bun <skill-dir>/cli/index.ts <specPath>` (no install, no binary), and the CLI renders a self-contained deck page under `~/.mkd/`, opens the browser and EXITS immediately — the user answers at their own pace (progress rail, arrow keys, skip = decide later, live stats, localStorage persistence) and pastes the copied Result JSON back into the chat, which the AI treats as the execution contract. Inside Orca (multi-agent IDE) the default changes: the CLI serves the deck, opens it in a browser tab bound to the current worktree and BLOCKS until the user presses Send, then prints the Result JSON on stdout, so the AI must run it in the background (`--copy` restores the copy-paste flow). Add `--wait` outside Orca only when the answer is needed the same turn (blocking loopback server, Result JSON on stdout). HARD RULE: every decision option MUST carry a written justification (value + cost), and the recommended option's justification must state WHY it is recommended — the validator rejects options without one. Triggers on: `mkd`, `make decision`, `decision deck`, `catch-up`, `catchup`, `decision form`, `feedback UI`, `ask me point by point`, `let me answer in the browser`, `review this plan point by point`, `react to each section`, `more than three questions`, `decisiones de auditoría`, `tomar decisiones`. Use this skill even when the user does not say `mkd` — if the task is to collect granular decisions or anchored feedback on many points, this is the right tool. Do NOT use for: a trivial 1-2 option pick or a single yes/no (use `AskUserQuestion`), or any non-interactive / CI / one-shot output where there is no human at a browser."
+description: "MKD (`mkd` — Make Decision) — a local, browser-based decision-deck CLI the AI drives to collect structured human feedback: decisions with justified options, questions, report reactions and answerable tables, one screen at a time (Slack Catch-Up style). WHEN to use: the AI has MORE THAN ~3 decision points or a long multi-section report/plan that needs the user's verdict point by point. It beats `AskUserQuestion` (capped at ~4 questions × ~4 options, terminal-bound, no rich free-text, cannot show reference content) and beats an inline prose questionnaire (unanchored replies the AI must guess-map back). HOW it works: the AI writes a spec JSON of `items` (`decision` | `question` | `report` | `table`), runs `bun <skill-dir>/cli/index.ts <specPath>` (no install, no binary), and the CLI renders a self-contained deck page under `~/.mkd/`, opens the browser and EXITS immediately — the user answers at their own pace (progress rail, arrow keys, skip = decide later, live stats, localStorage persistence) and pastes the copied Result JSON back into the chat, which the AI treats as the execution contract. Inside Orca (multi-agent IDE) the default changes: the CLI serves the deck, opens it in a browser tab bound to the current worktree and BLOCKS until the user presses Send, then prints the Result JSON on stdout, so the AI must run it in the background (`--copy` restores the copy-paste flow). Add `--wait` outside Orca only when the answer is needed the same turn (blocking loopback server, Result JSON on stdout). In Claude Code with the `Artifact` tool, pass `--artifact`: the CLI renders a claude.ai Artifact page, the agent publishes it with `capabilities: {db: {}, comments: {}}` and arms a watch, and the user's Send to Claude wakes the session with the Result in the artifact's db (no localhost, no copy-paste); other harnesses keep the flows above. HARD RULE: every decision option MUST carry a written justification (value + cost), and the recommended option's justification must state WHY it is recommended — the validator rejects options without one. Triggers on: `mkd`, `make decision`, `decision deck`, `catch-up`, `catchup`, `decision form`, `feedback UI`, `ask me point by point`, `let me answer in the browser`, `review this plan point by point`, `react to each section`, `more than three questions`, `decisiones de auditoría`, `tomar decisiones`, `mkd artifact`, `answer in a claude.ai artifact`. Use this skill even when the user does not say `mkd` — if the task is to collect granular decisions or anchored feedback on many points, this is the right tool. Do NOT use for: a trivial 1-2 option pick or a single yes/no (use `AskUserQuestion`), or any non-interactive / CI / one-shot output where there is no human at a browser."
 license: MIT
 compatibility: [claude-code, opencode, cursor, codex]
 allowed-tools: Bash(bun:*), Bash(command:*)
@@ -17,6 +17,7 @@ This skill needs **no install step**: there is no compiled binary and nothing ad
 
 ```bash
 bun "<skill-dir>/cli/index.ts" <specPath> [--wait | --copy] [--no-open] [--port <n>] [--timeout <min>]
+bun "<skill-dir>/cli/index.ts" <specPath> --artifact --title-prefix <session-name>   # Claude Code only
 ```
 
 `<skill-dir>` is this skill's install directory:
@@ -97,6 +98,32 @@ When authoring `decision` items:
 
 Full contract (every field, defaults, validation rules) → `references/schema.md`. Worked copy-pasteable specs → `references/examples.md`.
 
+## Which flow to use: by harness
+
+Pick the flow from the harness you are running in. Artifact mode needs the `Artifact`, `ArtifactData` and `ArtifactComments` tools, which only Claude Code has (and only when the session is signed in to claude.ai). The CLI cannot call those tools, so it never picks artifact mode by itself: you opt in with `--artifact` and publish the page yourself.
+
+| Harness | Flow | How |
+| --- | --- | --- |
+| **Claude Code** with the `Artifact` tool in its tool list | **artifact mode** | `--artifact --title-prefix <session-name>`, then publish + watch (steps below) |
+| Claude Code without the `Artifact` tool (not signed in to claude.ai: API key, Bedrock, Vertex), or a subagent / print session (it cannot hold a watch) | the flows for other harnesses | as below |
+| OpenCode, Cursor, Codex, any other | Orca tab inside Orca, else copy mode; `--wait` for a same-turn answer | see "Which flow runs: Orca or not" |
+
+Claude Code sets `CLAUDECODE=1` in the shells it runs. That proves the harness, not that this session has the `Artifact` tool, so the CLI only prints a one-line stderr hint when it sees it and keeps its usual default. Check your own tool list instead.
+
+## Exact invocation — Claude Code (artifact mode)
+
+The user answers inside a claude.ai artifact. **Send to Claude** saves the Result JSON in the artifact's database and posts a comment addressed to Claude, which wakes this session. Nothing runs on localhost and there is nothing to copy.
+
+1. **Write the spec** to `~/.mkd/spec-<name>.json`, then **run**:
+   `bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-<name>.json --artifact --title-prefix <session-name>`.
+   The session name is the first line of `ListAgents` ("This session is …") or the terminal title. The CLI validates the spec, writes `~/.mkd/artifact-<name>.html` (a page fragment: `<title>` first, no doctype/html/head/body), prints **only that path on stdout**, opens nothing and exits 0. stderr names the db document the answer will land in. Exit 2 = bad spec, as always.
+2. **Publish** it with the `Artifact` tool: `file_path` = the printed path, an `icon` (e.g. `checklist`), a one-line `description`, and `capabilities: {db: {}, comments: {}}`. Give the user the link.
+3. **Confirm the watch**: `ArtifactComments` with `action: "watch"` and no `url` lists this session's watches. The artifact's row must say **auto-replies armed**; if it does not, call `watch` with its `url`. Only an armed watch lets the Send wake this session. Then end the turn or keep working; do not poll.
+4. **On wake-up** (a comment sent to Claude on that artifact): `ArtifactData` `action: "get"`, `collection: "results"`, `doc_id`: the spec's `session` (stderr printed the exact id; characters a db path rejects become `-`). The `result` field is the Result JSON string: parse it and treat it as the execution contract, exactly as in copy mode. Reply to the comment thread with what you will do and resolve it (`ArtifactComments` `reply`, then `resolve`).
+5. **To fix the deck**, edit the spec, re-run the same command and publish the same `file_path` again (or pass the artifact `url` from another conversation): the URL stays, and saved answers persist because browser storage belongs to the artifact.
+
+If the page shows "Sending is not available in this view" (the viewer lacks the `db` grant, e.g. someone with view-only access), the user can still press **Copy JSON** and paste it into the chat. If the answers saved but the notice failed ("Saved, but Claude was not notified"), the user tells you in the chat and you read the db document as in step 4. Image paste is off in artifact mode (no server to store the bytes).
+
 ## Which flow runs: Orca or not
 
 The CLI checks for Orca before it opens anything. Orca counts as present when `ORCA_TERMINAL_HANDLE` is set (the process runs in an Orca-managed terminal) or when `orca status --json` reports a reachable runtime. The executable is resolved the way Orca's own `orca-cli` skill does it: `ORCA_CLI_COMMAND`, then `orca-dev` in an Orca dev checkout, then `orca-ide` on Linux outside a managed terminal (bare `orca` there is usually the GNOME screen reader), then `orca`. A failed check counts as "no Orca" and prints nothing.
@@ -169,6 +196,7 @@ Exit codes and absence protocol (`--wait` and the Orca flow):
 }
 ```
 
+- Artifact mode: the same object, stored as a JSON string in the `result` field of `results/<session>` (next to `session` and `submittedAt`). Like copy mode, it is built by the page and not reshaped by a server.
 - `controlAnswer` decodes by control type: `single` → `string|null`, `multi` → `string[]`, `toggle` → `boolean`.
 - `quotes` are exact phrases the user highlighted from that item's content (or that row's cells) — weight them when interpreting `text`.
 - Match `items[].id` (and `rows[].id`) back to the ids you authored to anchor every answer.

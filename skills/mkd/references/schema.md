@@ -2,7 +2,7 @@
 
 The authoritative source is `../cli/schema.ts` (`validateSpec` + the exported types). This reference mirrors it. If the two ever disagree, the TypeScript wins.
 
-There are two shapes: the **Spec** the AI writes (input), and the **Result** the browser returns (output — pasted into the chat in copy mode, printed to stdout in `--wait` mode). In between, `validateSpec` produces a `NormalizedSpec` (every default filled) which the UI renders — the AI never writes the normalized form directly.
+There are two shapes: the **Spec** the AI writes (input), and the **Result** the browser returns (output — pasted into the chat in copy mode, printed to stdout in `--wait` mode, stored in the artifact database in `--artifact` mode). In between, `validateSpec` produces a `NormalizedSpec` (every default filled) which the UI renders — the AI never writes the normalized form directly.
 
 ---
 
@@ -16,7 +16,7 @@ There are two shapes: the **Spec** the AI writes (input), and the **Result** the
 | `source` | `string` | no | Pointer to the artifact the deck was derived from. Echoed in the result. |
 | `title` | `string` | yes | Non-empty. Page title + header brand line. |
 | `intro` | `SpecIntro` | no | The intro screen. Omit → the intro shows just `title` + the how-it-works legend. |
-| `submitLabel` | `string` | no | CTA label for the `--wait` submit button. Default `"Send to Claude"`. |
+| `submitLabel` | `string` | no | CTA label for the submit button (`--wait` and `--artifact`). Default `"Send to Claude"`. |
 | `items` | `Item[]` | yes | Non-empty array. One item = one screen. |
 
 ### `SpecIntro`
@@ -109,7 +109,7 @@ Each row's answer lives behind a compact "Answer" button that opens a popover (c
 
 ## Result (output)
 
-Copy mode: the user pastes this JSON into the chat. `--wait` mode: printed to stdout (the ONLY thing on stdout) + backed up to `~/.mkd/result-<name>.json`. In `--wait` mode the server reshapes the payload against the SPEC (unknown items dropped, statuses and stats recomputed), so the stdout copy is authoritative.
+Copy mode: the user pastes this JSON into the chat. `--wait` mode: printed to stdout (the ONLY thing on stdout) + backed up to `~/.mkd/result-<name>.json`. In `--wait` mode the server reshapes the payload against the SPEC (unknown items dropped, statuses and stats recomputed), so the stdout copy is authoritative. `--artifact` mode: the page writes the db document `results/<session>` (`<session>` with characters a db path rejects replaced by `-`) as `{ session, submittedAt, result }`, where `result` is this object as a JSON string; like copy mode it is built by the page, not reshaped by a server, and it never carries `images`.
 
 ### `Result`
 
@@ -200,8 +200,8 @@ Item level: not an object; `id` missing/empty/**duplicated**; `type` not one of 
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Copy mode: deck rendered + opened. `--wait`: submitted, Result JSON on stdout. |
+| 0 | Copy mode: deck rendered + opened. `--wait`: submitted, Result JSON on stdout. `--artifact`: fragment written, its path on stdout. |
 | 1 | `--wait` timeout (user away) or a runtime error. SIGINT exits 130. |
 | 2 | Spec file unreadable or failed validation. |
 
-stdout discipline: **only** the `--wait` Result JSON is ever written to stdout. Banners, paths, URLs and errors all go to stderr.
+stdout discipline: **only** the `--wait` Result JSON, or the `--artifact` fragment path, is ever written to stdout. Banners, paths, URLs and errors all go to stderr.

@@ -12,6 +12,10 @@ install step, no compiled binary, nothing added to PATH**.
   `orca status --json` reports a reachable runtime) the default flow opens the
   deck in a worktree-bound Orca tab and blocks until submit. Nothing to
   configure; `--copy` opts out. See `SKILL.md`, "Which flow runs".
+- **Claude Code with the `Artifact` tool** is optional too. `--artifact` renders
+  a page the agent publishes as a claude.ai artifact; the answers come back
+  through the artifact's database and a comment that wakes the session. See
+  `SKILL.md`, "Which flow to use: by harness".
 
 ## How the AI runs it
 
@@ -37,6 +41,7 @@ Everything the tool writes lands under `~/.mkd/`:
 | --- | --- |
 | `spec-<name>.json` | The spec the AI writes (convention, keeps the repo clean). |
 | `deck-<name>.html` | The rendered self-contained deck page (copy mode). |
+| `artifact-<name>.html` | The artifact page fragment the agent publishes (`--artifact`). `<name>` falls back to `session`, so re-runs republish to the same artifact. |
 | `result-<name>.json` | Result backup (wait mode: `--wait` or the Orca flow). |
 | `<name>-img-*.{png,jpg,…}` | Pasted images persisted to disk (wait mode). |
 | `opened-<name>.json` | Where the deck was last opened (origin + browser), used to warn before the answers split across two copies. |
