@@ -1,4 +1,4 @@
-# CLAUDE.md — AI Persistent Memory · `agentic-user-skills`
+# AGENTS.md — AI Persistent Memory · `agentic-user-skills`
 
 > AI memory. Loads EVERY session. This repo is a **monorepo of user-level agentic skills** — skills
 > that improve the *user's* experience across ANY repo and ANY coding agent (Claude Code, OpenCode,
