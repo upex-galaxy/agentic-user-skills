@@ -1,0 +1,3 @@
+interface:
+  display_name: Humanizer
+  short_description: Remove AI writing patterns from text a person will read.
