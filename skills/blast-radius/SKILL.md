@@ -1,6 +1,7 @@
 ---
 name: blast-radius
 description: Blast radius of a change, with its one safety fact proven by running code. Use when asked what a change could break; reviewing a small diff you don't trust.
+license: MIT
 metadata:
   author: UPEX Galaxy
 ---
@@ -38,7 +39,7 @@ Step 4 is usually one small script that imports the same library the app ships a
 5. Prove the one fact. Write a script or test that runs the real code, run it, and paste what happened.
 6. For a big or wide change, ask more than one model the same question (subagents on different model families, when the harness offers them) and merge the answers. Different models catch different real bugs.
 
-Nobody may be at the keyboard. This skill never needs a person: when a fact stays unproven, write `unproven` and say what would prove it.
+Nobody may be at the keyboard. This skill never needs a person. When a fact stays unproven, write `unproven` and say what would prove it.
 
 ## What to hand back
 

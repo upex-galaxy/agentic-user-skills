@@ -1,6 +1,7 @@
 ---
 name: technical-writing
-description: Technical-writing standard (Diátaxis modes, Google developer style, STE, Global English). Use when writing or reviewing docs, RFCs, READMEs, PR descriptions or commit messages.
+description: Technical-writing standard for docs. Use when writing or reviewing docs, RFCs, READMEs, PR descriptions or commit messages.
+license: MIT
 metadata:
   author: UPEX Galaxy
 ---

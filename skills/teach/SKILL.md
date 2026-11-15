@@ -3,6 +3,7 @@ name: teach
 description: Learn a new skill or concept over several sessions in a guided teaching workspace.
 disable-model-invocation: true
 argument-hint: "What would you like to learn about?"
+license: MIT
 metadata:
   author: UPEX Galaxy
 ---
@@ -145,6 +146,6 @@ Glossaries, in particular, are an essential reference. Once one is created, it s
 
 The user will sometimes express preferences of how they want to be taught, or things you should keep in mind. This is the place to record those preferences, so you can refer back to them when designing lessons or working with the user.
 
-## When nobody is at the keyboard
+## With nobody at the keyboard
 
 A person starts a teaching workspace, because a lesson needs a learner who answers. When an agent with no person present reaches a need to teach (a worker, a routine, a skill that wants a learner brought up to speed), do not start a lesson series. Write the mission questions into `NOTES.md`, add the source links you found to `RESOURCES.md`, report that the workspace waits for a learner, and continue with the rest of the run. The learner then runs `/teach` to begin.

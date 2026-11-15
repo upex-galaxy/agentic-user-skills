@@ -1,6 +1,7 @@
 ---
 name: humanizer
-description: Remove AI writing patterns from text. Use when writing or editing text a person will read (message, post, document, README, reply); asked to humanize or clean up a draft.
+description: Remove AI writing patterns from text. Use when writing or editing text a person will read; asked to humanize or clean up a draft.
+license: MIT
 metadata:
   author: UPEX Galaxy
 ---

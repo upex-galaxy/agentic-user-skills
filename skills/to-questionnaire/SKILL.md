@@ -1,6 +1,7 @@
 ---
 name: to-questionnaire
 description: Turn a decision you can't fully answer into a questionnaire for someone else to fill in.
+license: MIT
 metadata:
   author: UPEX Galaxy
 ---
@@ -58,6 +59,6 @@ A closing catch-all: anything we didn't ask that we should know?
 
 </questionnaire-template>
 
-## When nobody is at the keyboard
+## With nobody at the keyboard
 
 An agent with no person to interview (a worker, a routine, a skill that loaded this one with the recipient and the gap already named) skips steps 1 and 2. Take the recipient and the needed facts from the brief or the ticket. Where either is missing, state your assumption in one line under **Purpose**, then write the file as step 3 says, report the path and the assumption, and continue. A person who started the skill gets the interview.

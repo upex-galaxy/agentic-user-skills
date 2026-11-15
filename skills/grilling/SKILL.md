@@ -1,6 +1,7 @@
 ---
 name: grilling
-description: Grill the user relentlessly about a plan, decision, or idea. Use when stress-testing a plan, decision or idea; any 'grill' request.
+description: Grill the user relentlessly about a plan, decision, or idea. Use when stress-testing one; any 'grill' request.
+license: MIT
 metadata:
   author: UPEX Galaxy
 ---

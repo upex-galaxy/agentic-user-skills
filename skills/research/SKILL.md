@@ -1,6 +1,7 @@
 ---
 name: research
 description: Investigate a question against primary sources and save cited findings to a repo file. Use when a topic needs researching; docs or API facts need gathering; reading legwork should go to a background agent.
+license: MIT
 metadata:
   author: UPEX Galaxy
 ---

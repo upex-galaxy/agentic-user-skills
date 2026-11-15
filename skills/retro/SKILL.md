@@ -1,6 +1,7 @@
 ---
 name: retro
 description: Retrospective on a coding session that proposes improvements to the agent's environment.
+license: MIT
 metadata:
   author: UPEX Galaxy
 ---
@@ -29,7 +30,7 @@ A **retrospective** has been requested, by the user or by a skill that loaded th
 
 4. Rank the candidates by severity and deliver them.
 
-   - A person started this: present the candidates to them in that order.
+   - A person started this. Present the candidates to them in that order.
    - Nobody is at the keyboard (a worker, a routine, a subagent): write the ranked candidates to a file in the run's notes, say its path in your report, and apply none of them. The launcher decides.
 
 Done when every category above has been checked against the session and each candidate names the file or check it would change.

@@ -1,6 +1,7 @@
 ---
 name: diagnosing-bugs
 description: Diagnosis loop for hard bugs and performance regressions. Use when asked to diagnose or debug; something is broken, throwing, failing or slow.
+license: MIT
 metadata:
   author: UPEX Galaxy
 ---
@@ -13,7 +14,7 @@ A discipline for hard bugs. Skip phases only when explicitly justified.
 
 When exploring the codebase, read the project's glossary or domain docs (if any exist) to get a clear mental model of the relevant modules, and check the decision records (ADRs) in the area you're touching.
 
-Nobody may be at the keyboard (a worker, a scheduled routine, a subagent). Each step that would wait for a person has an **Unattended** line beside it: write the question or finding in the run's notes, take the safe path it names, say so in the report, and continue.
+A worker, a scheduled routine or a subagent may run this with nobody at the keyboard (the other skills keep that path under `## With nobody at the keyboard`). Each step that would wait for a person has an **Unattended** line beside it: write the question or finding in the run's notes, take the safe path it names, say so in the report, and continue.
 
 ## Redact
 

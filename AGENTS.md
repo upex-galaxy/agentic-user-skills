@@ -83,8 +83,9 @@ full context, no fix without approval.
 agentic-user-skills/
   skills/
     <skill-name>/
-      SKILL.md            # frontmatter (name, description, license, compatibility, allowed-tools,
-                          #   complementary_categories) + when/what/how + a first-run SETUP section
+      SKILL.md            # frontmatter (name, description; license, compatibility, allowed-tools,
+                          #   complementary_categories when the skill bundles a CLI) + when/what/how
+                          #   + a first-run SETUP section when the skill needs setup
       references/         # deep docs loaded on demand (schema, examples, setup)
       cli/                # OPTIONAL bundled CLI — decoupled, zero-dep (see Critical Rule #8)
         index.ts … ui/
@@ -131,8 +132,8 @@ self-contained CLI. Keep each skill independently extractable.
 | `mkd` (no binary — `bun cli/index.ts`) | **MKD (Make Decision)** — a browser-based **decision-deck CLI**, successor of `wokitoki`/`toki` fused with the Catch-Up prototype. The AI writes a spec of `items` (`decision` \| `question` \| `report` \| `table`); the CLI renders a one-screen-per-item deck (progress rail, intro + summary, skip = decide later, live stats, localStorage persistence, verdigris+amber light/dark skin, MKD wordmark). **Default = non-blocking copy-paste**: render `~/.mkd/deck-<name>.html`, open browser, exit 0; the user pastes the Result JSON into the chat as the execution contract. `--wait` keeps the blocking loopback handshake (Result JSON on stdout; only mode with image paste). **Inside Orca** (`ORCA_TERMINAL_HANDLE` or a reachable `orca status`) the default is wait mode in a worktree-bound Orca tab, stable per-deck port, tab closed on exit; `--copy` opts out; the agent runs it in the background. **In Claude Code** (opt-in, never automatic) `--artifact` renders a claude.ai Artifact fragment (`~/.mkd/artifact-<name>.html`, path on stdout); the agent publishes it with `capabilities: {db, comments}` and a watch, and Send writes `results/<session>` + `comments.sendToClaude`. **Hard rule (validator-enforced)**: every decision option carries a written `justification`; max 1 `recommended` per decision and its justification states the why. | **v2** |
 | `humanizer` (no binary) | Strips AI writing patterns from text a person will read: messages, posts, documents, READMEs. Adapted from upstream (MIT, original `LICENSE` kept in the folder). | Active |
 | `writing-for-agents` (no binary) | Rules for writing skills and instruction files that agents follow: pointers, the two loads, a no-op test, positive prompting. Adapted from upstream (MIT, original `LICENSE` kept in the folder). | Active |
-| `technical-writing` (no binary) | A docs standard: Diataxis modes, Google developer style, Simplified Technical English. Covers docs, RFCs, READMEs, PR descriptions and commit messages. Adapted from upstream (MIT, original `LICENSE` kept in the folder). | Active |
-| `grill-me` (no binary) | Manual. A relentless interview that sharpens a plan or design, one question at a time. Adapted from upstream (MIT, original `LICENSE` kept in the folder). | Active |
+| `technical-writing` (no binary) | A docs standard: Diátaxis modes, Google developer style, Simplified Technical English. Covers docs, RFCs, READMEs, PR descriptions and commit messages. Adapted from upstream (MIT, original `LICENSE` kept in the folder). | Active |
+| `grill-me` (no binary) | Manual. A relentless interview that sharpens a plan or design, in rounds of numbered questions. Adapted from upstream (MIT, original `LICENSE` kept in the folder). | Active |
 | `grilling` (no binary) | The interview loop other skills call: asks until the plan or decision holds up. Adapted from upstream (MIT, original `LICENSE` kept in the folder). | Active |
 | `grill-with-docs` (no binary) | Manual. The same interview, but it also writes the glossary and ADRs as decisions settle. Adapted from upstream (MIT, original `LICENSE` kept in the folder). | Active |
 | `domain-modeling` (no binary) | Builds and sharpens a project's domain model: terminology, glossary, ADRs. Adapted from upstream (MIT, original `LICENSE` kept in the folder). | Active |

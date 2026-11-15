@@ -1,6 +1,7 @@
 ---
 name: show-me-your-work
 description: Decision trail for long-running or unattended work, as a TSV log with one row per decision. Use when running autonomous or multi-phase work; work a person reviews after stepping away.
+license: MIT
 metadata:
   author: UPEX Galaxy
 ---
@@ -57,7 +58,7 @@ Commit it only when the work is ambitious enough that a reviewer needs the trail
 
 ## Audit the log against the transcript
 
-At the end of the run, before handing back, check the log told the truth. Read this run's own transcript or session log, at the path your harness names. Never glob across other projects' transcripts: that reads unrelated private chats. If the harness keeps no transcript, audit against the git history and the artifacts the rows point to. Walk this run's rows against what actually happened. Each stretch of them begins at one of this run's `start` rows, or at the first row if this run created the log, and ends at the next `start` row of another run:
+At the end of the run, before handing back, check the log told the truth. Read this run's own transcript or session log, at the path your harness names. Never glob across other projects' transcripts. That reads unrelated private chats. If the harness keeps no transcript, audit against the git history and the artifacts the rows point to. Walk this run's rows against what actually happened. Each stretch of them begins at one of this run's `start` rows, or at the first row if this run created the log, and ends at the next `start` row of another run:
 
 - Check that every row maps to a real decision or action.
 - Check that each row's evidence resolves and shows what the row claims.
