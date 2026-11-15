@@ -11,6 +11,21 @@
       "title": "Evaluation",
       "description": "Skills that judge a body of work and produce a defensible, shareable verdict.",
       "skills": ["agentic-audit"]
+    },
+    {
+      "title": "Writing",
+      "description": "Skills that make text read well for people and for agents.",
+      "skills": ["humanizer", "writing-for-agents", "technical-writing"]
+    },
+    {
+      "title": "Thinking and planning",
+      "description": "Skills that sharpen a plan, a decision or a mental model before work starts.",
+      "skills": ["grill-me", "grilling", "grill-with-docs", "domain-modeling", "to-questionnaire", "teach", "wait-what"]
+    },
+    {
+      "title": "Engineering",
+      "description": "Skills for investigating, diagnosing and reviewing work, including unattended runs.",
+      "skills": ["research", "diagnosing-bugs", "blast-radius", "show-me-your-work", "retro", "wizard"]
     }
   ]
 }

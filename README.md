@@ -14,12 +14,37 @@ bunx skills add --global https://github.com/upex-galaxy/agentic-user-skills mkd
 
 A user-level skill loads automatically in every project — no per-repo wiring.
 
+Install any other skill the same way, swapping the last word for its name:
+
+```bash
+bunx skills add --global https://github.com/upex-galaxy/agentic-user-skills humanizer
+bunx skills add --global https://github.com/upex-galaxy/agentic-user-skills grill-me
+```
+
+Skills marked Manual only run when you type their command. Each adapted skill keeps its original MIT `LICENSE` file and a `Source:` line under its title.
+
 ## Skills
 
 | Skill | Command | What it is |
 | --- | --- | --- |
 | [`agentic-audit`](skills/agentic-audit/SKILL.md) | — | An **evidence-based project auditor**: reads a whole repo (git history, context artifacts, agent config, tracker mirror, tests, CI) and drives the live app, then scores six axes 0-5 and writes a self-contained HTML evaluation. Two modes: `subject` (`dev` \| `qa` \| `pair`) picks the rubric, `lens` (`external` \| `internal`) picks the register and deliverable. Read-only on the target. |
 | [`mkd`](skills/mkd/SKILL.md) | `bun cli/index.ts` (no install) | **MKD (Make Decision)** — a browser-based **decision-deck CLI**: the AI writes a spec of items (decision / question / report / answerable table) and the CLI renders a Catch-Up-style deck — one screen per item, options with **written justifications**, a ★ recommended badge, custom option, skip, quotes, live stats, localStorage persistence. Default flow is non-blocking copy-paste (the user pastes the Result JSON into the chat as the execution contract); `--wait` keeps a blocking same-turn handshake. Inside Orca the deck opens in a worktree-bound tab and **Send to Claude** returns the Result on stdout, with no copy step (`--copy` opts out). In Claude Code, `--artifact` renders the deck as a claude.ai artifact the agent publishes: **Send to Claude** stores the Result in the artifact's database and wakes the session, with no localhost and no copy step. Successor of `wokitoki`/`toki`. |
+| [`humanizer`](skills/humanizer/SKILL.md) | — | Strips AI writing patterns from text a person will read: messages, posts, documents, READMEs. Upstream: Lauren Tan, `unslop` in [cursor/plugins](https://github.com/cursor/plugins) (`pstack/`). MIT. |
+| [`writing-for-agents`](skills/writing-for-agents/SKILL.md) | — | Rules for writing skills and instruction files that agents follow: pointers, the two loads, a no-op test, positive prompting. Upstream: Matt Pocock, [mattpocock/skills](https://github.com/mattpocock/skills). MIT. |
+| [`technical-writing`](skills/technical-writing/SKILL.md) | — | A docs standard: Diataxis modes, Google developer style, Simplified Technical English. Covers docs, RFCs, READMEs, PR descriptions and commit messages. Upstream: Lauren Tan, [cursor/plugins](https://github.com/cursor/plugins) (`pstack/`). MIT. |
+| [`grill-me`](skills/grill-me/SKILL.md) | `/grill-me` | Manual. A relentless interview that sharpens a plan or design, one question at a time. Upstream: Matt Pocock. MIT. |
+| [`grilling`](skills/grilling/SKILL.md) | — | The interview loop other skills call: asks until the plan or decision holds up. Upstream: Matt Pocock. MIT. |
+| [`grill-with-docs`](skills/grill-with-docs/SKILL.md) | `/grill-with-docs` | Manual. The same interview, but it also writes the glossary and ADRs as decisions settle. Upstream: Matt Pocock. MIT. |
+| [`domain-modeling`](skills/domain-modeling/SKILL.md) | — | Builds and sharpens a project's domain model: terminology, glossary, ADRs. Upstream: Matt Pocock. MIT. |
+| [`teach`](skills/teach/SKILL.md) | `/teach` | Manual. Guided learning of a new skill or concept over several sessions, in a teaching workspace. Upstream: Matt Pocock. MIT. |
+| [`wait-what`](skills/wait-what/SKILL.md) | `/wait-what` | Manual. Use it when the last message did not land: the agent re-pitches it. Upstream: Matt Pocock. MIT. |
+| [`to-questionnaire`](skills/to-questionnaire/SKILL.md) | — | Turns a decision you cannot fully answer into a questionnaire for someone else to fill in. Upstream: Matt Pocock. MIT. |
+| [`research`](skills/research/SKILL.md) | — | Investigates a question against primary sources and saves cited findings to a repo file. Upstream: Matt Pocock. MIT. |
+| [`retro`](skills/retro/SKILL.md) | — | Retrospective on a coding session that proposes improvements to the agent's environment. Upstream: Matt Pocock. MIT. |
+| [`diagnosing-bugs`](skills/diagnosing-bugs/SKILL.md) | — | A diagnosis loop for hard bugs and performance regressions, built around a feedback loop you can run. Upstream: Matt Pocock. MIT. |
+| [`blast-radius`](skills/blast-radius/SKILL.md) | — | Finds what a change could break and proves its one safety fact by running code. Upstream: Lauren Tan, [cursor/plugins](https://github.com/cursor/plugins) (`pstack/`). MIT. |
+| [`show-me-your-work`](skills/show-me-your-work/SKILL.md) | — | A decision trail for long or unattended work: a TSV log with one row per decision. Upstream: Lauren Tan, [cursor/plugins](https://github.com/cursor/plugins) (`pstack/`). MIT. |
+| [`wizard`](skills/wizard/SKILL.md) | — | Generates an interactive bash wizard for steps only a human can do: credentials, dashboards, CI secrets. Upstream: Matt Pocock. MIT. |
 
 ## Plugins (Claude Code)
 
