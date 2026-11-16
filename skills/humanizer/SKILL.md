@@ -70,3 +70,5 @@ Rule numbers are stable ids that other skills cite. A removed rule leaves a gap.
 In Spanish text, write only the closing ? and !. Never write the opening ¿ or ¡.
 
 Reply in the language the user writes in.
+
+Parentheses are allowed for a real aside or pause. Rule 13 still bans em dashes and en dashes.
