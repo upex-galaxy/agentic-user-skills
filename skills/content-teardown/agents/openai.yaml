@@ -1,0 +1,3 @@
+interface:
+  display_name: Content Teardown
+  short_description: Take video, reel and carousel links apart into readable layers

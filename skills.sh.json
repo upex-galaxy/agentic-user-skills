@@ -23,6 +23,11 @@
       "skills": ["grill-me", "grilling", "grill-with-docs", "domain-modeling", "to-questionnaire", "teach", "wait-what"]
     },
     {
+      "title": "Content",
+      "description": "Skills that turn work, links and topics into material a content agent can use.",
+      "skills": ["content-brief", "content-teardown"]
+    },
+    {
       "title": "Engineering",
       "description": "Skills for investigating, diagnosing and reviewing work, including unattended runs.",
       "skills": ["research", "diagnosing-bugs", "blast-radius", "show-me-your-work", "retro", "wizard"]

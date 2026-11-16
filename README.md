@@ -45,6 +45,8 @@ Skills marked Manual only run when you type their command. Each adapted skill ke
 | [`blast-radius`](skills/blast-radius/SKILL.md) | — | Finds what a change could break and proves its one safety fact by running code. Upstream: Lauren Tan, [cursor/plugins](https://github.com/cursor/plugins) (`pstack/`). MIT. |
 | [`show-me-your-work`](skills/show-me-your-work/SKILL.md) | — | A decision trail for long or unattended work: a TSV log with one row per decision. Upstream: Lauren Tan, [cursor/plugins](https://github.com/cursor/plugins) (`pstack/`). MIT. |
 | [`wizard`](skills/wizard/SKILL.md) | — | Generates an interactive bash wizard for steps only a human can do: credentials, dashboards, CI secrets. Upstream: Matt Pocock. MIT. |
+| [`content-brief`](skills/content-brief/SKILL.md) | — | Writes a factual **content source document** for a social-content agent: a story-shaped markdown file where every number is labelled with its origin, discrepancies are resolved, private data is scrubbed, and hooks, angles, metaphors and a glossary close it. Produces the source, never the posts. Ships a checker script. Own skill. MIT. |
+| [`content-teardown`](skills/content-teardown/SKILL.md) | `/content-teardown` | Takes video, reel, carousel and post links apart into layers an agent can read: metadata, transcript, mp4, frames, sound timeline, slides and caption. Writes to `~/.content-teardown/`. Python 3 standard library only; needs `yt-dlp`, `ffmpeg` and, per level, `whisper-cli`, `gallery-dl`, `earshot`, the `watch` skill and `playwright-cli`. Own skill. MIT. |
 
 ## Plugins (Claude Code)
 
@@ -103,6 +105,7 @@ agentic-user-skills/
 ## Conventions
 
 - **Decoupled CLIs.** Any bundled CLI imports **runtime built-ins only** (Bun / `node:` built-ins) — zero external npm deps, relative imports only. This is what lets a skill travel via `bunx skills add` and stay independently extractable.
+- **Python exception.** `content-teardown` bundles one Python 3 script (standard library only, no pip install) because its job is to orchestrate `yt-dlp`, `ffmpeg` and `gallery-dl`. Bun stays the rule for any CLI that ships TypeScript.
 - **Zero host footprint.** A bundled tool writes its output (caches, results, artifacts) under the user's home (e.g. `~/.mkd/`), never the consumer repo's cwd.
 - **Plugins fail silent.** A plugin hook runs on every turn, so it must never interrupt the session. Any failure path — missing config, dead endpoint, absent dependency — exits 0 without output.
 - **Plugins declare their compatibility.** Each plugin's README carries an OS table and an agent table, marking what is *tested* apart from what is merely *expected to work*.
