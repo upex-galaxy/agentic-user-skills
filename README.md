@@ -84,6 +84,8 @@ agentic-user-skills/
     <skill-name>/
       SKILL.md            # frontmatter + when/what/how + first-run setup
       references/         # deep docs loaded on demand
+      how-it-works.es.html  # the skill's visual deck (Spanish), self-contained
+      how-it-works.en.html  # its English twin, same slides
       cli/                # OPTIONAL bundled CLI — decoupled, zero external deps
   plugins/
     <plugin-name>/
@@ -104,6 +106,7 @@ agentic-user-skills/
 - **Zero host footprint.** A bundled tool writes its output (caches, results, artifacts) under the user's home (e.g. `~/.mkd/`), never the consumer repo's cwd.
 - **Plugins fail silent.** A plugin hook runs on every turn, so it must never interrupt the session. Any failure path — missing config, dead endpoint, absent dependency — exits 0 without output.
 - **Plugins declare their compatibility.** Each plugin's README carries an OS table and an agent table, marking what is *tested* apart from what is merely *expected to work*.
+- **Every skill ships its deck.** `how-it-works.es.html` and `how-it-works.en.html` sit in the skill folder, so the deck installs and updates with the skill (`~/.agents/skills/<name>/how-it-works.<lang>.html`). Each one is a short, self-contained HTML deck (5 to 8 slides) built only from that skill's own files; the Spanish one uses tuteo and no opening ¿ or ¡. The boilerplates' Pages sites copy them on deploy and link to them from their user-level skills portal.
 - **No install step.** A bundled CLI runs straight from the skill directory (`bun <skill-dir>/cli/index.ts`) — no compiled binary, nothing added to PATH.
 
 ## Toolchain

@@ -87,6 +87,8 @@ agentic-user-skills/
                           #   complementary_categories when the skill bundles a CLI) + when/what/how
                           #   + a first-run SETUP section when the skill needs setup
       references/         # deep docs loaded on demand (schema, examples, setup)
+      how-it-works.es.html  # the skill's visual deck (Spanish) + how-it-works.en.html, its English twin;
+                          #   self-contained, 5-8 slides, built only from the skill's own files
       cli/                # OPTIONAL bundled CLI — decoupled, zero-dep (see Critical Rule #8)
         index.ts … ui/
   package.json            # name, bin(s), scripts (build / types / lint). READ it for commands.
