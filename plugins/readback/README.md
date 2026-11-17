@@ -45,9 +45,11 @@ voicemode service install kokoro
 That installs [VoiceMode](https://github.com/mbailey/voicemode), which runs Kokoro as a
 background service (~150 MB of RAM, 0% CPU idle). You do not need the rest of VoiceMode.
 
-**ElevenLabs (optional, cloud, paid).** Set the provider and your key in
-`/plugin` → readback → Configure. Falls back to Kokoro automatically if the key is missing
-or the request fails, so you are never left mute.
+**ElevenLabs (cloud, paid, best voice).** In `/plugin` -> readback -> Configure, set
+`ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` (the ID of the voice, not its name). That is
+all: the default `PROVIDER=auto` uses ElevenLabs as soon as both are present. If a request
+fails, readback tries Kokoro, then the macOS system voice, so you are never left mute, and
+the next reply tells you why it failed. Voice Library voices need a paid ElevenLabs plan.
 
 Check everything with:
 
@@ -87,9 +89,8 @@ you send a message
 The `Stop` hook returns control in **under half a second**. Audio generation and
 playback happen detached, so nothing blocks your session.
 
-**It fails silent, always.** No sentinel, no marked line, no speech endpoint, a dead
-provider: every one of those paths exits 0 without a word. A voice problem can never
-interrupt your work.
+**It never interrupts you.** Every path exits 0. A voice problem is logged and reported on
+your next message instead of breaking the session.
 
 ## Pronunciation
 
@@ -112,16 +113,58 @@ n8n             ene ocho ene
 
 ## Settings
 
-All configurable from `/plugin` → readback → Configure.
+All configurable from `/plugin` -> readback -> Configure.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `PROVIDER` | `kokoro` | `kokoro` or `elevenlabs` |
-| `KOKORO_URL` | `http://127.0.0.1:8880` | Where the local engine listens |
-| `VOICE` | `af_heart` | Kokoro voice id. `ef_dora` / `em_alex` for Spanish |
-| `SPEED` | `1.0` | Below 1 is slower |
-| `ELEVENLABS_API_KEY` | — | Stored in secure storage |
-| `ELEVENLABS_VOICE_ID` | — | Required when the provider is elevenlabs |
+| `PROVIDER` | `auto` | `auto` = ElevenLabs, then Kokoro, then the system voice. Or force `elevenlabs`, `kokoro`, `say` |
+| `ELEVENLABS_API_KEY` | (none) | Stored in secure storage |
+| `ELEVENLABS_VOICE_ID` | (none) | Required for ElevenLabs |
+| `PERSONA` | `companion` | `companion`, `sarcastic`, `serious` or `professional` |
+| `ELEVENLABS_MODEL` | `eleven_flash_v2_5` | Fast and cheap. `eleven_v4` is more expressive (about double the price) and enables expression tags |
+| `LANGUAGE` | (auto) | `es` or `en`. Improves pronunciation and picks the backup system voice |
+| `VOLUME` | `1.5` | Playback gain. Raise it if music drowns the voice |
+| `SHOW_USAGE` | `on` | One-line ElevenLabs credit footer after each reply |
+| `SPEED` | `1.0` | Below 1 is slower (not available on v3/v4) |
+| `VOICE`, `KOKORO_URL` | | Local Kokoro engine, advanced |
+
+## Personalities
+
+`PERSONA` changes two things: how the agent writes the spoken line, and the voice
+stability sent to ElevenLabs (lower is more expressive).
+
+| Persona | Sounds like | Stability |
+| --- | --- | --- |
+| `companion` | Warm teammate, a little humor | 0.45 |
+| `sarcastic` | Dry and playful, one joke per line, facts always exact | 0.35 |
+| `serious` | Calm, short declarative sentences, no jokes | 0.70 |
+| `professional` | Clear status update, neutral warmth | 0.65 |
+
+The writing rules live in `config/voice-style.txt` (shared, adapted from the humanizer
+skill: outcome first, mixed sentence length, no filler, no closing offers) and
+`config/personas/<name>.txt`. With a v3 or v4 model the agent may also add one
+expression tag such as `[sarcastic]`; on other models tags are stripped before sending.
+
+## Loudness
+
+ElevenLabs has no volume parameter, so readback levels the audio itself: `ffmpeg`
+`loudnorm` when `ffmpeg` is installed (set `NORMALIZE=off` in the environment to skip),
+then plays it at `VOLUME` through `afplay -v`.
+
+## Credit footer
+
+After each reply the Stop hook can show a user-only line such as
+`readback · ElevenLabs 3,420 / 10,000 chars (34%) · resets Dec 03`. It is a hook
+`systemMessage`: the model never sees it. The real numbers come from
+`GET /v1/user/subscription`; if the key has no permission to read the account, the footer
+falls back to what readback itself spent this month. It is built from a cache, so it
+trails by one reply at most. Hide it with `SHOW_USAGE=off`.
+
+## When it stays silent
+
+Every failure is written to `readback.log` in the plugin data folder (never the text, never
+the key), and a short notice reaches you on your next message. The ElevenLabs error body is
+kept in `elevenlabs-last-error.json`.
 
 ## Multiple sessions
 

@@ -2,7 +2,7 @@
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "readback",
   "displayName": "Readback",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Reads back a short spoken summary at the end of every reply, without changing the reply itself. Local TTS by default; nothing is ever recorded.",
   "author": {
     "name": "UPEX Galaxy",
@@ -22,21 +22,52 @@
   "userConfig": {
     "PROVIDER": {
       "type": "string",
-      "title": "Speech provider",
-      "description": "kokoro (local, free) or elevenlabs (cloud, paid)",
-      "default": "kokoro"
+      "title": "Voice engine",
+      "description": "auto (recommended): ElevenLabs if key and voice id are set, then Kokoro, then the macOS system voice. Or force elevenlabs, kokoro or say.",
+      "default": "auto"
     },
-    "KOKORO_URL": {
+    "ELEVENLABS_API_KEY": {
       "type": "string",
-      "title": "Kokoro endpoint",
-      "description": "OpenAI-compatible /v1/audio/speech endpoint",
-      "default": "http://127.0.0.1:8880"
+      "title": "ElevenLabs API key",
+      "description": "From elevenlabs.io > Developers > API keys. Kept in your system keychain.",
+      "sensitive": true
     },
-    "VOICE": {
+    "ELEVENLABS_VOICE_ID": {
       "type": "string",
-      "title": "Voice",
-      "description": "Kokoro voice id. af_heart / af_sky for English, ef_dora / em_alex for Spanish",
-      "default": "af_heart"
+      "title": "ElevenLabs voice id",
+      "description": "The ID (not the name) of your voice, from My Voices. Voice Library voices need a paid plan."
+    },
+    "PERSONA": {
+      "type": "string",
+      "title": "Personality",
+      "description": "companion (warm, default), sarcastic (dry humor), serious (calm, no jokes) or professional (clear, client-style). Changes how the spoken line is written and the voice stability.",
+      "default": "companion"
+    },
+    "ELEVENLABS_MODEL": {
+      "type": "string",
+      "title": "ElevenLabs model",
+      "description": "eleven_flash_v2_5 is fast and cheap (default). eleven_v4 is more expressive and costs double.",
+      "default": "eleven_flash_v2_5"
+    },
+    "LANGUAGE": {
+      "type": "string",
+      "title": "Language code",
+      "description": "es or en. Helps pronunciation and picks the backup system voice. Empty means auto.",
+      "default": ""
+    },
+    "VOLUME": {
+      "type": "number",
+      "title": "Playback volume",
+      "description": "1.0 is normal. Raise it if music drowns the voice. Above 2 may distort.",
+      "default": 1.5,
+      "min": 0.5,
+      "max": 4
+    },
+    "SHOW_USAGE": {
+      "type": "string",
+      "title": "Show credit footer",
+      "description": "on shows a one-line ElevenLabs usage footer after each reply (never read by the AI). off hides it.",
+      "default": "on"
     },
     "SPEED": {
       "type": "number",
@@ -44,16 +75,17 @@
       "description": "1.0 is normal. Below 1 is slower, above is faster",
       "default": 1.0
     },
-    "ELEVENLABS_API_KEY": {
+    "VOICE": {
       "type": "string",
-      "title": "ElevenLabs API key",
-      "description": "Only needed when the provider is elevenlabs",
-      "sensitive": true
+      "title": "Voice",
+      "description": "Kokoro voice id. af_heart / af_sky for English, ef_dora / em_alex for Spanish",
+      "default": "af_heart"
     },
-    "ELEVENLABS_VOICE_ID": {
+    "KOKORO_URL": {
       "type": "string",
-      "title": "ElevenLabs voice id",
-      "description": "Only needed when the provider is elevenlabs"
+      "title": "Kokoro endpoint",
+      "description": "OpenAI-compatible /v1/audio/speech endpoint",
+      "default": "http://127.0.0.1:8880"
     }
   }
 }
