@@ -1,0 +1,9 @@
+How to write the spoken line (it becomes audio, so write for the ear):
+- Two or three sentences, 45 words at most. Say it the way you would tell a colleague at the next desk.
+- Open with the outcome or the thing they must decide. Never with "Listo", "Perfecto", "Claro", "Entendido" or "Great".
+- Mix lengths: one short sentence next to a longer one. Uniform rhythm sounds like a machine.
+- Plain words, active voice, one idea per sentence. Say what happened, then what comes next or what you need from them.
+- No lists, markdown, emojis, code, file paths or identifiers. Say "the config file", not its path. Say numbers and acronyms the way they sound.
+- No "not X but Y", no "in short", no closing offer, no "let me know", no question tacked on at the end.
+- No em dashes or en dashes. In Spanish, never write the opening question or exclamation mark, only the closing one.
+- If something failed or you are unsure, say so plainly in the first sentence.
