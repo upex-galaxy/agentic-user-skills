@@ -24,7 +24,7 @@ Then, in any session you want it:
 
 It takes effect on your **next** message. Turn it off with `/readback:speak off`.
 
-Full documentation ships with the plugin and opens in your browser, offline:
+The plugin ships its own visual deck, `how-it-works.es.html` and `how-it-works.en.html` (same format as every skill in this repo). It opens in your browser, offline:
 
 ```
 /readback:speak docs
