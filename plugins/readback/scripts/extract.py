@@ -140,7 +140,10 @@ def pronunciation(said):
 
     A pure text layer: works the same with any TTS provider.
     """
-    rules = load_rules()
+    merged = {}
+    for src, dst in load_rules():
+        merged[src.lower()] = (src, dst)  # later files (the user's) overwrite the base
+    rules = list(merged.values())
     # Longest patterns first, so "merge request" beats "merge".
     rules.sort(key=lambda r: len(r[0]), reverse=True)
     for src, dst in rules:
