@@ -5,6 +5,23 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(dirname "$HERE")}"
+# The Bash tool has no CLAUDE_PLUGIN_DATA, but hooks do. If this script used a
+# different folder than the hooks, the on/off switch would never reach them.
+# Rebuild the hooks' folder from the install path:
+#   ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>
+#     -> ~/.claude/plugins/data/<plugin>-<marketplace>
+if [ -z "${CLAUDE_PLUGIN_DATA:-}" ]; then
+  case "$PLUGIN_ROOT" in
+    */plugins/cache/*/*/*)
+      _v="${PLUGIN_ROOT%/*}"; _name="${_v##*/}"; _m="${_v%/*}"; _m="${_m##*/}"
+      CLAUDE_PLUGIN_DATA="${PLUGIN_ROOT%%/plugins/cache/*}/plugins/data/${_name}-${_m}"
+      ;;
+    *)
+      # Loaded with --plugin-dir: Claude Code names the folder <plugin>-inline.
+      [ -d "$HOME/.claude/plugins/data/readback-inline" ] && CLAUDE_PLUGIN_DATA="$HOME/.claude/plugins/data/readback-inline"
+      ;;
+  esac
+fi
 DATA_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/readback-data}"
 S="$DATA_DIR/sessions"
 mkdir -p "$S"
@@ -22,7 +39,7 @@ case "$action" in
     ;;
 esac
 
-PROVIDER="${READBACK_PROVIDER:-${CLAUDE_PLUGIN_OPTION_PROVIDER:-kokoro}}"
+PROVIDER="${READBACK_PROVIDER:-${CLAUDE_PLUGIN_OPTION_PROVIDER:-auto}}"
 KOKORO_URL="${READBACK_KOKORO_URL:-${CLAUDE_PLUGIN_OPTION_KOKORO_URL:-http://127.0.0.1:8880}}"
 VOICE="${READBACK_VOICE:-${CLAUDE_PLUGIN_OPTION_VOICE:-af_heart}}"
 
@@ -30,6 +47,13 @@ VOICE="${READBACK_VOICE:-${CLAUDE_PLUGIN_OPTION_VOICE:-af_heart}}"
 
 motor_vivo() {
   case "$PROVIDER" in
+    auto)
+      [ -n "${ELEVENLABS_API_KEY:-${CLAUDE_PLUGIN_OPTION_ELEVENLABS_API_KEY:-}}" ] \
+        && [ -n "${CLAUDE_PLUGIN_OPTION_ELEVENLABS_VOICE_ID:-${READBACK_EL_VOICE_ID:-}}" ] && return 0
+      curl -s -m 3 -o /dev/null "$KOKORO_URL/health" 2>/dev/null && return 0
+      command -v say >/dev/null 2>&1
+      ;;
+    say) command -v say >/dev/null 2>&1 ;;
     elevenlabs)
       [ -n "${ELEVENLABS_API_KEY:-${CLAUDE_PLUGIN_OPTION_ELEVENLABS_API_KEY:-}}" ] \
         && [ -n "${CLAUDE_PLUGIN_OPTION_ELEVENLABS_VOICE_ID:-${READBACK_EL_VOICE_ID:-}}" ]
@@ -47,7 +71,7 @@ reproductor() {
   return 1
 }
 
-contar() { [ -f "$1" ] && grep -vc '^[[:space:]]*#\|^[[:space:]]*$' "$1" 2>/dev/null || echo 0; }
+contar() { local n; n=$([ -f "$1" ] && grep -vc '^[[:space:]]*#\|^[[:space:]]*$' "$1" 2>/dev/null); echo "${n:-0}"; }
 
 abrir() {
   local f="$1"
@@ -122,8 +146,12 @@ case "$action" in
     echo
     printf '  %-13s' "engine"
     if motor_vivo; then
-      if [ "$PROVIDER" = elevenlabs ]; then echo "OK         credentials present"
-      else echo "OK         $KOKORO_URL   voice=$VOICE"; fi
+      case "$PROVIDER" in
+        elevenlabs) echo "OK         credentials present" ;;
+        auto)       echo "OK         auto chain: ElevenLabs (if configured), Kokoro, system voice" ;;
+        say)        echo "OK         system voice" ;;
+        *)          echo "OK         $KOKORO_URL   voice=$VOICE" ;;
+      esac
     else
       if [ "$PROVIDER" = elevenlabs ]; then echo "NOT READY  missing key or voice id"
       else echo "NOT READY  nothing at $KOKORO_URL"; fi
