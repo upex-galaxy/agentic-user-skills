@@ -4,11 +4,12 @@
 
 ```js
 export const title = 'How a skill loads';          // page title; falls back to the file name
+export const style = 'sketch';                     // optional; used when neither --style nor explain.json sets one
 
 export default ({ scene, W, H, ease, kf }) => ({    // the kit (below) is the only argument
   title,
-  // width: 1920, height: 1080, fps: 30                optional; these are the defaults and the export size
-  // lang: 'es'                                         optional; picks the sourceFooter prefix ('es' = "Fuente: ", else "Source: "); detected from the text when absent
+  // width: 1920, height: 1080, fps: 30                the defaults; export writes only 1920x1080 at 30 fps and refuses other values
+  // lang: 'es'                                         optional; picks the sourceFooter prefix ('es' = "Fuente: ", else "Source: ") and the player UI language; detected from the text when absent
   scenes: [
     scene({
       name: 'intro',                                // shown in QA reports and used by humans; default scene-N
@@ -123,7 +124,11 @@ s.raw((ctx, t, api) => { /* draw with ctx */ }, { id: 'glow-ring', z: 0 });
 
 Style drawing methods, which every piece uses: `style.shape(api, rect, { kind: 'round'|'rect'|'ellipse'|'pill', p, stroke, fill, lw, dash, alpha, glow, seed })`, `style.line(api, pts, { p, color, lw, head, dash, alpha, glow, seed })`, `style.text(api, str, x, y, { px, role: 'body'|'display'|'mono', weight, color, align, alpha, glow })` (one line, centered vertically on `y`), `style.highlight(api, rect, { p, color, alpha })`, `style.font(role, px, weight)` (a CSS font string). Pass `seed` for a stable sketch wobble in the sketch style.
 
-Rules for raw code: derive everything from `t` (use `rng(seed)`, never an unseeded random); use tokens through `api.color` or style methods; raw items report nothing to QA, so keep them inside the 24 px safe margin yourself, and the `composition-balance` warning ignores them. Prefer a piece; reach for `raw` for a one-off decoration or a diagram no piece covers.
+Rules for raw code: derive everything from `t` (use `rng(seed)`, never an unseeded random); use tokens through `api.color` or style methods. QA cannot see what a raw item draws, so declare it: `texts: ['...']` lists the strings it shows (checked for the opening marks) and `rect: { x, y, w, h }` its footprint in scene coordinates (checked for bounds, never for overlap). Without them a raw item reports nothing; keep it inside the 24 px safe margin yourself. The `composition-balance` warning always ignores raw items.
+
+```js
+s.raw((ctx, t, api) => { /* draws 'Ring' around the hero */ }, { id: 'ring', texts: ['Ring'], rect: { x: 700, y: 300, w: 520, h: 520 } });
+``` Prefer a piece; reach for `raw` for a one-off decoration or a diagram no piece covers.
 
 ## Text helpers
 
@@ -146,7 +151,7 @@ Each issue: `{ type, scene, id, t, count, detail }` (`t` is the first global tim
 | `overlap` | error | two visible elements overlap by more than 4 px and 2% of the smaller. Exempt: a container (group, panel) and what it holds, edges, and items marked `overlap: true` or `overlapWith: [ids]` |
 | `text-overflow` | error | text does not fit at the minimum size, or its box leaves its shape |
 | `opening-punctuation` | error | any text contains an opening inverted question or exclamation mark |
-| `nondeterministic` | error | the same frame rendered twice gave different pixels (more than 8 changed pixels) |
-| `composition-balance` | warning | measured on the settled scene without the HUD (heading, tag, caption, footer) and without title-card scenes for the size rules: a half of the frame holds under 12 % of the content; the content bounding box covers under 28 % of the frame; the content spans under 30 % of the frame height; or its vertical center of mass is outside 40 to 64 % of the height (sits high or low). Fix by leaving `area` out so pieces fill the default area, or by making nodes bigger |
+| `nondeterministic` | error | the same frame rendered twice gave different pixels (more than 8 changed pixels). Probed at max(3, 2 x scenes) sample times spread evenly over the whole video, first and last included |
+| `composition-balance` | warning | measured on the settled scene without the HUD (heading, tag, caption, footer) and without title-card scenes for the size rules: a half of the frame holds under 12 % of the content; the content bounding box covers under 28 % of the frame; the content spans under 30 % of the frame height; or its vertical center of mass is outside 40 to 64 % of the height (sits high or low). Fix by leaving `area` out so pieces fill the default area, or by making nodes bigger. It never blocks `export`; keep one only when the composition is deliberate, and say why in the delivery |
 
-Only elements visible above 5% alpha count (rects are measured in frame pixels after the camera, except HUD items), and rects are in scene coordinates before the camera transform. To silence a real, intended overlap (a badge on a card) set `overlap: true` on the element that sits on top, not on everything.
+Only elements visible above 5% alpha count, and rects are measured in frame pixels after the camera, except HUD items. To silence a real, intended overlap (a badge on a card) set `overlap: true` on the element that sits on top, not on everything.

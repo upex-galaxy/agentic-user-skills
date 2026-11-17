@@ -1,9 +1,19 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
+import { buildHash, buildPage, insideSkillDir, readBuildHash, SKILL_DIR } from './build.ts';
 import { findChrome } from './chrome.ts';
-import { dateStamp, defaultStillTimes, explainerDir, parseArgs, parseBitrate, parseStyle, parseTimes, resolveTarget, sceneTemplate, slugify, UsageError } from './index.ts';
+import { dateStamp, defaultStillTimes, ensureBuilt, explainerDir, parseArgs, parseBitrate, parseStyle, parseTimes, resolveOut, resolveTarget, sceneTemplate, slugify, UsageError } from './index.ts';
+
+const temps: string[] = [];
+/** A temp dir removed after the file's tests. */
+function temp(prefix: string): string {
+  const d = mkdtempSync(join(tmpdir(), prefix));
+  temps.push(d);
+  return d;
+}
+afterAll(() => { for (const d of temps) { rmSync(d, { recursive: true, force: true }); } });
 
 const cli = join(import.meta.dir, 'index.ts');
 
@@ -54,7 +64,7 @@ describe('folder naming', () => {
     expect(slugify('???')).toBe('');
   });
   test('dated folder under EXPLAIN_HOME', () => {
-    const home = mkdtempSync(join(tmpdir(), 'explain-home-'));
+    const home = temp('explain-home-');
     process.env.EXPLAIN_HOME = home;
     expect(dateStamp(new Date(2026, 10, 7))).toBe('2026-11-07');
     expect(explainerDir('Mi Demo', new Date(2026, 10, 7))).toBe(join(home, '2026-11-07-mi-demo'));
@@ -62,7 +72,7 @@ describe('folder naming', () => {
     delete process.env.EXPLAIN_HOME;
   });
   test('resolveTarget accepts a folder or a scene file and rejects others', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'explain-t-'));
+    const dir = temp('explain-t-');
     expect(() => resolveTarget(dir)).toThrow(UsageError);
     writeFileSync(join(dir, 'scene.js'), 'x');
     expect(resolveTarget(dir).scene).toBe(join(dir, 'scene.js'));
@@ -80,7 +90,7 @@ describe('template', () => {
     expect(new Bun.Transpiler({ loader: 'js' }).transformSync(src)).toBeTruthy();
   });
   test('cli new writes it under EXPLAIN_HOME and prints the path', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'explain-home-'));
+    const home = temp('explain-home-');
     const r = await run(['new', 'Demo Uno', '--style', 'sketch', '--title', 'Demo'], home);
     expect(r.code).toBe(0);
     const path = r.stdout.trim();
@@ -91,7 +101,7 @@ describe('template', () => {
     expect((await run(['new', 'Demo Uno'], home)).code).toBe(2);
   });
   test('usage errors exit 2, help exits 0', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'explain-home-'));
+    const home = temp('explain-home-');
     expect((await run(['bogus'], home)).code).toBe(2);
     expect((await run(['new'], home)).code).toBe(2);
     const h = await run(['export', '--help'], home);
@@ -100,11 +110,73 @@ describe('template', () => {
   });
 });
 
+const sceneSrc = (name: string, extra = '') => `${extra}export const title = 'T ${name}';\nexport default ({ scene }) => ({ title, scenes: [scene({ name: '${name}', dur: 2, build(s) { s.heading({ text: 'H ${name}' }); } })] });\n`;
+
+describe('builds per scene file (fresh by content hash)', () => {
+  test('two scene files in one folder build into their own folders under the explainers root', async () => {
+    const home = temp('explain-b1-');
+    const src = temp('explain-src-');
+    process.env.EXPLAIN_HOME = home;
+    try {
+      writeFileSync(join(src, 'alpha.scene.js'), sceneSrc('alpha-scene'));
+      writeFileSync(join(src, 'beta.scene.js'), sceneSrc('beta-scene'));
+      const a = resolveTarget(join(src, 'alpha.scene.js'));
+      const b = resolveTarget(join(src, 'beta.scene.js'));
+      expect(a.dir).toBe(join(home, `${dateStamp()}-alpha`));
+      expect(b.dir).toBe(join(home, `${dateStamp()}-beta`));
+      const ia = readFileSync(await ensureBuilt(a, undefined), 'utf8');
+      const ib = readFileSync(await ensureBuilt(b, undefined), 'utf8');
+      expect(ia).toContain('alpha-scene');
+      expect(ia).not.toContain('beta-scene');
+      expect(ib).toContain('beta-scene');
+      expect(existsSync(join(src, 'index.html'))).toBe(false);
+    }
+    finally { delete process.env.EXPLAIN_HOME; }
+  });
+
+  test('a touch does not rebuild; a content change does; the scene can carry its style', async () => {
+    const dir = temp('explain-fresh-');
+    const scene = join(dir, 'scene.js');
+    writeFileSync(scene, sceneSrc('one'));
+    const t = resolveTarget(dir);
+    const index = await ensureBuilt(t, undefined);
+    utimesSync(index, new Date(2000, 0, 1), new Date(2000, 0, 1));
+    const old = statSync(index).mtimeMs;
+    utimesSync(scene, new Date(), new Date());
+    await ensureBuilt(t, undefined);
+    expect(statSync(index).mtimeMs).toBe(old);
+    writeFileSync(scene, sceneSrc('two'));
+    await ensureBuilt(t, undefined);
+    expect(statSync(index).mtimeMs).not.toBe(old);
+    expect(readFileSync(index, 'utf8')).toContain('H two');
+    // A fresh path: the scene module is imported once per process.
+    const styled = temp('explain-style-');
+    writeFileSync(join(styled, 'scene.js'), sceneSrc('three', 'export const style = \'sketch\';\n'));
+    const si = await ensureBuilt(resolveTarget(styled), undefined);
+    expect(readBuildHash(si)).toBe(buildHash(join(styled, 'scene.js'), 'sketch'));
+  });
+
+  test('nothing is ever written inside the skill folder', async () => {
+    expect(insideSkillDir(join(SKILL_DIR, 'examples', 'not-there'))).toBe(true);
+    expect(insideSkillDir(temp('explain-out-'))).toBe(false);
+    const err = await buildPage({ scenePath: join(SKILL_DIR, 'examples/smoke.scene.js'), style: 'hologram', outDir: join(SKILL_DIR, 'examples/not-there') }).then(() => null, (e: Error) => e);
+    expect(err?.message).toContain('skill folder');
+    expect(existsSync(join(SKILL_DIR, 'examples/not-there'))).toBe(false);
+  });
+
+  test('a relative --out lands in the explainer folder, never the cwd', () => {
+    const t = { dir: '/home/u/explainers/2026-11-17-demo', scene: '/x/scene.js' };
+    expect(resolveOut('video.mp4', t)).toBe('/home/u/explainers/2026-11-17-demo/video.mp4');
+    expect(resolveOut('/tmp/v.mp4', t)).toBe('/tmp/v.mp4');
+    expect(resolveOut(undefined, t)).toBe('/home/u/explainers/2026-11-17-demo/demo.mp4');
+  });
+});
+
 const maybe = findChrome() ? test : test.skip;
 
 describe('a scene that throws', () => {
   maybe('check, stills and export exit 1 within seconds and name the scene and the error', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'explain-throw-'));
+    const home = temp('explain-throw-');
     const scene = (await run(['new', 'boom'], home)).stdout.trim();
     const dir = join(scene, '..');
     writeFileSync(scene, 'export default ({ scene }) => ({ scenes: [scene({ name: \'boom-scene\', dur: 2, build(s) { s.doesNotExist(); } })] });\n');
@@ -122,7 +194,7 @@ describe('a scene that throws', () => {
 
 describe('end to end', () => {
   maybe('new, build, check, stills, export on the template', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'explain-e2e-'));
+    const home = temp('explain-e2e-');
     const scene = (await run(['new', 'e2e'], home)).stdout.trim();
     const dir = join(scene, '..');
     const b = await run(['build', dir], home);
@@ -132,6 +204,7 @@ describe('end to end', () => {
     expect(c.stderr).toBeTruthy();
     expect(c.code).toBe(0);
     expect(JSON.parse(c.stdout).ok).toBe(true);
+    expect(JSON.parse(c.stdout).warnings).toEqual([]);
     const s = await run(['stills', dir], home);
     expect(s.code).toBe(0);
     expect(s.stdout.trim().split('\n').length).toBe(4);

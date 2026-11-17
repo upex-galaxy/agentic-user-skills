@@ -1,15 +1,24 @@
-import { mkdirSync, mkdtempSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { findChrome } from './chrome.ts';
 import { exportVideo, stills } from './export.ts';
+
+const temps: string[] = [];
+/** A temp dir removed after the file's tests. */
+function temp(prefix: string): string {
+  const d = mkdtempSync(join(tmpdir(), prefix));
+  temps.push(d);
+  return d;
+}
+afterAll(() => { for (const d of temps) { rmSync(d, { recursive: true, force: true }); } });
 
 const engine = join(import.meta.dir, '../engine/export.js');
 
 /** Self-contained page: Mediabunny + engine/export.js bundled and inlined as one module script. */
 async function buildTestPage(duration: number): Promise<string> {
-  const dir = mkdtempSync(join(tmpdir(), 'explain-entry-'));
+  const dir = temp('explain-entry-');
   mkdirSync(dir, { recursive: true });
   const entry = join(dir, 'entry.js');
   writeFileSync(entry, `import { runExport } from ${JSON.stringify(engine)};\nwindow.runExport = runExport;\n`);
@@ -35,7 +44,7 @@ const maybe = chrome ? test : test.skip;
 
 describe('headless export', () => {
   maybe('exports a 3 s H.264 MP4', async () => {
-    const out = join(mkdtempSync(join(tmpdir(), 'explain-')), 'test.mp4');
+    const out = join(temp('explain-'), 'test.mp4');
     const res = await exportVideo({ html: await buildTestPage(3), out, duration: 3, fps: 30, timeoutMs: 120_000 });
     expect(statSync(out).size).toBeGreaterThan(1000);
     expect(res.bytes).toBe(statSync(out).size);
@@ -43,7 +52,7 @@ describe('headless export', () => {
   }, 150_000);
 
   maybe('writes PNG stills', async () => {
-    const outDir = mkdtempSync(join(tmpdir(), 'explain-'));
+    const outDir = temp('explain-');
     const res = await stills({ html: await buildTestPage(3), outDir, times: [0, 1.5], timeoutMs: 60_000 });
     expect(res.files.length).toBe(2);
   }, 90_000);

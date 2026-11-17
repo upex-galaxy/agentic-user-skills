@@ -1,6 +1,6 @@
 # Styles
 
-Two styles, chosen with `new <slug> --style <name>` or `build|check|stills|export <dir> --style <name>` (the choice is saved in `<dir>/explain.json`; with no flag the saved style is used, then `hologram`). A scene file never changes between styles: pieces draw through the style and colors are tokens. Switch style, rebuild, check again; text metrics differ, so a scene that passes in one style can overflow in the other.
+Two styles, chosen with `new <slug> --style <name>` or `build|check|stills|export <dir> --style <name>` (the choice is saved in `<dir>/explain.json`; with no flag the saved style is used, then `export const style = '<name>'` in the scene file, then `hologram`). A scene file never changes between styles: pieces draw through the style and colors are tokens. Switch style, rebuild, check again; text metrics differ, so a scene that passes in one style can overflow in the other.
 
 ## Color tokens
 
@@ -26,8 +26,9 @@ All fonts are bundled (`vendor/fonts/`, SIL OFL) and embedded as base64 in each 
 |---|---|---|
 | Body, display | Inter (display 700, body 500) | Caveat (display 700, body 600) |
 | Mono (code, trees) | JetBrains Mono | JetBrains Mono (bundled in both styles) |
-| Default sizes (`nodePx`, `labelPx`, `codePx`) | 34, 34, 28 | 54, 56, 40 |
+| Default sizes (`nodePx`, `labelPx`, `codePx`) | 34, 34, 28 | 54, 56, 32 |
 | Minimum text size, padding, line width | 18 px, 18, 3 | 26 px, 20, 3 |
+| Typical MP4 size at the default 2 Mbps | about 15 MB per minute | about 5 MB per minute |
 
 The handwriting font is large and wide, so sketch labels hold fewer words per shape: write shorter labels, or enlarge rects.
 

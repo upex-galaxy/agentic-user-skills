@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { summarizeReport } from '../cli/qa.ts';
 import smoke from '../examples/smoke.scene.js';
 import { createEngine, kit } from './index.js';
-import { countChanged, defaultTimes, runQA } from './qa.js';
+import { countChanged, defaultTimes, probeDeterminism, probeTimes, runQA } from './qa.js';
 import { makeStubCtx } from './stub-ctx.ts';
 import hologram from './styles/hologram.js';
 
@@ -168,5 +168,46 @@ describe('countChanged', () => {
     moved[8] = 0;
     expect(countChanged(a, noise)).toBe(0);
     expect(countChanged(a, moved)).toBe(2);
+  });
+});
+
+describe('determinism probe spread', () => {
+  test('probe times are spread over the whole video and include the first and the last sample', () => {
+    const samples = Array.from({ length: 30 }, (_, i) => i * 0.5);
+    const p = probeTimes(samples, 6);
+    expect(p[0]).toBe(0);
+    expect(p.at(-1)).toBe(14.5);
+    expect(p.length).toBe(6);
+    expect(p.filter((t: number) => t > (14.5 * 2) / 3).length).toBeGreaterThanOrEqual(2);
+    expect(probeTimes([3, 1, 2], 6)).toEqual([1, 2, 3]);
+  });
+
+  test('a leak that only shows in the last third of the video fails the probe', () => {
+    let calls = 0;
+    let data = new Uint8ClampedArray(40);
+    const fake: any = {
+      W: 10,
+      H: 1,
+      duration: 9,
+      ctx: { getImageData: () => ({ data }) },
+      render(t: number) {
+        calls++;
+        data = new Uint8ClampedArray(40).fill(t > 6 ? (calls * 37) % 256 : 10);
+      },
+    };
+    const samples = Array.from({ length: 19 }, (_, i) => i * 0.5);
+    expect(probeDeterminism(fake, probeTimes(samples, 3)).failures.length).toBeGreaterThan(0);
+  });
+});
+
+describe('raw items and QA', () => {
+  test('texts declared on s.raw are checked for the opening marks, and its rect for bounds', () => {
+    const r = run((s) => {
+      full(s);
+      s.raw(() => {}, { id: 'r', texts: ['¿Qué pasa?'], rect: { x: 1650, y: 400, w: 400, h: 100 } });
+    });
+    expect(types(r)).toContain('opening-punctuation');
+    expect(types(r)).toContain('out-of-bounds');
+    expect(types(r)).not.toContain('overlap');
   });
 });

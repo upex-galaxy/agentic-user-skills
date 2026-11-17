@@ -1,5 +1,6 @@
 // In-page export: encodes H.264 with WebCodecs (Mediabunny) and POSTs the result to the local CLI server.
 // Modes by query string: ?export=1 -> MP4 to /__export ; ?still=1.5,4 -> PNGs to /__still?t=<t>.
+// Every POST carries the per-run token the CLI put in the page URL (?token=) as the x-explain-token header.
 import { BufferTarget, CanvasSource, Mp4OutputFormat, Output } from '../vendor/mediabunny.min.mjs';
 
 const WIDTH = 1920;
@@ -7,7 +8,8 @@ const HEIGHT = 1080;
 const DEFAULT_BITRATE = 2e6; // H.264 at 1080p30: 1.8 Mbps showed no banding or glow blur against 5 Mbps, so 2 keeps a margin
 
 async function post(path, body, type) {
-  const res = await fetch(path, { method: 'POST', body, headers: { 'content-type': type } });
+  const token = new URLSearchParams(location.search).get('token') ?? '';
+  const res = await fetch(path, { method: 'POST', body, headers: { 'content-type': type, 'x-explain-token': token } });
   if (!res.ok) { throw new Error(`POST ${path} failed: ${res.status}`); }
 }
 

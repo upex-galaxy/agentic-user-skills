@@ -71,9 +71,22 @@ function createBuilder({ ctx, style, W, H, pieces, name, lang, title }) {
       items.push(item);
       return item;
     },
-    /** Raw escape hatch: fn(ctx, t, api) draws anything through the style. `t` is scene-local time. */
+    /**
+     * Raw escape hatch: fn(ctx, t, api) draws anything through the style. `t` is scene-local time. Options: id, z, hud,
+     * texts (strings the drawing shows: checked for the opening marks), rect (its footprint: checked for bounds only).
+     */
     raw(fn, o = {}) {
-      return s.add({ kind: 'raw', id: o.id ?? s.uid('raw'), z: o.z ?? 0, hud: o.hud === true, draw: (api, t) => fn(api.ctx, t, api) });
+      const texts = [...(o.texts ?? [])];
+      const rect = o.rect;
+      return s.add({
+        kind: 'raw',
+        id: o.id ?? s.uid('raw'),
+        z: o.z ?? 0,
+        hud: o.hud === true,
+        draw: (api, t) => fn(api.ctx, t, api),
+        texts: () => texts,
+        ...(rect ? { rect, qa: () => ({ rect, alpha: 1, overlap: true }) } : {}),
+      });
     },
     /** Connect two registered ids: { pts, from, to, length }. */
     connect: (from, to, opts) => reg.connect(from, to, opts),

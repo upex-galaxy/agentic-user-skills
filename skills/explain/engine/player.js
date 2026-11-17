@@ -10,7 +10,16 @@
 //   window.__explainRender(t)          -> draw one frame
 //   window.__ready                     -> true once fonts are loaded and the first frame is drawn
 import { createEngine, kit } from './index.js';
+import { detectLang } from './pieces/titles.js';
 import { runQA } from './qa.js';
+
+const LABELS = {
+  en: { play: 'Play', pause: 'Pause', export: 'Export MP4', exporting: 'Exporting...', failed: 'Export failed' },
+  es: { play: 'Reproducir', pause: 'Pausa', export: 'Exportar MP4', exporting: 'Exportando...', failed: 'Error al exportar' },
+};
+
+/** Player UI labels in the video's language ('es' or anything else for English). */
+export const labels = lang => (lang === 'es' ? LABELS.es : LABELS.en);
 
 async function loadFonts(style) {
   await Promise.all(style.faces.map(f => document.fonts.load(`600 24px "${f.family}"`, 'AaÁáÉéÑñÜü')));
@@ -31,6 +40,10 @@ export async function boot({ makeScene, style, loadExport }) {
   const engine = createEngine({ canvas, style, spec });
   const { duration, fps } = engine;
   document.title = spec.title ?? document.title;
+  // The player UI speaks the video's language: `lang` on the spec, else detected from the title and the on-screen text.
+  const lang = spec.lang ?? detectLang([spec.title, ...engine.texts().map(x => x.text)]);
+  const L = labels(lang);
+  document.documentElement.lang = lang;
 
   window.__explainEngine = engine;
   window.__explainRender = t => engine.render(t);
@@ -66,6 +79,8 @@ export async function boot({ makeScene, style, loadExport }) {
   const scrub = $('scrub');
   const play = $('play');
   const time = $('time');
+  play.textContent = L.pause;
+  $('export').textContent = L.export;
   let cur = 0;
   let paused = false;
   let t0 = real.now();
@@ -80,7 +95,7 @@ export async function boot({ makeScene, style, loadExport }) {
   };
   const setPaused = (v) => {
     paused = v;
-    play.textContent = v ? 'Reproducir' : 'Pausa';
+    play.textContent = v ? L.play : L.pause;
     t0 = real.now() - cur * 1000;
   };
   play.onclick = () => setPaused(!paused);
@@ -94,7 +109,7 @@ export async function boot({ makeScene, style, loadExport }) {
     const label = btn.textContent;
     setPaused(true);
     btn.disabled = true;
-    btn.textContent = 'Exportando...';
+    btn.textContent = L.exporting;
     try {
       const m = await loadExport();
       const fn = m.exportMp4 ?? m.encodeMp4;
@@ -108,7 +123,7 @@ export async function boot({ makeScene, style, loadExport }) {
     }
     catch (err) {
       console.error(err);
-      time.textContent = `Export failed: ${err instanceof Error ? err.message : err}`;
+      time.textContent = `${L.failed}: ${err instanceof Error ? err.message : err}`;
     }
     btn.disabled = false;
     btn.textContent = label;

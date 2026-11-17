@@ -1,12 +1,13 @@
 // Bundle the engine and a scene into ONE self-contained index.html (works from file://, no network):
 // JS inlined, Rough.js inlined, fonts inlined as base64 @font-face, preview UI, export button.
 //   bun cli/build.ts <scene.js> --style sketch|hologram --out <dir>
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+export const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ENGINE_DIR = join(SKILL_DIR, 'engine');
 const VENDOR_DIR = join(SKILL_DIR, 'vendor');
 
@@ -37,9 +38,64 @@ function fontCss(faces: FontFace[]): string {
 
 const escapeScript = (js: string) => js.replace(/<\/script/gi, '<\\/script');
 
-function pageHtml(title: string, css: string, rough: string, bundle: string): string {
+// The vendored file is the upstream bundle without a header; the notice travels with every built page.
+const ROUGH_NOTICE = '/*! Rough.js 4.6.6 | (c) 2019 Preet Shihn | MIT License | https://github.com/rough-stuff/rough */\n';
+
+/** True when `p` is the skill folder or inside it (symlinks resolved): builds never write there. */
+export function insideSkillDir(p: string): boolean {
+  const real = (x: string) => {
+    let cur = resolve(x);
+    const tail: string[] = [];
+    while (!existsSync(cur) && dirname(cur) !== cur) {
+      tail.unshift(basename(cur));
+      cur = dirname(cur);
+    }
+    return join(realpathSync(cur), ...tail);
+  };
+  const rel = relative(real(SKILL_DIR), real(p));
+  return rel === '' || (!rel.startsWith('..') && !rel.startsWith(sep) && !/^[a-z]:/i.test(rel));
+}
+
+function filesUnder(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = join(dir, e.name);
+    return e.isDirectory() ? filesUnder(p) : /\.test\.ts$/.test(e.name) ? [] : [p];
+  }).sort();
+}
+
+/**
+ * Freshness key of a build: the scene's path and content, the style, and every engine, vendor and build file. A page
+ * whose embedded key differs is rebuilt, whatever the mtimes say.
+ */
+export function buildHash(scenePath: string, style: StyleName): string {
+  const h = createHash('sha256');
+  const scene = resolve(scenePath);
+  h.update(`${scene}\0${style}\0`);
+  for (const f of [scene, fileURLToPath(import.meta.url), ...filesUnder(ENGINE_DIR), ...filesUnder(VENDOR_DIR)]) {
+    h.update(f);
+    h.update('\0');
+    h.update(readFileSync(f));
+  }
+  return h.digest('hex').slice(0, 32);
+}
+
+/** The freshness key embedded in a built page, or null. */
+export function readBuildHash(indexHtml: string): string | null {
+  try { return /<meta name="explain-build" content="([0-9a-f]+)">/.exec(readFileSync(indexHtml, 'utf8').slice(0, 2000))?.[1] ?? null; }
+  catch { return null; }
+}
+
+/** `export const style = 'sketch'` in a scene file, or undefined. */
+export async function sceneStyle(scenePath: string): Promise<StyleName | undefined> {
+  const mod = await import(pathToFileURL(resolve(scenePath)).href) as { style?: string };
+  if (mod.style === undefined) { return undefined; }
+  if (!(STYLES as readonly string[]).includes(mod.style)) { throw new Error(`${scenePath}: export const style must be one of ${STYLES.join(', ')}, got "${mod.style}"`); }
+  return mod.style as StyleName;
+}
+
+function pageHtml(title: string, hash: string, css: string, rough: string, bundle: string): string {
   return `<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="explain-build" content="${hash}"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title.replace(/[<&]/g, '')}</title>
 <style>
 ${css}
@@ -56,7 +112,7 @@ body.still canvas{width:100vw;height:100vh;aspect-ratio:auto}
 body.still #bar{display:none}
 </style></head>
 <body><canvas id="c" width="1920" height="1080"></canvas>
-<div id="bar"><button id="play" type="button">Pausa</button><input id="scrub" type="range" min="0" max="1" value="0" step="any"><span id="time">0:00</span><button id="export" type="button">Exportar MP4</button></div>
+<div id="bar"><button id="play" type="button">Pause</button><input id="scrub" type="range" min="0" max="1" value="0" step="any"><span id="time">0:00</span><button id="export" type="button">Export MP4</button></div>
 <script>${escapeScript(rough)}</script>
 <script type="module">${escapeScript(bundle)}</script>
 </body></html>
@@ -68,6 +124,7 @@ export async function buildPage({ scenePath, style, outDir }: BuildOptions): Pro
   if (!STYLES.includes(style)) { throw new Error(`Unknown style "${style}" (use ${STYLES.join(' or ')})`); }
   const scene = resolve(scenePath);
   if (!existsSync(scene)) { throw new Error(`Scene file not found: ${scene}`); }
+  if (insideSkillDir(outDir)) { throw new Error(`Refusing to write build output inside the skill folder: ${resolve(outDir)}`); }
 
   const styleFile = join(ENGINE_DIR, 'styles', `${style}.js`);
   const styleMod = (await import(pathToFileURL(styleFile).href) as { default: { faces: FontFace[] } }).default;
@@ -93,7 +150,7 @@ export async function buildPage({ scenePath, style, outDir }: BuildOptions): Pro
   if (!built.success) { throw new Error(`Bundle failed:\n${built.logs.map(l => String(l)).join('\n')}`); }
   const bundle = await built.outputs[0].text();
 
-  const html = pageHtml(title, fontCss(styleMod.faces), readFileSync(join(VENDOR_DIR, 'rough.min.js'), 'utf8'), bundle);
+  const html = pageHtml(title, buildHash(scene, style), fontCss(styleMod.faces), ROUGH_NOTICE + readFileSync(join(VENDOR_DIR, 'rough.min.js'), 'utf8'), bundle);
   mkdirSync(outDir, { recursive: true });
   const indexHtml = join(resolve(outDir), 'index.html');
   writeFileSync(indexHtml, html);

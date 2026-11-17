@@ -2,6 +2,7 @@
 // Content comes only from the sprint-testing skill (SKILL.md). Shows: flow (overview and a snake layout), mindMap,
 // grouped nodes, table, timeline for the hand-off and a three-point recap. Each fact scene carries a sourceFooter.
 export const title = 'Cómo se testea una historia en el sprint';
+export const style = 'sketch'; // used when neither --style nor explain.json picks one
 
 const SRC = 'skill sprint-testing (SKILL.md)';
 const TOTAL = 8;

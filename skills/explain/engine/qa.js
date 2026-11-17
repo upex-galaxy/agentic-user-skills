@@ -81,9 +81,17 @@ export function probeDeterminism(engine, times, maxChanged = 8) {
   return { checked: times.length, failures };
 }
 
+/** `n` sample times spread evenly over the sorted samples, always including the first and the last. */
+export function probeTimes(samples, n) {
+  const sorted = [...samples].sort((a, b) => a - b);
+  if (sorted.length <= n) { return sorted; }
+  if (n <= 1) { return [sorted[sorted.length - 1]]; }
+  return [...new Set(Array.from({ length: n }, (_, i) => sorted[Math.round((i * (sorted.length - 1)) / (n - 1))]))];
+}
+
 /**
  * Run the gate. opts: margin (24), minOverlapPx (4), overlapRatio (0.02), visible (0.05),
- * balanceHalf (0.12: least share of the content area a half may hold), balanceBox (0.28: least frame share of the content bounding box, HUD furniture excluded), balanceHeight (0.3: least frame-height share of the content), vcenterBand ([0.4, 0.64]: where the content's vertical center of mass must sit), settle (0.6: share of a scene after which it counts as settled), determinism (probe up to 3 times when the canvas can be read).
+ * balanceHalf (0.12: least share of the content area a half may hold), balanceBox (0.28: least frame share of the content bounding box, HUD furniture excluded), balanceHeight (0.3: least frame-height share of the content), vcenterBand ([0.4, 0.64]: where the content's vertical center of mass must sit), settle (0.6: share of a scene after which it counts as settled), determinism (false skips the probe; when the canvas can be read, max(3, 2 x scenes) times spread evenly over the whole video, first and last sample included, are rendered twice).
  */
 export function runQA(engine, times, opts = {}) {
   const { margin = 24, minOverlapPx = 4, overlapRatio = 0.02, visible = 0.05, balanceHalf = 0.12, balanceBox = 0.28, balanceHeight = 0.3, vcenterBand = [0.4, 0.64], settle = 0.6 } = opts;
@@ -198,8 +206,7 @@ export function runQA(engine, times, opts = {}) {
 
   let determinism = null;
   if (opts.determinism !== false && typeof engine.ctx.getImageData === 'function') {
-    const probe = samples.filter((_, i) => i % Math.max(1, Math.floor(samples.length / 3)) === 0).slice(0, 3);
-    determinism = probeDeterminism(engine, probe);
+    determinism = probeDeterminism(engine, probeTimes(samples, Math.max(3, 2 * engine.scenes.length)));
     for (const t of determinism.failures) { flag('nondeterministic', '-', 'render', t, 'the same frame rendered twice produced different pixels'); }
   }
 

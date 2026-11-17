@@ -15,9 +15,9 @@ import type { StyleName } from './build.ts';
 import type { PageInfo } from './headless.ts';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
-import { buildPage, STYLES } from './build.ts';
-import { exportVideo, stills } from './export.ts';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { buildHash, buildPage, insideSkillDir, readBuildHash, sceneStyle, STYLES } from './build.ts';
+import { exportVideo, stills, stillsFromMp4 } from './export.ts';
 import { inspectPage } from './headless.ts';
 import { summarizeReport } from './qa.ts';
 
@@ -118,28 +118,33 @@ export const title = ${JSON.stringify(title)};
 export default ({ scene }) => ({
   title,
   scenes: [
-    // Scene 1: a heading plus two nodes joined by an edge. 'dur' is in seconds, 'at' is local scene time.
+    // Scene 1: section tag, heading, two nodes joined by an edge, source. 'dur' is in seconds, 'at' is local scene time.
     scene({
       name: 'intro',
       dur: 2.4,
       transition: { type: 'light-sweep', dur: 0.4 }, // how this scene hands over to the next one
       build(s) {
-        s.label({ id: 'heading', text: 'Replace this heading', rect: { x: 160, y: 110, w: 1600, h: 120 }, px: 96, font: 'display', type: true, at: 0.1 });
-        s.row([{ id: 'a', w: 520, h: 220 }, { id: 'b', w: 520, h: 220 }], { gap: 240 }); // auto layout by id
+        s.sectionTag({ index: 1, total: 2, name: 'Intro', at: 0.1 });
+        s.heading({ text: 'Replace this heading', at: 0.1 }); // HUD: the camera never moves it
+        s.row([{ id: 'a', w: 480, h: 400 }, { id: 'b', w: 480, h: 400 }], { gap: 200 }); // no area: fills the content area
         s.node({ id: 'a', text: 'First idea', at: 0.5, color: 'accent' });
         s.node({ id: 'b', text: 'Second idea', at: 0.9, color: 'good' });
         s.edge({ from: 'a', to: 'b', at: 1.3, color: 'ink' });
+        s.sourceFooter({ text: 'Name the document each fact comes from', at: 0.3 });
       },
     }),
-    // Scene 2: a closing line placed relative to a node.
+    // Scene 2: one result and the sentence to remember.
     scene({
       name: 'closing',
       dur: 2.0,
       build(s) {
-        s.label({ id: 'heading', text: 'One takeaway', rect: { x: 160, y: 110, w: 1600, h: 120 }, px: 96, font: 'display', type: true, at: 0.3 });
-        s.row([{ id: 'result', w: 640, h: 220 }], { gap: 0 });
+        s.sectionTag({ index: 2, total: 2, name: 'Takeaway', at: 0.1 });
+        s.heading({ text: 'One takeaway', at: 0.1 });
+        s.row([{ id: 'cause', w: 480, h: 400 }, { id: 'result', w: 480, h: 400 }], { gap: 200 });
+        s.node({ id: 'cause', text: 'What changes', at: 0.3, color: 'accent' });
         s.node({ id: 'result', text: 'The result', at: 0.6, color: 'accent2' });
-        s.label({ id: 'note', text: 'Say the point in one sentence.', place: { to: 'result', side: 'bottom', gap: 70 }, w: 1300, h: 90, type: true, typeAt: 0.9, color: 'dim' });
+        s.edge({ from: 'cause', to: 'result', at: 0.9, color: 'ink' });
+        s.sourceFooter({ text: 'Name the document each fact comes from', at: 0.3 });
       },
     }),
   ],
@@ -148,21 +153,36 @@ export default ({ scene }) => ({
 }
 
 export interface Target {
+  /** Output folder: index.html, explain.json, stills/, the MP4. */
   dir: string
   scene: string
 }
 
-/** A target is an explainer folder (with scene.js) or a scene file; the folder holds the outputs. */
+/**
+ * A target is an explainer folder (with scene.js), its scene.js, or any other scene file. Another scene file gets its
+ * own output folder under the explainers root, named after the file (`pr.scene.js` -> `<date>-pr/`), so two scene
+ * files never share a build and nothing is written next to them (a consumer repo, the skill's examples).
+ */
 export function resolveTarget(arg: string | undefined): Target {
   if (!arg) { throw new UsageError('missing <dir|scene.js>'); }
   const p = resolve(arg);
   if (!existsSync(p)) { throw new UsageError(`not found: ${p}`); }
+  let t: Target;
   if (statSync(p).isDirectory()) {
     const scene = join(p, 'scene.js');
     if (!existsSync(scene)) { throw new UsageError(`no scene.js in ${p}`); }
-    return { dir: p, scene };
+    t = { dir: p, scene };
   }
-  return { dir: dirname(p), scene: p };
+  else if (basename(p) === 'scene.js') { t = { dir: dirname(p), scene: p }; }
+  else { t = { dir: explainerDir(basename(p).replace(/(?:\.scene)?\.[cm]?js$/, '')), scene: p }; }
+  if (insideSkillDir(t.dir)) { throw new UsageError(`${t.dir} is inside the skill folder; pass a scene file (it builds under ${explainersRoot()}) or copy it to an explainer folder`); }
+  return t;
+}
+
+/** `--out`: an absolute path stays; a relative one is inside the explainer folder, never the cwd. */
+export function resolveOut(out: string | true | undefined, t: Target): string {
+  if (typeof out === 'string') { return isAbsolute(out) ? out : join(t.dir, out); }
+  return join(t.dir, `${slugify(basename(t.dir).replace(/^\d{4}-\d{2}-\d{2}-/, '')) || 'video'}.mp4`);
 }
 
 const configFile = (dir: string) => join(dir, 'explain.json');
@@ -178,14 +198,12 @@ const log = (msg: string) => console.error(msg);
 // Commands
 // ---------------------------------------------------------------------------
 
-async function ensureBuilt(t: Target, style: StyleName | undefined, force = false): Promise<string> {
+/** Style precedence: --style, explain.json, `export const style` in the scene, hologram. */
+export async function ensureBuilt(t: Target, style: StyleName | undefined, force = false): Promise<string> {
   const index = join(t.dir, 'index.html');
   const cfg = readConfig(t.dir);
-  const fresh = existsSync(index) && !force && !style
-    && statSync(index).mtimeMs >= statSync(t.scene).mtimeMs
-    && (!existsSync(configFile(t.dir)) || statSync(index).mtimeMs >= statSync(configFile(t.dir)).mtimeMs);
-  if (fresh) { return index; }
-  const chosen = style ?? cfg.style ?? 'hologram';
+  const chosen = style ?? cfg.style ?? await sceneStyle(t.scene) ?? 'hologram';
+  if (!force && existsSync(index) && readBuildHash(index) === buildHash(t.scene, chosen)) { return index; }
   const r = await buildPage({ scenePath: t.scene, style: chosen, outDir: t.dir });
   if (style && style !== cfg.style) { writeFileSync(configFile(t.dir), `${JSON.stringify({ ...cfg, style }, null, 2)}\n`); }
   log(`built ${r.indexHtml} (${(r.bytes / 1024 / 1024).toFixed(1)} MB, style ${chosen})`);
@@ -213,15 +231,15 @@ async function cmdBuild(p: ParsedArgs): Promise<number> {
   return 0;
 }
 
-async function runCheck(t: Target, style: StyleName | undefined): Promise<PageInfo> {
+async function runCheck(t: Target, style: StyleName | undefined): Promise<{ info: PageInfo, index: string }> {
   const index = await ensureBuilt(t, style);
   const info = await inspectPage(readFileSync(index, 'utf8'));
   log(summarizeReport(info.qa));
-  return info;
+  return { info, index };
 }
 
 async function cmdCheck(p: ParsedArgs): Promise<number> {
-  const info = await runCheck(resolveTarget(p.positional[0]), parseStyle(p.flags.style));
+  const { info } = await runCheck(resolveTarget(p.positional[0]), parseStyle(p.flags.style));
   console.log(JSON.stringify(info.qa, null, 2));
   return info.qa.errors.length > 0 || !info.qa.ok ? 1 : 0;
 }
@@ -231,7 +249,13 @@ async function cmdStills(p: ParsedArgs): Promise<number> {
   const index = await ensureBuilt(t, parseStyle(p.flags.style));
   const html = readFileSync(index, 'utf8');
   const times = typeof p.flags.at === 'string' ? parseTimes(p.flags.at) : defaultStillTimes((await inspectPage(html)).scenes);
-  const res = await stills({ html, outDir: join(t.dir, 'stills'), times });
+  let res: { files: string[], seconds: number };
+  if (p.flags['from-mp4'] === true) {
+    const mp4 = resolveOut(p.flags.out, t);
+    if (!existsSync(mp4)) { throw new UsageError(`no MP4 at ${mp4}: run export first (or pass its --out)`); }
+    res = await stillsFromMp4({ mp4, outDir: join(t.dir, 'stills', 'mp4'), times });
+  }
+  else { res = await stills({ html, outDir: join(t.dir, 'stills'), times }); }
   for (const f of res.files.sort()) { console.log(f); }
   log(`${res.files.length} stills in ${res.seconds.toFixed(1)} s`);
   return res.files.length === times.length ? 0 : 1;
@@ -248,19 +272,24 @@ export async function verifyVideo(file: string): Promise<{ line: string, ok: boo
   if (!s) { return { line: 'ffprobe: no video stream', ok: false }; }
   const [n, d] = String(s.avg_frame_rate).split('/').map(Number);
   const fps = d ? n / d : n;
-  const ok = s.codec_name === 'h264' && s.pix_fmt === 'yuv420p' && s.width === 1920 && s.height === 1080;
-  return { line: `ffprobe: ${s.codec_name} ${s.pix_fmt} ${s.width}x${s.height} ${fps.toFixed(2)} fps ${ok ? 'OK' : 'MISMATCH (expected h264 yuv420p 1920x1080)'}`, ok };
+  const ok = s.codec_name === 'h264' && s.pix_fmt === 'yuv420p' && s.width === 1920 && s.height === 1080 && Math.abs(fps - 30) < 0.01;
+  return { line: `ffprobe: ${s.codec_name} ${s.pix_fmt} ${s.width}x${s.height} ${fps.toFixed(2)} fps ${ok ? 'OK' : 'MISMATCH (expected h264 yuv420p 1920x1080 30 fps)'}`, ok };
 }
 
 async function cmdExport(p: ParsedArgs): Promise<number> {
   const t = resolveTarget(p.positional[0]);
-  const info = await runCheck(t, parseStyle(p.flags.style));
+  const bitrate = parseBitrate(p.flags.bitrate);
+  const { info, index } = await runCheck(t, parseStyle(p.flags.style));
   if ((info.qa.errors.length > 0 || !info.qa.ok) && p.flags.force !== true) {
     log('Refusing to export: QA has errors. Fix them or pass --force.');
     return 1;
   }
-  const out = typeof p.flags.out === 'string' ? resolve(p.flags.out) : join(t.dir, `${slugify(basename(t.dir).replace(/^\d{4}-\d{2}-\d{2}-/, '')) || 'video'}.mp4`);
-  const res = await exportVideo({ html: readFileSync(join(t.dir, 'index.html'), 'utf8'), out, duration: info.duration, fps: info.fps, bitrate: parseBitrate(p.flags.bitrate) });
+  if (info.fps !== 30 || (info.width ?? 1920) !== 1920 || (info.height ?? 1080) !== 1080) {
+    log(`Refusing to export: the exporter writes 1920x1080 at 30 fps, and the spec asks for ${info.width}x${info.height} at ${info.fps} fps. Remove width, height and fps from the spec.`);
+    return 1;
+  }
+  const out = resolveOut(p.flags.out, t);
+  const res = await exportVideo({ html: readFileSync(index, 'utf8'), out, duration: info.duration, fps: info.fps, bitrate });
   console.log(res.file);
   console.log(`duration ${info.duration.toFixed(1)} s, size ${(res.bytes / 1024 / 1024).toFixed(2)} MB, took ${res.seconds.toFixed(1)} s`);
   const v = await verifyVideo(res.file);
@@ -283,10 +312,10 @@ async function cmdPreview(p: ParsedArgs): Promise<number> {
 
 const HELP: Record<string, string> = {
   new: 'new <slug> [--style sketch|hologram] [--title "..."]\n  Create ~/explainers/<yyyy-mm-dd>-<slug>/scene.js from a 2-scene template; prints its path.',
-  build: 'build <dir|scene.js> [--style sketch|hologram]\n  Build the self-contained index.html next to the scene; prints its path.',
-  check: 'check <dir> [--style ...]\n  Build if needed, run the QA gate headless; QA JSON on stdout. Exit 1 on errors, 0 on warnings only.',
-  stills: 'stills <dir> [--at 1,5,9]\n  PNGs to <dir>/stills/. Default: 2 per scene, at 40 % and 85 % of each scene.',
-  export: 'export <dir> [--out video.mp4] [--bitrate 2] [--force]\n  Run check (refuses on errors unless --force), export <dir>/<slug>.mp4, print path, duration, size, time; ffprobe verifies when available.',
+  build: 'build <dir|scene.js> [--style sketch|hologram]\n  Build the self-contained index.html into the explainer folder (a scene file other than scene.js builds into ~/explainers/<date>-<name>/); prints its path.',
+  check: 'check <dir|scene.js> [--style ...]\n  Build if needed, run the QA gate headless; QA JSON on stdout. Exit 1 on errors, 0 on warnings only.',
+  stills: 'stills <dir|scene.js> [--at 1,5,9] [--from-mp4 [--out video.mp4]]\n  PNGs to <dir>/stills/ (old ones replaced). Default: 2 per scene, at 40 % and 85 % of each scene. --from-mp4 cuts them from the exported MP4 with ffmpeg into <dir>/stills/mp4/.',
+  export: 'export <dir|scene.js> [--out video.mp4] [--bitrate 2] [--force]\n  Run check (refuses on errors unless --force), export <dir>/<slug>.mp4 (a relative --out is inside <dir>), print path, duration, size, time; ffprobe verifies when available.',
   preview: 'preview <dir>\n  Open index.html in the default browser.',
 };
 

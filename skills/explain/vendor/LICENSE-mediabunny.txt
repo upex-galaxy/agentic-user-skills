@@ -1,4 +1,5 @@
 Mediabunny (mediabunny.min.mjs)
+Version: 1.66.0 (the version string inside the file)
 Copyright (c) 2026-present, Vanilagy and contributors
 Source: https://github.com/Vanilagy/mediabunny (npm: mediabunny)
 License: Mozilla Public License 2.0

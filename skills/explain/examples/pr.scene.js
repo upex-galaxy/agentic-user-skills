@@ -2,6 +2,7 @@
 // Shows the usual recipe: titleCard opening, one idea per scene with a sectionTag, folderTree + codeBlock side by side,
 // a flow for CI checks, a table for the merge options, a short recap. Facts are generic and carry a sourceFooter.
 export const title = 'Cómo viaja un cambio en un pull request';
+export const style = 'sketch'; // used when neither --style nor explain.json picks one
 
 const SRC = 'docs.github.com';
 const TOTAL = 8;

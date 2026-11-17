@@ -8,6 +8,7 @@ declare module '*/camera.js';
 declare module '*/layout.js';
 declare module '*/text.js';
 declare module '*/qa.js';
+declare module '*/player.js';
 declare module '*/index.js';
 declare module '*/hologram.js';
 declare module '*/sketch.js';

@@ -1,3 +1,7 @@
+Rough.js (rough.min.js)
+Version: 4.6.6 (byte-identical to roughjs@4.6.6 bundled/rough.js on npm)
+Source: https://github.com/rough-stuff/rough (npm: roughjs)
+
 MIT License
 
 Copyright (c) 2019 Preet Shihn

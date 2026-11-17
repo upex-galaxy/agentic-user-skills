@@ -1,5 +1,6 @@
+import type { ChromeHandle } from './chrome.ts';
 import type { QaReport } from './qa.ts';
-import { launchChrome } from './chrome.ts';
+import { runSession } from './session.ts';
 
 export interface SceneInfo {
   name: string
@@ -13,6 +14,8 @@ export interface PageInfo {
   scenes: SceneInfo[]
   duration: number
   fps: number
+  width?: number
+  height?: number
   chrome: string
   seconds: number
 }
@@ -22,16 +25,17 @@ export interface PageInfo {
 const PROBE = `<script>
 (function () {
   var started = Date.now();
+  var headers = { 'x-explain-token': new URLSearchParams(location.search).get('token') || '' };
   var timer = setInterval(function () {
     var pre = document.getElementById('qa');
     var eng = window.__explainEngine;
     if (window.__ready && pre && eng) {
       clearInterval(timer);
-      fetch('/__info', { method: 'POST', body: JSON.stringify({ qa: JSON.parse(pre.textContent), scenes: eng.scenes, duration: eng.duration, fps: eng.fps }) });
+      fetch('/__info', { method: 'POST', headers: headers, body: JSON.stringify({ qa: JSON.parse(pre.textContent), scenes: eng.scenes, duration: eng.duration, fps: eng.fps, width: eng.W, height: eng.H }) });
     }
     else if (Date.now() - started > 60000) {
       clearInterval(timer);
-      fetch('/__error', { method: 'POST', body: 'The page never became ready (fonts or scene build failed).' });
+      fetch('/__error', { method: 'POST', headers: headers, body: 'The page never became ready (fonts or scene build failed).' });
     }
   }, 100);
 })();
@@ -46,7 +50,8 @@ const ERROR_PROBE = `<script>
   function report(msg) {
     if (sent) { return; }
     sent = true;
-    try { fetch('/__error', { method: 'POST', body: String(msg), keepalive: true }); } catch (e) {}
+    var token = new URLSearchParams(location.search).get('token') || '';
+    try { fetch('/__error', { method: 'POST', headers: { 'x-explain-token': token }, body: String(msg), keepalive: true }); } catch (e) {}
   }
   window.addEventListener('error', function (e) { report((e.error && e.error.message) || e.message || 'uncaught error'); });
   window.addEventListener('unhandledrejection', function (e) {
@@ -63,43 +68,22 @@ export function withErrorProbe(html: string): string {
 }
 
 /** Load the built page headless with ?qa=1 and return its QA report and scene list. */
-export async function inspectPage(html: string, timeoutMs = 120_000): Promise<PageInfo> {
+export async function inspectPage(html: string, timeoutMs = 120_000, launch?: (url: string) => ChromeHandle): Promise<PageInfo> {
   const start = performance.now();
   const probed = html.includes('</body>') ? html.replace('</body>', `${PROBE}</body>`) : html + PROBE;
-  const served = withErrorProbe(probed);
-  let resolve!: (v: Omit<PageInfo, 'chrome' | 'seconds'>) => void;
-  let reject!: (e: Error) => void;
-  const done = new Promise<Omit<PageInfo, 'chrome' | 'seconds'>>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  const server = Bun.serve({
-    hostname: '127.0.0.1',
-    port: 0,
-    async fetch(req) {
-      const url = new URL(req.url);
-      if (req.method === 'GET' && url.pathname === '/') { return new Response(served, { headers: { 'content-type': 'text/html; charset=utf-8' } }); }
-      if (req.method === 'POST') {
-        const body = await req.text();
-        if (url.pathname === '/__error') { reject(new Error(`The page threw: ${body}`)); }
-        else if (url.pathname === '/__info') { resolve(JSON.parse(body) as Omit<PageInfo, 'chrome' | 'seconds'>); }
-        return new Response('ok');
-      }
-      return new Response('not found', { status: 404 });
+  let info: Omit<PageInfo, 'chrome' | 'seconds'> | undefined;
+  const session = await runSession({
+    html: withErrorProbe(probed),
+    query: { qa: '1' },
+    label: 'QA',
+    timeoutMs,
+    limits: { __info: 8 * 1024 * 1024 },
+    launch,
+    onPost: (name, _url, body) => {
+      if (name !== '__info') { return false; }
+      info = JSON.parse(new TextDecoder().decode(body)) as Omit<PageInfo, 'chrome' | 'seconds'>;
+      return true;
     },
   });
-  const chrome = launchChrome(`http://127.0.0.1:${server.port}/?qa=1`);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, rej) => {
-    timer = setTimeout(() => rej(new Error(`QA timed out after ${Math.round(timeoutMs / 1000)} s (Chrome: ${chrome.binary})`)), timeoutMs);
-  });
-  try {
-    const info = await Promise.race([done, timeout]);
-    return { ...info, chrome: chrome.binary, seconds: (performance.now() - start) / 1000 };
-  }
-  finally {
-    clearTimeout(timer);
-    await chrome.kill();
-    await server.stop(true);
-  }
+  return { ...info!, chrome: session.chrome, seconds: (performance.now() - start) / 1000 };
 }
