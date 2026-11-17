@@ -16,6 +16,8 @@ export default antfu({
     // served verbatim to the page; it is not part of the TS program and uses
     // browser globals, so it is out of scope for repo-level lint rules.
     'skills/*/cli/ui/**',
+    // Vendored third-party browser libraries and fonts (Rough.js, Mediabunny, woff2): not our code.
+    'skills/explain/vendor/**',
   ],
   rules: {
     'no-console': 'off',
@@ -40,5 +42,16 @@ export default antfu({
         varsIgnorePattern: '^_',
       },
     ],
+  },
+}, {
+  // The explain engine is plain browser JS imported untyped (see skills/explain/engine/shims.d.ts),
+  // so type-aware "unsafe any" rules cannot say anything useful about the code that drives it.
+  files: ['skills/explain/**/*.test.ts', 'skills/explain/engine/stub-ctx.ts'],
+  rules: {
+    'ts/no-unsafe-argument': 'off',
+    'ts/no-unsafe-assignment': 'off',
+    'ts/no-unsafe-call': 'off',
+    'ts/no-unsafe-member-access': 'off',
+    'ts/no-unsafe-return': 'off',
   },
 });

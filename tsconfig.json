@@ -19,5 +19,5 @@
     "skipLibCheck": true
   },
   "include": ["skills/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "skills/explain/vendor/**"]
 }

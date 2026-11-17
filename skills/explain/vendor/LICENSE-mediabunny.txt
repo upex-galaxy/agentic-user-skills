@@ -1,0 +1,13 @@
+Mediabunny (mediabunny.min.mjs)
+Copyright (c) 2026-present, Vanilagy and contributors
+Source: https://github.com/Vanilagy/mediabunny (npm: mediabunny)
+License: Mozilla Public License 2.0
+
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+The file vendor/mediabunny.min.mjs is the unmodified upstream minified build.
+MPL-2.0 is a file-level copyleft: modifications to that file must be published
+under the MPL-2.0; the rest of this skill is unaffected. Full license text:
+https://www.mozilla.org/en-US/MPL/2.0/
