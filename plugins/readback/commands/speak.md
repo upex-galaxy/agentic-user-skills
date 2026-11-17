@@ -36,10 +36,10 @@ is injected by the `UserPromptSubmit` hook. The script says so; do not repeat it
 | `status` | Whether this session has it on. |
 | `list` | Every session currently speaking. |
 | `doctor` | Engine, audio player, pronunciation rules, data paths. |
-| `docs` | Open the full HTML documentation in the browser. |
+| `docs` | Open the how-it-works deck in the browser (Spanish or English). |
 
 ## When the user asks how this works
 
-Run `docs`. It opens a self-contained page covering the turn cycle, multiple
-sessions, the speech engines, pronunciation and troubleshooting. Do not explain it
-from memory — the page is the source of truth and it works offline.
+Run `docs`. It opens a self-contained deck covering what readback does, how a turn
+flows, the voice chain and failures, personalities, settings, install and the credit
+footer. Do not explain it from memory: the deck is the source of truth and works offline.

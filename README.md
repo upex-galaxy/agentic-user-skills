@@ -63,7 +63,7 @@ That is a different install path, in the same repo:
 
 | Plugin | Command | What it is |
 | --- | --- | --- |
-| [`readback`](plugins/readback/README.md) | `/readback:speak` | Speaks a short spoken summary at the end of every reply, **without changing the reply itself**. Output only — no microphone, no conversation loop. Local TTS by default (Kokoro on `127.0.0.1`), ElevenLabs optional with automatic fallback. Hooks `Stop` and `UserPromptSubmit`; per-session switch; fails silent by design. |
+| [`readback`](plugins/readback/README.md) | `/readback:speak` | Speaks a short summary at the end of every reply, **without changing the reply itself**. Output only: no microphone, no conversation loop. Built for your own ElevenLabs voice (`PROVIDER=auto` falls back to Kokoro, then the system voice), with four personas, volume leveling and a user-only credit footer. Hooks `Stop` and `UserPromptSubmit`; failures are logged and reported, never fatal. Ships its own deck: [`how-it-works.es.html`](plugins/readback/how-it-works.es.html) / [`.en.html`](plugins/readback/how-it-works.en.html). |
 
 ### Skills or plugin?
 

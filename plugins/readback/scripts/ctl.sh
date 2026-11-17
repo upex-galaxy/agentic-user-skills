@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Readback switch, per session.
-# Usage: ctl.sh on|off|status|list|doctor|docs [session-id]
+# Usage: ctl.sh on|off|status|list|doctor [session-id]  |  docs [es|en]
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -167,13 +167,18 @@ case "$action" in
     ;;
 
   docs)
-    doc="$PLUGIN_ROOT/docs/index.html"
+    # The deck ships in two languages, like every skill's how-it-works deck.
+    lang="${2:-}"
+    [ -z "$lang" ] && lang="${READBACK_LANGUAGE:-${CLAUDE_PLUGIN_OPTION_LANGUAGE:-}}"
+    [ -z "$lang" ] && lang="${LANG%%_*}"
+    case "$lang" in es*) lang=es ;; en*) lang=en ;; *) lang=es ;; esac
+    doc="$PLUGIN_ROOT/how-it-works.$lang.html"
     if [ ! -f "$doc" ]; then
       echo "documentation not found at $doc" >&2
       exit 1
     fi
     if abrir "$doc"; then
-      echo "Opened the readback documentation in your browser."
+      echo "Opened the readback deck ($lang) in your browser. Other language: docs es | docs en"
     else
       echo "Could not open a browser. The file is at:"
       echo "  $doc"
