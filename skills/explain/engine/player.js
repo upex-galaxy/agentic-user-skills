@@ -108,7 +108,7 @@ export async function boot({ makeScene, style, loadExport }) {
     }
     catch (err) {
       console.error(err);
-      time.textContent = `Error al exportar: ${err instanceof Error ? err.message : err}`;
+      time.textContent = `Export failed: ${err instanceof Error ? err.message : err}`;
     }
     btn.disabled = false;
     btn.textContent = label;

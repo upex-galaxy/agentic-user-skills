@@ -6,7 +6,7 @@ import { grid, nearestEdge, radial, row, union } from '../layout.js';
 //   path: ['Borrador', 'review', 'Publicado'], pathAt: 4, pathStep: 1.4, layout: 'row' | 'ring' | 'grid', at: 0.3 })
 import { clamp, ease, prog } from '../math.js';
 import { node } from './base.js';
-import { chipItem, cubic, inflate, lineItem, pointAt, polyLen, quad } from './diagram-kit.js';
+import { chipItem, chipSize, cubic, inflate, lineItem, pointAt, polyLen, quad } from './diagram-kit.js';
 
 const center = r => [r.x + r.w / 2, r.y + r.h / 2];
 
@@ -57,11 +57,42 @@ export function transitionPath(a, b, o = {}) {
   return { pts, mid: [apexPt.x, apexPt.y] };
 }
 
+const LABEL_STEPS = [0.5, 0.38, 0.62, 0.28, 0.72, 0.2, 0.8, 0.12, 0.88];
+
+/**
+ * Pure: a center for every transition label, slid along its own curve until its pill clears the labels already
+ * placed and every state. `arcs` is [{ pts, mid, size: { w, h }, fixed }] (a fixed arc, such as a self-loop, keeps its
+ * apex). Returns one [x, y] per arc; when nothing is free the least-crowded spot on the curve wins.
+ */
+export function placeTransitionLabels(arcs, states, bounds) {
+  const placed = [];
+  const rectAt = (c, size) => ({ x: c[0] - size.w / 2, y: c[1] - size.h / 2, w: size.w, h: size.h });
+  const clash = (a, b, m) => a.x < b.x + b.w + m && b.x < a.x + a.w + m && a.y < b.y + b.h + m && b.y < a.y + a.h + m;
+  return arcs.map((arc) => {
+    if (!arc.size) { return arc.mid; }
+    const cands = arc.fixed
+      ? [arc.mid]
+      : LABEL_STEPS.map((p) => {
+          const q = pointAt(arc.pts, p);
+          return [q.x, q.y];
+        });
+    let best = null;
+    for (const c of cands) {
+      const r = rectAt([clamp(c[0], bounds.x + arc.size.w / 2, bounds.x + bounds.w - arc.size.w / 2), clamp(c[1], bounds.y + arc.size.h / 2, bounds.y + bounds.h - arc.size.h / 2)], arc.size);
+      const hits = placed.filter(p => clash(r, p, 8)).length * 2 + states.filter(st => clash(r, st, 4)).length;
+      if (!best || hits < best.hits) { best = { hits, c, r }; }
+      if (!hits) { break; }
+    }
+    placed.push(best.r);
+    return best.c;
+  });
+}
+
 /** Pure: state layout. Returns { rects, bounds }. */
 export function stateLayout(states, { area, layout, gap, positions }) {
   const n = states.length;
   const mode = layout ?? (n <= 4 ? 'row' : n <= 6 ? 'ring' : 'grid');
-  const size = n <= 3 ? { w: 320, h: 130 } : { w: 270, h: 120 };
+  const size = n <= 3 ? { w: 360, h: 170 } : { w: 290, h: 140 };
   const specs = states.map(st => ({ id: st.id, w: st.w ?? size.w, h: st.h ?? size.h }));
   if (positions) {
     const rects = {};
@@ -71,7 +102,7 @@ export function stateLayout(states, { area, layout, gap, positions }) {
     }
     return { rects, bounds: union(Object.values(rects)) };
   }
-  const opts = { area, gap: gap ?? (mode === 'row' ? 230 : 120) };
+  const opts = { area, gap: gap ?? (mode === 'row' ? 250 : 120) };
   if (mode === 'ring') { return radial(specs, { ...opts, aspect: 1.8 }); }
   if (mode === 'grid') { return grid(specs, { ...opts, gapX: 200, gapY: 150 }); }
   return row(specs, opts);
@@ -115,10 +146,11 @@ export const stateMachine = (s, o) => {
     const self = tr.from === tr.to;
     return { tr, ...transitionPath(a, b, { down: self && center(a)[1] > bcy + 20, flip: tr.flip }) };
   });
-  arcs.forEach(({ tr, pts, mid }, i) => {
+  const labelAt = placeTransitionLabels(arcs.map(a => ({ pts: a.pts, mid: a.mid, fixed: a.tr.from === a.tr.to, size: a.tr.label ? chipSize(s, a.tr.label) : null })), Object.values(L.rects), area);
+  arcs.forEach(({ tr, pts }, i) => {
     const at = tAt + tStep * i;
     s.add(lineItem(s, { id: `${pid}-t${i}`, pts, at, dur: 0.6, color: tr.color ?? 'ink', z: -0.5 }));
-    if (tr.label) { s.add(chipItem(s, { id: `${pid}-t${i}-label`, text: tr.label, center: mid, at: at + 0.35, color: tr.color ?? 'dim', bounds: area })); }
+    if (tr.label) { s.add(chipItem(s, { id: `${pid}-t${i}-label`, text: tr.label, center: labelAt[i], at: at + 0.35, color: tr.color ?? 'dim', bounds: area })); }
   });
 
   const handle = { states: L.rects, arcs: arcs.map(a => a.pts), end: tAt + tStep * arcs.length };

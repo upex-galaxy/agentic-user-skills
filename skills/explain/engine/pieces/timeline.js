@@ -33,12 +33,14 @@ export function timeline(s, o) {
   const d = s.style.defaults;
   const g = timelineGeometry(n, area);
   const axisY = area.y + area.h / 2;
-  const px = o.px ?? d.labelPx * 0.95;
-  const stem = 74;
+  const px = o.px ?? d.labelPx * (area.h >= 560 ? 1.1 : 0.95);
   const fontFor = size => s.style.font('body', size, 600);
   const dateW = Math.min(g.labelW, Math.max(g.spacing * 0.9, 120));
   const fits = items.map(it => fitText(s.ctx, it.label, { w: g.labelW, h: px * 1.2 * 3 }, { fontFor, maxPx: px, minPx: d.minPx, lineHeight: 1.2 }));
   const dateFits = items.map(it => (it.date ? fitText(s.ctx, it.date, { w: dateW, h: px }, { fontFor, maxPx: px * 0.8, minPx: d.minPx - 4, lineHeight: 1.2 }) : null));
+  // Taller areas get longer stems, so the strip uses more of the height; never so long that a label leaves the area.
+  const labelMaxH = Math.max(...fits.map(f => f.lines.length * f.lineH + 6));
+  const stem = Math.max(40, Math.min(clamp(area.h * 0.26, 74, 170), area.h / 2 - labelMaxH - 14));
   const labels = items.map((it, i) => {
     const h = fits[i].lines.length * fits[i].lineH + 6;
     const y = g.sides[i] === 'above' ? axisY - stem - h : axisY + stem;

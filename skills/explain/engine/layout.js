@@ -52,6 +52,11 @@ export function createRegistry() {
       rects.set(id, { x: rect.x, y: rect.y, w: rect.w, h: rect.h });
       return rects.get(id);
     },
+    /** Swap a registered rect for a new object (items keep the object they were built with). */
+    replace(id, rect) {
+      if (!rects.has(id)) { throw new Error(`Unknown element id "${id}"`); }
+      rects.set(id, { x: rect.x, y: rect.y, w: rect.w, h: rect.h });
+    },
     addAll(map) {
       for (const [id, r] of Object.entries(map)) { reg.add(id, r); }
     },
@@ -150,7 +155,14 @@ function normalize(items, opts) {
 function finish(raw, opts, extra = {}) {
   const b0 = union(raw);
   let k = 1;
-  if (opts.area && opts.fit !== false) { k = Math.min(1, opts.area.w / b0.w, opts.area.h / b0.h); }
+  if (opts.area && opts.fit !== false) {
+    k = Math.min(1, opts.area.w / b0.w, opts.area.h / b0.h);
+    // `fill` (set when the author passed no area): a layout that fills under 70 % of the area grows to about 80 %.
+    if (opts.fill && k === 1) {
+      const r = Math.max(b0.w / opts.area.w, b0.h / opts.area.h);
+      if (r > 0 && r < 0.7) { k = Math.min(2.2, 0.8 / r); }
+    }
+  }
   const scaled = raw.map(r => ({ ...r, x: (r.x - b0.x) * k, y: (r.y - b0.y) * k, w: r.w * k, h: r.h * k }));
   const b1 = union(scaled);
   let ox = opts.x ?? 0;

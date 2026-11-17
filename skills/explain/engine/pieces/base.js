@@ -3,7 +3,7 @@ import { union } from '../layout.js';
 // label, group, and code. Each factory is (s, opts) => item, where `s` is the scene builder.
 // Items: { kind, id, z, draw(api, t), qa(api, t) -> record, texts() -> strings }.
 import { clamp, ease, hash, lerp, prog } from '../math.js';
-import { fitText, layoutCode, measure, revealLines } from '../text.js';
+import { fitText, layoutCode, measure, revealLines, withWidow } from '../text.js';
 
 function fitFor(s, text, rect, o, defaults = {}) {
   const role = o.font ?? defaults.font ?? 'body';
@@ -22,7 +22,7 @@ export function blockBox(fit, rect, align = 'center', pad = 0) {
   const h = fit.lines.length * fit.lineH;
   const w = fit.width;
   const x = align === 'center' ? rect.x + (rect.w - w) / 2 : rect.x + pad;
-  return { x, y: rect.y + (rect.h - h) / 2, w, h };
+  return withWidow({ x, y: rect.y + (rect.h - h) / 2, w, h }, fit);
 }
 
 /** Draw a fitted block line by line; `p` < 1 types it in reading order without reflow. */
@@ -79,7 +79,9 @@ export function node(s, o) {
   const dur = o.dur ?? 0.6;
   const kind = o.shape ?? 'round';
   const stroke = o.color ?? 'accent';
-  const fit = fitFor(s, text, rect, o);
+  // Big nodes (a scaled layout) get bigger text: up to 1.7x the style's node size, about 28 % of the node height.
+  const nodePx = s.style.defaults.nodePx;
+  const fit = fitFor(s, text, rect, o, { px: Math.max(nodePx, Math.min(nodePx * 1.7, rect.h * 0.28)) });
   const typeAt = o.typeAt ?? at + dur * 0.6;
   const td = typeDur(text, o);
   const appear = t => ease.out(prog(t, at, dur));

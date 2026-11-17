@@ -17,7 +17,7 @@ const palette = {
 const STACKS = {
   body: '"Caveat", "Bradley Hand", "Marker Felt", cursive',
   display: '"Caveat", "Bradley Hand", "Marker Felt", cursive',
-  mono: '"Caveat", "Bradley Hand", "Marker Felt", cursive',
+  mono: '"JetBrains Mono", Menlo, monospace',
 };
 const WEIGHTS = { body: 600, display: 700, mono: 500 };
 
@@ -41,8 +41,11 @@ export default {
   name: 'sketch',
   palette,
   stacks: STACKS,
-  faces: [{ family: 'Caveat', file: 'fonts/caveat.woff2', weight: '400 700' }],
-  defaults: { nodePx: 54, labelPx: 56, codePx: 40, minPx: 26, lw: 3, pad: 20 },
+  faces: [
+    { family: 'Caveat', file: 'fonts/caveat.woff2', weight: '400 700' },
+    { family: 'JetBrains Mono', file: 'fonts/jetbrains-mono.woff2', weight: '400 700' },
+  ],
+  defaults: { nodePx: 54, labelPx: 56, codePx: 32, minPx: 26, lw: 3, pad: 20 },
   color,
   font: (role, px, weight) => `${weight ?? WEIGHTS[role] ?? 600} ${px}px ${STACKS[role] ?? STACKS.body}`,
 

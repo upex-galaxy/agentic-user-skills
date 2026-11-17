@@ -34,3 +34,4 @@ declare module '*/anatomy.scene.js';
 declare module '*/state.scene.js';
 declare module '*/motion.scene.js';
 declare module '*/motion2.scene.js';
+declare module '*/bands.js';

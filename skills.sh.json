@@ -25,7 +25,7 @@
     {
       "title": "Content",
       "description": "Skills that turn work, links and topics into material a content agent can use.",
-      "skills": ["content-brief", "content-teardown"]
+      "skills": ["content-brief", "content-teardown", "explain"]
     },
     {
       "title": "Engineering",

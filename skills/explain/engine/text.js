@@ -8,41 +8,71 @@ export function measure(ctx, str, font) {
   return ctx.measureText(str).width;
 }
 
-/** Greedy word wrap that respects "\n". Words wider than maxW are broken by characters. */
-export function wrapText(ctx, text, maxW, font) {
+/** Tag a text-block rect with the fit's widow flag (non-enumerable, so rect equality in tests is unaffected); the QA gate reads it. */
+export function withWidow(rect, fit) {
+  if (fit?.widow) { Object.defineProperty(rect, 'widow', { value: true }); }
+  return rect;
+}
+
+/** Greedy wrap of one paragraph's words. Words wider than maxW are broken by characters. */
+function greedy(ctx, words, maxW, font) {
   const lines = [];
-  for (const para of String(text).split('\n')) {
-    const words = para.split(/\s+/).filter(Boolean);
-    if (!words.length) {
-      lines.push('');
+  let cur = '';
+  for (const word of words) {
+    const trial = cur ? `${cur} ${word}` : word;
+    if (measure(ctx, trial, font) <= maxW) {
+      cur = trial;
       continue;
     }
-    let cur = '';
-    for (const word of words) {
-      const trial = cur ? `${cur} ${word}` : word;
-      if (measure(ctx, trial, font) <= maxW) {
-        cur = trial;
-        continue;
-      }
-      if (cur) { lines.push(cur); }
-      cur = word;
-      while (measure(ctx, cur, font) > maxW && cur.length > 1) {
-        let n = cur.length - 1;
-        while (n > 1 && measure(ctx, cur.slice(0, n), font) > maxW) { n--; }
-        lines.push(cur.slice(0, n));
-        cur = cur.slice(n);
-      }
+    if (cur) { lines.push(cur); }
+    cur = word;
+    while (measure(ctx, cur, font) > maxW && cur.length > 1) {
+      let n = cur.length - 1;
+      while (n > 1 && measure(ctx, cur.slice(0, n), font) > maxW) { n--; }
+      lines.push(cur.slice(0, n));
+      cur = cur.slice(n);
     }
-    lines.push(cur);
   }
+  lines.push(cur);
   return lines;
+}
+
+/** A widow: 2+ lines whose last line is one word narrower than 30 % of the widest line. */
+export function isWidow(ctx, lines, font) {
+  if (lines.length < 2) { return false; }
+  const last = lines[lines.length - 1];
+  if (!last || /\s/.test(last)) { return false; }
+  const widest = Math.max(...lines.map(l => measure(ctx, l, font)));
+  return measure(ctx, last, font) < widest * 0.3;
+}
+
+/** Wrap each paragraph; a widow is rebalanced by narrowing the measure while the line count stays the same. */
+function wrapParas(ctx, text, maxW, font) {
+  return String(text).split('\n').map((para) => {
+    const words = para.split(/\s+/).filter(Boolean);
+    if (!words.length) { return ['']; }
+    const lines = greedy(ctx, words, maxW, font);
+    if (!isWidow(ctx, lines, font)) { return lines; }
+    for (let w = maxW * 0.96; w >= maxW * 0.55; w -= maxW * 0.04) {
+      const alt = greedy(ctx, words, w, font);
+      if (alt.length !== lines.length) { break; }
+      if (!isWidow(ctx, alt, font)) { return alt; }
+    }
+    return lines;
+  });
+}
+
+/** Greedy word wrap that respects "\n" and avoids a lone short word on the last line of a paragraph. */
+export function wrapText(ctx, text, maxW, font) {
+  return wrapParas(ctx, text, maxW, font).flat();
 }
 
 /**
  * Fit `text` into box {w, h}. Starts at maxPx and shrinks one pixel at a time down to minPx;
- * if it still does not fit it stays at minPx and `overflow` is true.
+ * if it still does not fit it stays at minPx and `overflow` is true. A size that would break a word across lines is skipped.
  * opts: fontFor(px) -> CSS font (required), maxPx (40), minPx (16), lineHeight (1.25), pad (0).
- * Returns { lines, px, lineH, width, height, overflow }.
+ * A lone short word on a paragraph's last line is rebalanced, else one smaller size is tried; `widow` is true if one remains.
+ * Returns { lines, px, lineH, width, height, overflow, widow }.
  */
 export function fitText(ctx, text, box, opts) {
   const { fontFor, maxPx = 40, minPx = 16, lineHeight = 1.25, pad = 0 } = opts;
@@ -50,16 +80,25 @@ export function fitText(ctx, text, box, opts) {
   const innerH = box.h - pad * 2;
   const hi = Math.max(minPx, maxPx);
   let result = null;
+  let widowed = null; // first size that fits but leaves a widow; kept unless one smaller step removes it
   for (let px = hi; px >= minPx; px--) {
     const font = fontFor(px);
-    const lines = wrapText(ctx, text, innerW, font);
+    // Shrink before breaking a word across lines ("Transicio / nes"); a broken word is only accepted at the minimum size.
+    if (px > minPx && String(text).split(/\s+/).some(word => word && measure(ctx, word, font) > innerW)) { continue; }
+    const paras = wrapParas(ctx, text, innerW, font);
+    const lines = paras.flat();
     const lineH = px * lineHeight;
     const width = Math.max(0, ...lines.map(l => measure(ctx, l, font)));
     const height = lines.length * lineH;
-    result = { lines, px, lineH, width, height, overflow: width > innerW + 0.5 || height > innerH + 0.5 };
-    if (!result.overflow) { return result; }
+    result = { lines, px, lineH, width, height, overflow: width > innerW + 0.5 || height > innerH + 0.5, widow: paras.some(l => isWidow(ctx, l, font)) };
+    if (!result.overflow && !result.widow) { return result; }
+    if (!result.overflow) {
+      if (widowed) { return widowed; }
+      widowed = result;
+    }
+    else if (widowed) { return widowed; }
   }
-  return result;
+  return widowed ?? result;
 }
 
 /**

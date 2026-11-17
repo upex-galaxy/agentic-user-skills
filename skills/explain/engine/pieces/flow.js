@@ -30,8 +30,9 @@ export function flowLayout(n, area, o = {}) {
   const rowsN = Math.ceil(n / cols);
   const gapX = o.gap ?? 120;
   const gapY = o.gapY ?? 110;
-  const w = Math.min(o.w ?? 380, (area.w - gapX * (cols - 1)) / cols);
-  const h = Math.min(o.h ?? 190, w * 0.62, (area.h - gapY * (rowsN - 1)) / rowsN);
+  const w = Math.min(o.w ?? 560, (area.w - gapX * (cols - 1)) / cols);
+  // A flow aims for about 86 % of the area's height, so the scene keeps some air above and below it.
+  const h = Math.min(o.h ?? w, w, (area.h * 0.86 - gapY * (rowsN - 1)) / rowsN);
   const L = grid(Array.from({ length: n }, (_, i) => ({ id: String(i) })), { cols, w, h, gapX, gapY, area });
   const rects = Array.from({ length: n }, (_, i) => ({ ...L.rects[i] }));
   if (snake && cols > 1) {

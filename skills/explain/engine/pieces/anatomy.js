@@ -51,7 +51,7 @@ export const anatomy = (s, o) => {
   const at0 = o.at ?? 0;
   const parts = o.parts ?? [];
   const labels = (o.labels ?? []).map((l, i) => ({ n: i + 1, ...l }));
-  const h = Math.min(area.h * 0.92, o.maxH ?? 700, (area.w * 0.4) / (o.aspect ?? 1));
+  const h = Math.min(area.h * 0.92, o.maxH ?? 700, (area.w * 0.48) / (o.aspect ?? 1));
   const w = h * (o.aspect ?? 1);
   const box = { x: area.x + (area.w - w) / 2, y: area.y + (area.h - h) / 2, w, h };
   s.reg.add(id, box);

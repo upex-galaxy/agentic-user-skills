@@ -9,8 +9,8 @@ import { clamp, lerp, prog, resolveEase } from './math.js';
 export function createCamera({ W, H, resolve }) {
   const home = { x: W / 2, y: H / 2, z: 1 };
   const moves = [];
-  const add = (at, dur, to, e) => {
-    moves.push({ at, dur, to, ease: resolveEase(e, 'inOut') });
+  const add = (at, dur, to, e, target) => {
+    moves.push({ at, dur, to, target, ease: resolveEase(e, 'inOut') });
     moves.sort((a, b) => a.at - b.at);
   };
   const cam = {
@@ -22,7 +22,7 @@ export function createCamera({ W, H, resolve }) {
       const pad = opts.pad ?? 120;
       const fit = Math.min(W / (r.w + pad * 2), H / (r.h + pad * 2));
       const z = opts.zoom ?? clamp(fit, 1, opts.maxZoom ?? 2.5);
-      add(at, dur, { x: r.x + r.w / 2, y: r.y + r.h / 2, z }, opts.ease);
+      add(at, dur, { x: r.x + r.w / 2, y: r.y + r.h / 2, z }, opts.ease, typeof target === 'string' ? target : null);
       return this;
     },
     pan(x, y, at, dur = 1, opts = {}) {
@@ -34,8 +34,17 @@ export function createCamera({ W, H, resolve }) {
       return this;
     },
     reset(at, dur = 1, opts = {}) {
-      add(at, dur, { ...home }, opts.ease);
+      add(at, dur, { ...home }, opts.ease, null);
       return this;
+    },
+    /** Id of the latest focus move started by scene-local time t (pan and zoom keep it; reset or a rect focus clears it to null). */
+    targetAt(t) {
+      let target = null;
+      for (const m of moves) {
+        if (t < m.at) { break; }
+        if (m.target !== undefined) { target = m.target; }
+      }
+      return target;
     },
     /** Camera state { x, y, z } at scene-local time t. */
     at(t) {
@@ -48,6 +57,13 @@ export function createCamera({ W, H, resolve }) {
         state = target;
       }
       return state;
+    },
+    /**
+     * True while any move is running. QA treats that as "the camera is not at rest" even near zoom 1.0, where the
+     * first frames of a zoom ramp are already panned and would otherwise trip false out-of-bounds.
+     */
+    movingAt(t) {
+      return moves.some(m => t >= m.at && t < m.at + m.dur);
     },
     /** Apply the camera transform to ctx (call between save/restore). */
     apply(ctx, t) {

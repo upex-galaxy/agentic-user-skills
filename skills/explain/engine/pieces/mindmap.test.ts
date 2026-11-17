@@ -49,6 +49,26 @@ describe('mapLayout', () => {
   });
 });
 
+describe('mapLayout spread', () => {
+  const defaultArea = { x: 80, y: 244, w: 1760, h: 636 };
+  test('uses the full width, both sides of the hub, and every row slot of the height', () => {
+    const L = mapLayout(spec.branches as any, defaultArea)!;
+    const all = [L.hub, ...L.branches.flatMap((b: any) => [b.rect, ...b.leaves])];
+    expect(Math.min(...all.map((r: any) => r.x))).toBeLessThan(defaultArea.x + 4);
+    expect(Math.max(...all.map((r: any) => r.x + r.w))).toBeGreaterThan(defaultArea.x + defaultArea.w - 4);
+    const hubCx = L.hub.x + L.hub.w / 2;
+    const right = L.branches.filter((b: any) => b.rect.x > hubCx).length;
+    expect(Math.abs(right - (L.branches.length - right))).toBeLessThanOrEqual(1);
+    const ys = L.branches.map((b: any) => b.rect.y + b.rect.h / 2);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(defaultArea.h * 0.4);
+  });
+  test('node size follows the area', () => {
+    const big = mapLayout(spec.branches as any, defaultArea)!;
+    const small = mapLayout(spec.branches as any, { x: 0, y: 0, w: 880, h: 318 })!;
+    expect(big.hub.w).toBeGreaterThan(small.hub.w * 1.8);
+  });
+});
+
 describe('curve', () => {
   test('is not a straight line and ends on the rect borders', () => {
     const pts = curve({ x: 0, y: 0, w: 100, h: 50 }, { x: 500, y: 300, w: 100, h: 50 });

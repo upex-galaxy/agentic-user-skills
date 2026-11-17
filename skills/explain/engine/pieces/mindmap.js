@@ -7,48 +7,48 @@ import { node } from './base.js';
 
 const COLORS = ['accent', 'accent2', 'good', 'warn'];
 const asSpec = x => (typeof x === 'string' ? { text: x } : x);
-const hit = (a, b, gap) => !(a.x + a.w + gap <= b.x || b.x + b.w + gap <= a.x || a.y + a.h + gap <= b.y || b.y + b.h + gap <= a.y);
 
 /**
- * Pure geometry: rect for the hub, every branch and every leaf, centered in `area`.
- * Node sizes shrink until nothing collides, but never below `minH` per kind (so text keeps fitting). Returns { hub, branches: [{ rect, angle, leaves: [rect] }], k }.
+ * Pure geometry: rect for the hub, every branch and every leaf, spread over the whole `area`.
+ * Branches split into a right and a left column around the hub (clockwise from the top right: the right column runs
+ * down, the left column runs up); each branch sits in its own row slot and its leaves stack beyond it. Column widths
+ * and node heights scale with the area, so a big area gives big nodes. `minH` is kept for callers that want a floor.
+ * Returns { hub, branches: [{ rect, side, leaves: [rect] }], k: 1 }.
  */
 export function mapLayout(branches, area, gap = 18, minH = {}) {
   const n = branches.length;
   const deep = branches.some(b => b.children?.length);
   const cx = area.x + area.w / 2;
   const cy = area.y + area.h / 2;
-  const step = 360 / n;
-  const start = n % 2 === 0 ? -90 + step / 2 : -90;
-  const rad = deg => (deg * Math.PI) / 180;
-  const at = (rx, ry, deg, w, h) => ({ x: cx + Math.cos(rad(deg)) * rx - w / 2, y: cy + Math.sin(rad(deg)) * ry - h / 2, w, h });
-  const sizes = {
-    hub: { w: Math.min(380, area.w * 0.22), h: Math.min(150, area.h * 0.17) },
-    branch: { w: Math.min(290, area.w * 0.17), h: Math.min(112, area.h * 0.125) },
-    leaf: { w: Math.min(260, area.w * 0.15), h: Math.min(88, area.h * 0.095) },
-  };
-  const kMin = Math.min(1, Math.max(0.4, ...['hub', 'branch', 'leaf'].map(key => (minH[key] ?? 0) / sizes[key].h)));
-  let out = null;
-  for (let k = 1; k >= kMin - 1e-9; k = Math.max(kMin, k - 0.05)) {
-    const sz = key => ({ w: sizes[key].w * k, h: sizes[key].h * k });
-    const outer = deep ? sz('leaf') : sz('branch');
-    const rxO = area.w / 2 - outer.w / 2;
-    const ryO = area.h / 2 - outer.h / 2;
-    const hub = { x: cx - sz('hub').w / 2, y: cy - sz('hub').h / 2, ...sz('hub') };
-    const list = branches.map((b, i) => {
-      const angle = start + i * step;
-      const kids = b.children ?? [];
-      const f = !deep ? 1 : kids.length ? 0.5 : 0.8;
-      const spread = Math.min(26, (step * 0.8) / Math.max(1, kids.length));
-      const leaves = kids.map((_, j) => at(rxO, ryO, angle + (j - (kids.length - 1) / 2) * spread, sz('leaf').w, sz('leaf').h));
-      return { angle, rect: at(rxO * f, ryO * f, angle, sz('branch').w, sz('branch').h), leaves };
-    });
-    out = { hub, branches: list, k };
-    const all = [hub, ...list.flatMap(b => [b.rect, ...b.leaves])];
-    const clash = all.some((a, i) => all.slice(i + 1).some(b => hit(a, b, gap)));
-    if (!clash || k <= kMin) { break; }
-  }
-  return out;
+  const nRight = n === 1 ? 1 : Math.ceil(n / 2);
+  const nLeft = n - nRight;
+  const rows = Math.max(nRight, nLeft, 1);
+  const slot = area.h / rows;
+  const kidsMax = Math.max(1, ...branches.map(b => b.children?.length ?? 0));
+  const frac = deep ? { hub: 0.22, g1: 0.03, branch: 0.16, g2: 0.03, leaf: 0.17 } : { hub: 0.22, g1: 0.09, branch: 0.3, g2: 0, leaf: 0 };
+  const hubW = frac.hub * area.w;
+  const bw = frac.branch * area.w;
+  const lw = frac.leaf * area.w;
+  const g1 = frac.g1 * area.w;
+  const g2 = frac.g2 * area.w;
+  const hubH = Math.max(minH.hub ?? 0, Math.min(area.h * 0.28, hubW * 0.42));
+  const bh = Math.max(minH.branch ?? 0, Math.min(slot * 0.6, bw * 0.45));
+  const lh = Math.max(minH.leaf ?? 0, Math.min(slot / kidsMax - gap, lw * 0.4, bh * 0.9));
+  const hub = { x: cx - hubW / 2, y: cy - hubH / 2, w: hubW, h: hubH };
+  const list = branches.map((b, i) => {
+    const side = i < nRight ? 'right' : 'left';
+    const row = side === 'right' ? i : nLeft - 1 - (i - nRight);
+    const m = side === 'right' ? nRight : nLeft;
+    const yc = area.y + (row + 0.5) * (area.h / m);
+    const dir = side === 'right' ? 1 : -1;
+    const bx = dir > 0 ? cx + hubW / 2 + g1 : cx - hubW / 2 - g1 - bw;
+    const lx = dir > 0 ? bx + bw + g2 : bx - g2 - lw;
+    const kids = b.children ?? [];
+    const pitch = Math.min(area.h / m / Math.max(1, kids.length), lh + gap);
+    const leaves = kids.map((_, j) => ({ x: lx, y: yc + (j - (kids.length - 1) / 2) * pitch - lh / 2, w: lw, h: lh }));
+    return { side, rect: { x: bx, y: yc - bh / 2, w: bw, h: bh }, leaves };
+  });
+  return { hub, branches: list, k: 1 };
 }
 
 /** Quadratic curve from rect `a` to rect `b`, bent sideways by `bend` of its length, as sampled points. */
@@ -97,26 +97,27 @@ export function mindMap(s, o) {
   const d = s.style.defaults;
   const line = d.minPx * 1.2 + 2;
   const lay = mapLayout(branches, area, 18, { hub: line + 2 * d.pad, branch: line + 32, leaf: line + 24 });
+  const pxFor = (r, cap, share) => Math.max(d.minPx, Math.min(d.nodePx * cap, r.h * share));
   const deep = branches.some(b => b.children?.length);
   const at = o.at ?? 0;
   const step = o.step ?? (deep ? 1.1 : 0.7);
   const ids = { hub: `${id}.hub`, branches: [], leaves: [] };
 
-  s.add(node(s, { id: ids.hub, text: hubSpec.text, rect: lay.hub, at, dur: 0.7, color: hubSpec.color ?? 'accent', font: 'display', px: d.nodePx * 1.15 }));
+  s.add(node(s, { id: ids.hub, text: hubSpec.text, rect: lay.hub, at, dur: 0.7, color: hubSpec.color ?? 'accent', font: 'display', px: pxFor(lay.hub, 1.9, 0.4) }));
   let tBranch = at + 0.6;
   branches.forEach((b, i) => {
     const color = b.color ?? colors[i % colors.length];
     const bid = `${id}.b${i + 1}`;
     ids.branches.push(bid);
-    s.add(curvedEdge(s, `${id}.e${i + 1}`, lay.hub, lay.branches[i].rect, { at: tBranch, dur: 0.5, color, lw: 5, bend: 0.16 }));
-    s.add(node(s, { id: bid, text: b.text, rect: lay.branches[i].rect, at: tBranch + 0.35, dur: 0.5, color, font: 'display', px: d.nodePx, pad: 16 }));
+    s.add(curvedEdge(s, `${id}.e${i + 1}`, lay.hub, lay.branches[i].rect, { at: tBranch, dur: 0.5, color, lw: 5, bend: 0.14 }));
+    s.add(node(s, { id: bid, text: b.text, rect: lay.branches[i].rect, at: tBranch + 0.35, dur: 0.5, color, font: 'display', px: pxFor(lay.branches[i].rect, 1.7, 0.46), pad: 16 }));
     const leafIds = [];
     (b.children ?? []).map(asSpec).forEach((c, j) => {
       const lid = `${bid}.${j + 1}`;
       const tLeaf = tBranch + 0.85 + j * 0.28;
       leafIds.push(lid);
-      s.add(curvedEdge(s, `${id}.e${i + 1}.${j + 1}`, lay.branches[i].rect, lay.branches[i].leaves[j], { at: tLeaf, dur: 0.4, color, lw: 3, bend: 0.1 }));
-      s.add(node(s, { id: lid, text: c.text, rect: lay.branches[i].leaves[j], at: tLeaf + 0.3, dur: 0.4, color: c.color ?? color, px: d.nodePx * 0.8, pad: 12 }));
+      s.add(curvedEdge(s, `${id}.e${i + 1}.${j + 1}`, lay.branches[i].rect, lay.branches[i].leaves[j], { at: tLeaf, dur: 0.4, color, lw: 3, bend: 0.08 }));
+      s.add(node(s, { id: lid, text: c.text, rect: lay.branches[i].leaves[j], at: tLeaf + 0.3, dur: 0.4, color: c.color ?? color, px: pxFor(lay.branches[i].leaves[j], 1.4, 0.46), pad: 12 }));
     });
     ids.leaves.push(leafIds);
     tBranch += step + Math.max(0, (b.children?.length ?? 0) - 1) * 0.28;

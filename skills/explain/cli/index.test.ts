@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 import { findChrome } from './chrome.ts';
-import { dateStamp, defaultStillTimes, explainerDir, parseArgs, parseStyle, parseTimes, resolveTarget, sceneTemplate, slugify, UsageError } from './index.ts';
+import { dateStamp, defaultStillTimes, explainerDir, parseArgs, parseBitrate, parseStyle, parseTimes, resolveTarget, sceneTemplate, slugify, UsageError } from './index.ts';
 
 const cli = join(import.meta.dir, 'index.ts');
 
@@ -12,6 +12,16 @@ async function run(args: string[], home: string) {
   const [stdout, stderr] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
   return { code: await p.exited, stdout, stderr };
 }
+
+describe('bitrate flag', () => {
+  test('--bitrate takes megabits per second and rejects nonsense', () => {
+    expect(parseArgs(['d', '--bitrate', '2.5']).flags.bitrate).toBe('2.5');
+    expect(parseBitrate('2.5')).toBe(2.5e6);
+    expect(parseBitrate(undefined)).toBeUndefined();
+    expect(() => parseBitrate('0.1')).toThrow(UsageError);
+    expect(() => parseBitrate(true)).toThrow(UsageError);
+  });
+});
 
 describe('argument parsing', () => {
   test('splits positionals and flags, value flags consume one token', () => {
@@ -91,6 +101,24 @@ describe('template', () => {
 });
 
 const maybe = findChrome() ? test : test.skip;
+
+describe('a scene that throws', () => {
+  maybe('check, stills and export exit 1 within seconds and name the scene and the error', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'explain-throw-'));
+    const scene = (await run(['new', 'boom'], home)).stdout.trim();
+    const dir = join(scene, '..');
+    writeFileSync(scene, 'export default ({ scene }) => ({ scenes: [scene({ name: \'boom-scene\', dur: 2, build(s) { s.doesNotExist(); } })] });\n');
+    for (const args of [['check', dir], ['stills', dir, '--at', '1'], ['export', dir]]) {
+      const start = performance.now();
+      const r = await run(args, home);
+      const seconds = (performance.now() - start) / 1000;
+      expect(r.code).toBe(1);
+      expect(seconds).toBeLessThan(25);
+      expect(r.stderr).toContain('boom-scene');
+      expect(r.stderr).toContain('doesNotExist');
+    }
+  }, 120_000);
+});
 
 describe('end to end', () => {
   maybe('new, build, check, stills, export on the template', async () => {

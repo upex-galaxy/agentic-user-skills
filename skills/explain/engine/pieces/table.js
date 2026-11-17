@@ -33,12 +33,12 @@ export function table(s, o) {
   const area = o.area ?? o.rect ?? s.area;
   const d = s.style.defaults;
   const pad = 22;
-  const maxPx = o.px ?? d.labelPx * 0.85;
   const fontFor = (px, bold) => s.style.font('body', px, bold ? 700 : undefined);
   const totalW = Math.min(area.w, o.w ?? area.w);
   const weights = cols.map((c, j) => clamp(Math.max(c.text.length, ...rows.map(r => (r[j] ?? '').length)), 6, 34));
   const widths = columnWidths(weights, totalW);
-  const rowH = o.rowH ?? clamp(area.h / (rows.length + 1.2), 64, 120);
+  const rowH = o.rowH ?? clamp(area.h / (rows.length + 1.2), 64, 140);
+  const maxPx = o.px ?? clamp(rowH * 0.38, d.labelPx * 0.85, d.labelPx * 1.3); // taller rows get bigger text
   const headH = rowH * 0.9;
   const h = headH + rows.length * rowH;
   const rect = register(s, id, { x: area.x + (area.w - totalW) / 2, y: area.y + Math.max(0, (area.h - h) / 2), w: totalW, h });

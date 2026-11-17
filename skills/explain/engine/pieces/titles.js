@@ -1,9 +1,10 @@
 // Title family: titleCard (big title + subtitle written on), caption (bottom bar that types in),
 // sectionTag (top-left "02 / 09 Name" marker) and sourceFooter ("Fuente: ..." line, optional on every scene).
 // Each factory is (s, opts) => item. Text always goes through fitText; colors are style tokens.
+import { bands } from '../bands.js';
 import { clamp, ease, hash, prog } from '../math.js';
 import { fitText, measure } from '../text.js';
-import { blockBox, drawTextBlock } from './base.js';
+import { blockBox, drawTextBlock, label } from './base.js';
 
 const register = (s, id, rect) => (s.reg.has(id) ? s.reg.get(id) : s.reg.add(id, rect));
 const typeDur = (text, o, per = 0.045) => o.typeDur ?? Math.max(0.5, String(text).length * per);
@@ -81,7 +82,7 @@ export function titleCard(s, o) {
  */
 export function caption(s, o) {
   const id = o.id ?? s.uid('caption');
-  const rect = register(s, id, o.rect ?? { x: 160, y: s.H - 210, w: s.W - 320, h: 112 });
+  const rect = register(s, id, o.rect ?? { x: 160, y: s.H - 190, w: s.W - 320, h: 96 });
   const text = o.text ?? '';
   const at = o.at ?? 0;
   const fit = fitIn(s, text, rect, { px: o.px ?? s.style.defaults.labelPx * 0.9, pad: s.style.defaults.pad });
@@ -92,6 +93,7 @@ export function caption(s, o) {
   return {
     kind: 'caption',
     id,
+    hud: true,
     z: o.z ?? 5,
     rect,
     texts: () => [text],
@@ -104,6 +106,16 @@ export function caption(s, o) {
     },
     qa: (api, t) => ({ rect, alpha: barP(t) * out(t), texts: [{ text, rect: blockBox(fit, rect), overflow: fit.overflow, px: fit.px }] }),
   };
+}
+
+/**
+ * Scene heading in the band above the content area, typed in. HUD: the camera never moves it.
+ * opts: id (default "heading"), text, rect, at (0.2), px (the larger of 76 and 1.55x the style's label size), color, type (true), typeDur.
+ */
+export function heading(s, o) {
+  const text = o.text ?? o.title ?? '';
+  const item = label(s, { id: o.id ?? 'heading', text, rect: o.rect ?? bands(s.W, s.H).heading, px: o.px ?? Math.max(76, s.style.defaults.labelPx * 1.55), font: 'display', type: o.type ?? true, typeDur: o.typeDur, at: o.at ?? 0.2, color: o.color });
+  return { ...item, kind: 'heading', hud: true, zoomFade: true, z: o.z ?? 4 };
 }
 
 const pad2 = n => String(n).padStart(2, '0');
@@ -130,6 +142,7 @@ export function sectionTag(s, o) {
   return {
     kind: 'tag',
     id,
+    hud: true,
     z: o.z ?? 4,
     rect,
     texts: () => [full],
@@ -146,12 +159,27 @@ export function sectionTag(s, o) {
   };
 }
 
-/** "Fuente: ..." line pinned bottom-left, small and dim. opts: id, text, rect, at, dur, px, prefix (default "Fuente: "). */
+const SPANISH = /\b(?:el|la|los|las|de|del|que|en|un|una|con|para|por|se|es|como|cómo|qué|y)\b/gi;
+const ENGLISH = /\b(?:the|of|and|to|in|is|a|an|with|for|how|what|that|it|are)\b/gi;
+
+/** 'es' when the texts read as Spanish (accents, inverted marks or more Spanish than English function words), else 'en'. */
+export function detectLang(texts) {
+  const all = texts.filter(Boolean).join(' ');
+  if (/[áéíóúñü¿¡]/i.test(all)) { return 'es'; }
+  return (all.match(SPANISH) ?? []).length > (all.match(ENGLISH) ?? []).length ? 'es' : 'en';
+}
+
+/**
+ * Source line pinned bottom-left, small and dim. opts: id, text, rect, at, dur, px, lang, prefix. The prefix is
+ * "Fuente: " for Spanish and "Source: " otherwise; the language is `lang` here, else `lang` on the video spec,
+ * else detected from the video title and the texts already in the scene.
+ */
 export function sourceFooter(s, o) {
   const id = o.id ?? s.uid('source');
   const rect = register(s, id, o.rect ?? { x: 80, y: s.H - 78, w: s.W - 160, h: 44 });
   const raw = o.text ?? '';
-  const prefix = o.prefix ?? 'Fuente: ';
+  const lang = o.lang ?? s.lang ?? detectLang([s.title, raw, ...s.items.flatMap(it => it.texts?.() ?? [])]);
+  const prefix = o.prefix ?? (lang === 'es' ? 'Fuente: ' : 'Source: ');
   const text = /^(?:fuente|source)\b/i.test(raw) ? raw : `${prefix}${raw}`;
   const at = o.at ?? 0;
   const dur = o.dur ?? 0.6;
@@ -160,6 +188,7 @@ export function sourceFooter(s, o) {
   return {
     kind: 'source',
     id,
+    hud: true,
     z: o.z ?? 1,
     rect,
     texts: () => [text],
@@ -171,4 +200,4 @@ export function sourceFooter(s, o) {
   };
 }
 
-export const pieces = { titleCard, caption, sectionTag, sourceFooter };
+export const pieces = { titleCard, heading, caption, sectionTag, sourceFooter };

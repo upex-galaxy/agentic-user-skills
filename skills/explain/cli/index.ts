@@ -32,7 +32,7 @@ export interface ParsedArgs {
   flags: Record<string, string | true>
 }
 
-const VALUE_FLAGS = new Set(['style', 'title', 'at', 'out']);
+const VALUE_FLAGS = new Set(['style', 'title', 'at', 'out', 'bitrate']);
 
 export function parseArgs(args: string[]): ParsedArgs {
   const positional: string[] = [];
@@ -83,6 +83,14 @@ export function parseStyle(value: string | true | undefined): StyleName | undefi
   if (value === undefined) { return undefined; }
   if (typeof value !== 'string' || !(STYLES as readonly string[]).includes(value)) { throw new UsageError(`--style must be one of: ${STYLES.join(', ')}`); }
   return value as StyleName;
+}
+
+/** Parse --bitrate in Mbps ("2.5") into bits per second; undefined keeps the engine default. */
+export function parseBitrate(value: string | true | undefined): number | undefined {
+  if (value === undefined) { return undefined; }
+  const mbps = typeof value === 'string' ? Number(value) : Number.NaN;
+  if (!(mbps >= 0.5 && mbps <= 50)) { throw new UsageError('--bitrate needs megabits per second between 0.5 and 50, for example --bitrate 2'); }
+  return mbps * 1e6;
 }
 
 /** Parse "1,5.5,9" into seconds. */
@@ -252,7 +260,7 @@ async function cmdExport(p: ParsedArgs): Promise<number> {
     return 1;
   }
   const out = typeof p.flags.out === 'string' ? resolve(p.flags.out) : join(t.dir, `${slugify(basename(t.dir).replace(/^\d{4}-\d{2}-\d{2}-/, '')) || 'video'}.mp4`);
-  const res = await exportVideo({ html: readFileSync(join(t.dir, 'index.html'), 'utf8'), out, duration: info.duration, fps: info.fps });
+  const res = await exportVideo({ html: readFileSync(join(t.dir, 'index.html'), 'utf8'), out, duration: info.duration, fps: info.fps, bitrate: parseBitrate(p.flags.bitrate) });
   console.log(res.file);
   console.log(`duration ${info.duration.toFixed(1)} s, size ${(res.bytes / 1024 / 1024).toFixed(2)} MB, took ${res.seconds.toFixed(1)} s`);
   const v = await verifyVideo(res.file);
@@ -278,7 +286,7 @@ const HELP: Record<string, string> = {
   build: 'build <dir|scene.js> [--style sketch|hologram]\n  Build the self-contained index.html next to the scene; prints its path.',
   check: 'check <dir> [--style ...]\n  Build if needed, run the QA gate headless; QA JSON on stdout. Exit 1 on errors, 0 on warnings only.',
   stills: 'stills <dir> [--at 1,5,9]\n  PNGs to <dir>/stills/. Default: 2 per scene, at 40 % and 85 % of each scene.',
-  export: 'export <dir> [--out video.mp4] [--force]\n  Run check (refuses on errors unless --force), export <dir>/<slug>.mp4, print path, duration, size, time; ffprobe verifies when available.',
+  export: 'export <dir> [--out video.mp4] [--bitrate 2] [--force]\n  Run check (refuses on errors unless --force), export <dir>/<slug>.mp4, print path, duration, size, time; ffprobe verifies when available.',
   preview: 'preview <dir>\n  Open index.html in the default browser.',
 };
 

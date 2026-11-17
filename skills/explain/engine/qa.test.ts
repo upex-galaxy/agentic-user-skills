@@ -73,6 +73,84 @@ describe('qa gate', () => {
     expect(r.warnings.some((w: any) => w.type === 'composition-balance' && w.detail.includes('right'))).toBe(true);
   });
 
+  test('a zoom may crop neighbours of its focus target', () => {
+    const r = run((s) => {
+      full(s);
+      s.node({ id: 'mid', text: 'x', rect: { x: 900, y: 400, w: 200, h: 100 } });
+      s.node({ id: 'side', text: 'y', rect: { x: 1500, y: 400, w: 200, h: 100 } });
+      s.camera.focus('mid', -1, 0.5, { zoom: 2 });
+    });
+    expect(r.errors.filter((e: any) => e.type === 'out-of-bounds')).toEqual([]);
+  });
+
+  test('a zoom that crops its own focus target is an error', () => {
+    const r = run((s) => {
+      full(s);
+      s.node({ id: 'mid', text: 'x', rect: { x: 900, y: 400, w: 200, h: 100 } });
+      s.node({ id: 'side', text: 'y', rect: { x: 1500, y: 400, w: 200, h: 100 } });
+      s.camera.focus('mid', -1, 0.5, { zoom: 2 });
+      s.camera.pan(1600, 540, 0, 0.01); // slides away from the focused node while still zoomed
+    });
+    const hits = r.errors.filter((e: any) => e.type === 'out-of-bounds');
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.every((e: any) => e.id === 'mid')).toBe(true);
+    expect(hits[0].detail).toContain('after the camera');
+  });
+
+  test('without a zoom (pan only) the after-camera bounds still apply', () => {
+    const r = run((s) => {
+      full(s);
+      s.node({ id: 'side', text: 'y', rect: { x: 1500, y: 400, w: 200, h: 100 } });
+      s.camera.pan(500, 540, -1, 0.5);
+    });
+    expect(r.errors.filter((e: any) => e.id === 'side').length).toBeGreaterThan(0);
+  });
+
+  test('a pan can bring a world-space out-of-bounds element back into frame', () => {
+    const r = run((s) => {
+      full(s);
+      s.node({ id: 'far', text: 'x', rect: { x: 1800, y: 400, w: 100, h: 100 } });
+      s.camera.pan(1400, 540, -1, 0.5);
+    });
+    expect(r.errors.filter((e: any) => e.id === 'far')).toEqual([]);
+  });
+
+  test('an invisible element (alpha under the threshold) is not flagged by the camera', () => {
+    const r = run((s) => {
+      full(s);
+      s.node({ id: 'late', text: 'x', rect: { x: 1500, y: 400, w: 200, h: 100 }, at: 3.9 });
+      s.camera.pan(1100, 540, -1, 0.5);
+    });
+    expect(r.errors.filter((e: any) => e.id === 'late').every((e: any) => e.t >= 3.5)).toBe(true);
+  });
+
+  test('balance warns for lopsided or small content only once the scene has settled', () => {
+    const lopsided = run(s => s.node({ id: 'a', text: 'a', rect: { x: 100, y: 100, w: 1500, h: 800 } }), 6);
+    expect(lopsided.warnings.some((w: any) => w.type === 'composition-balance')).toBe(false);
+    const left = run((s) => {
+      s.node({ id: 'a', text: 'a', rect: { x: 100, y: 100, w: 900, h: 800 } });
+      s.node({ id: 'b', text: 'b', rect: { x: 1200, y: 400, w: 100, h: 50 } });
+    }, 6);
+    expect(left.warnings.map((w: any) => w.detail).join('\n')).toContain('right half');
+    const small = run(s => s.node({ id: 'a', text: 'a', rect: { x: 800, y: 440, w: 320, h: 200 } }), 6);
+    expect(small.ok).toBe(true);
+    expect(small.warnings.some((w: any) => w.detail.includes('of the frame'))).toBe(true);
+    // Elements that only appear before the settled time do not count.
+    const early = run((s) => {
+      s.node({ id: 'a', text: 'a', rect: { x: 100, y: 100, w: 800, h: 800 } });
+      s.node({ id: 'b', text: 'b', rect: { x: 1000, y: 100, w: 800, h: 800 }, at: 1 });
+    }, 10);
+    expect(early.warnings.filter((w: any) => w.type === 'composition-balance')).toEqual([]);
+  });
+
+  test('widow warning when a lone short word stays on the last line', () => {
+    const r = run(s => s.label({ id: 'wid', text: 'aaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbb c', rect: { x: 700, y: 300, w: 260, h: 400 }, px: 20 }));
+    expect(r.ok).toBe(true);
+    expect(r.warnings.some((w: any) => w.type === 'widow' && w.id === 'wid')).toBe(true);
+    const fine = run(s => s.label({ id: 'wid', text: 'aaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbb', rect: { x: 700, y: 300, w: 260, h: 400 }, px: 20 }));
+    expect(fine.warnings.some((w: any) => w.type === 'widow')).toBe(false);
+  });
+
   test('every error carries scene, id and time', () => {
     const r = run(s => s.node({ id: 'n', text: 'x', rect: { x: 1800, y: 400, w: 300, h: 100 } }));
     expect(r.errors[0]).toMatchObject({ scene: 's', id: 'n' });

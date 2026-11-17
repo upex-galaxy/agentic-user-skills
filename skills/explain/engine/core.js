@@ -1,14 +1,17 @@
 // Engine core. render(t) is a pure function of time over a scene graph built once from the scene spec.
 // Scenes have their own local time and duration; a named transition overlaps each scene with the next.
 // No wall-clock is read anywhere in this file.
+import { bands, fillScale } from './bands.js';
 import { createCamera } from './camera.js';
-import { createRegistry, grid, radial, row, stack, tree } from './layout.js';
+import { createRegistry, grid, radial, row, stack, tree, union } from './layout.js';
 import { clamp, ease, lerp } from './math.js';
 
 export * from './math.js';
 
 const LAYOUTS = { row, stack, grid, radial, tree };
 const DEFAULT_TR = 0.6;
+// Pieces that lay out many items by themselves: without an explicit area they are scaled to fill the default area.
+const FILL_PIECES = new Set(['flow', 'stateMachine', 'architecture', 'timeline']);
 
 /** Per-transition behavior. `out` / `in` map progress p (0..1) to the layer look of the leaving / entering scene. */
 export const TRANSITIONS = {
@@ -44,7 +47,7 @@ export function scene(def) {
   return def;
 }
 
-function createBuilder({ ctx, style, W, H, pieces, name }) {
+function createBuilder({ ctx, style, W, H, pieces, name, lang, title }) {
   const reg = createRegistry();
   const items = [];
   const counters = {};
@@ -56,7 +59,9 @@ function createBuilder({ ctx, style, W, H, pieces, name }) {
     style,
     reg,
     items,
-    area: { x: 80, y: 80, w: W - 160, h: H - 160 },
+    area: bands(W, H).area,
+    lang,
+    title,
     camera: createCamera({ W, H, resolve: id => reg.get(id) }),
     uid(prefix) {
       counters[prefix] = (counters[prefix] ?? 0) + 1;
@@ -68,19 +73,55 @@ function createBuilder({ ctx, style, W, H, pieces, name }) {
     },
     /** Raw escape hatch: fn(ctx, t, api) draws anything through the style. `t` is scene-local time. */
     raw(fn, o = {}) {
-      return s.add({ kind: 'raw', id: o.id ?? s.uid('raw'), z: o.z ?? 0, draw: (api, t) => fn(api.ctx, t, api) });
+      return s.add({ kind: 'raw', id: o.id ?? s.uid('raw'), z: o.z ?? 0, hud: o.hud === true, draw: (api, t) => fn(api.ctx, t, api) });
     },
     /** Connect two registered ids: { pts, from, to, length }. */
     connect: (from, to, opts) => reg.connect(from, to, opts),
   };
   for (const [key, fn] of Object.entries(LAYOUTS)) {
     s[key] = (specs, o = {}) => {
-      const result = fn(specs, { area: s.area, ...o });
+      // No explicit area: the layout grows to fill the default area instead of only shrinking into it.
+      const result = fn(specs, { area: s.area, fill: !o.area && !Number.isFinite(o.x), ...o });
       reg.addAll(result.rects);
       return result;
     };
   }
-  for (const [key, fn] of Object.entries(pieces)) { s[key] = o => s.add(fn(s, o)); }
+  /** Scale and center the items created since `first` (and the ids registered since) so they fill the default area. */
+  const fillItems = (first, known) => {
+    const mine = items.slice(first).filter(it => typeof it.qa === 'function' && it.rect && !it.hud);
+    if (!mine.length) { return; }
+    const b = union(mine.map(it => it.rect));
+    const k = fillScale(b, s.area);
+    const tx = s.area.x + (s.area.w - b.w * k) / 2 - b.x * k;
+    const ty = s.area.y + (s.area.h - b.h * k) / 2 - b.y * k;
+    if (Math.abs(k - 1) < 1e-6 && Math.abs(tx) < 0.5 && Math.abs(ty) < 0.5) { return; }
+    const map = r => ({ x: r.x * k + tx, y: r.y * k + ty, w: r.w * k, h: r.h * k });
+    for (const it of items.slice(first)) {
+      if (typeof it.draw !== 'function') { continue; }
+      const { draw, qa } = it;
+      it.draw = (api, t) => {
+        api.ctx.translate(tx, ty);
+        api.ctx.scale(k, k);
+        draw(api, t);
+      };
+      if (qa) {
+        it.qa = (api, t) => {
+          const rec = qa(api, t);
+          return rec ? { ...rec, rect: map(rec.rect), texts: (rec.texts ?? []).map(x => ({ ...x, rect: map(x.rect) })) } : rec;
+        };
+      }
+    }
+    for (const id of reg.ids()) { if (!known.has(id)) { reg.replace(id, map(reg.get(id))); } }
+  };
+  for (const [key, fn] of Object.entries(pieces)) {
+    s[key] = (o = {}) => {
+      const first = items.length;
+      const known = new Set(reg.ids());
+      const item = s.add(fn(s, o));
+      if (FILL_PIECES.has(key) && o.fill !== false && !o.area && !o.rect) { fillItems(first, known); }
+      return item;
+    };
+  }
   return s;
 }
 
@@ -102,10 +143,13 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style, spe
   const scenes = spec.scenes.map((def, i) => {
     if (!(def.dur > 0)) { throw new Error(`Scene ${i} needs a positive dur`); }
     const name = def.name ?? `scene-${i + 1}`;
-    const s = createBuilder({ ctx, style, W, H, pieces, name });
-    def.build(s);
-    const items = s.items.map((it, n) => ({ it, n })).sort((a, b) => (a.it.z ?? 0) - (b.it.z ?? 0) || a.n - b.n).map(x => x.it);
-    return { index: i, name, dur: def.dur, items, camera: s.camera, reg: s.reg, trOut: parseTransition(def.transition), start: 0, trIn: 0 };
+    const s = createBuilder({ ctx, style, W, H, pieces, name, lang: spec.lang, title: spec.title });
+    try { def.build(s); }
+    catch (e) { throw new Error(`Scene "${name}": ${e instanceof Error ? e.message : e}`, { cause: e }); }
+    const sorted = s.items.map((it, n) => ({ it, n })).sort((a, b) => (a.it.z ?? 0) - (b.it.z ?? 0) || a.n - b.n).map(x => x.it);
+    const items = sorted.filter(it => !it.hud);
+    const hud = sorted.filter(it => it.hud);
+    return { index: i, name, dur: def.dur, items, hud, camera: s.camera, reg: s.reg, trOut: parseTransition(def.transition), start: 0, trIn: 0 };
   });
 
   // Timeline: scene i+1 starts when scene i enters its outgoing window.
@@ -182,10 +226,20 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style, spe
       ctx.scale(layer.scale, layer.scale);
       ctx.translate(-W / 2, -H / 2);
     }
+    ctx.save();
     sc.camera.apply(ctx, layer.lt);
     for (const it of sc.items) {
       ctx.save();
       it.draw(api, layer.lt);
+      ctx.restore();
+    }
+    ctx.restore();
+    // HUD furniture (section tag, heading, caption, footer) is screen space: the camera never moves it.
+    // The heading fades out while the camera zooms in, so it never sits on top of the magnified part.
+    const zoomOut = clamp((sc.camera.at(layer.lt).z - 1) / 0.35);
+    for (const it of sc.hud) {
+      ctx.save();
+      it.draw(it.zoomFade && zoomOut > 0 ? makeApi(layer.lt, layer.sa * (1 - zoomOut)) : api, layer.lt);
       ctx.restore();
     }
     ctx.restore();
@@ -225,11 +279,11 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style, spe
       const sc = scenes[layer.index];
       const api = makeApi(layer.lt, layer.sa);
       const records = [];
-      for (const it of sc.items) {
+      for (const it of [...sc.items, ...sc.hud]) {
         const rec = it.qa?.(api, layer.lt);
-        if (rec) { records.push({ id: it.id, kind: it.kind, ...rec, alpha: rec.alpha * layer.sa }); }
+        if (rec) { records.push({ id: it.id, kind: it.kind, hud: it.hud === true, ...rec, alpha: rec.alpha * layer.sa }); }
       }
-      return { index: layer.index, name: layer.name, lt: layer.lt, sa: layer.sa, records };
+      return { index: layer.index, name: layer.name, lt: layer.lt, sa: layer.sa, cam: { ...sc.camera.at(layer.lt), target: sc.camera.targetAt(layer.lt), moving: sc.camera.movingAt(layer.lt) }, records };
     });
   }
 
@@ -237,7 +291,7 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style, spe
   function texts() {
     const out = [];
     for (const sc of scenes) {
-      for (const it of sc.items) {
+      for (const it of [...sc.items, ...sc.hud]) {
         for (const text of it.texts?.() ?? []) { out.push({ scene: sc.name, id: it.id, text }); }
       }
     }

@@ -34,14 +34,39 @@ const PROBE = `<script>
       fetch('/__error', { method: 'POST', body: 'The page never became ready (fonts or scene build failed).' });
     }
   }, 100);
-  window.addEventListener('error', function (e) { fetch('/__error', { method: 'POST', body: String(e.message) }); });
 })();
 </script>`;
+
+// Injected at the top of <head> in every headless session (check, stills, export) so an uncaught error or an
+// unhandled rejection (the engine boots asynchronously, so a throwing scene rejects) reaches the runner at once
+// instead of leaving it waiting for a timeout.
+const ERROR_PROBE = `<script>
+(function () {
+  var sent = false;
+  function report(msg) {
+    if (sent) { return; }
+    sent = true;
+    try { fetch('/__error', { method: 'POST', body: String(msg), keepalive: true }); } catch (e) {}
+  }
+  window.addEventListener('error', function (e) { report((e.error && e.error.message) || e.message || 'uncaught error'); });
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e.reason;
+    report((r && r.message) || (r !== undefined ? String(r) : 'unhandled promise rejection'));
+  });
+})();
+</script>`;
+
+/** Insert the error reporter before any other script of the page. */
+export function withErrorProbe(html: string): string {
+  const head = /<head[^>]*>/i.exec(html);
+  return head ? html.replace(head[0], `${head[0]}${ERROR_PROBE}`) : ERROR_PROBE + html;
+}
 
 /** Load the built page headless with ?qa=1 and return its QA report and scene list. */
 export async function inspectPage(html: string, timeoutMs = 120_000): Promise<PageInfo> {
   const start = performance.now();
-  const served = html.includes('</body>') ? html.replace('</body>', `${PROBE}</body>`) : html + PROBE;
+  const probed = html.includes('</body>') ? html.replace('</body>', `${PROBE}</body>`) : html + PROBE;
+  const served = withErrorProbe(probed);
   let resolve!: (v: Omit<PageInfo, 'chrome' | 'seconds'>) => void;
   let reject!: (e: Error) => void;
   const done = new Promise<Omit<PageInfo, 'chrome' | 'seconds'>>((res, rej) => {
@@ -56,7 +81,7 @@ export async function inspectPage(html: string, timeoutMs = 120_000): Promise<Pa
       if (req.method === 'GET' && url.pathname === '/') { return new Response(served, { headers: { 'content-type': 'text/html; charset=utf-8' } }); }
       if (req.method === 'POST') {
         const body = await req.text();
-        if (url.pathname === '/__error') { reject(new Error(`Page error: ${body}`)); }
+        if (url.pathname === '/__error') { reject(new Error(`The page threw: ${body}`)); }
         else if (url.pathname === '/__info') { resolve(JSON.parse(body) as Omit<PageInfo, 'chrome' | 'seconds'>); }
         return new Response('ok');
       }

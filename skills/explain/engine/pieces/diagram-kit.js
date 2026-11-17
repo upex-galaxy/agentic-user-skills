@@ -1,7 +1,7 @@
 // Shared helpers of the diagram pieces (sequence, architecture, code, anatomy, state, motion).
 // Nothing here is a piece: it is geometry, text fitting and two small items (a polyline and a label chip).
 import { clamp, ease, hash, prog } from '../math.js';
-import { fitText } from '../text.js';
+import { fitText, withWidow } from '../text.js';
 
 export const TOKENS = ['accent', 'accent2', 'good', 'warn'];
 
@@ -21,7 +21,7 @@ export function fitIn(s, text, rect, o = {}) {
 export function blockRect(fit, rect, align = 'center') {
   const h = fit.lines.length * fit.lineH;
   const x = align === 'left' ? rect.x : align === 'right' ? rect.x + rect.w - fit.width : rect.x + (rect.w - fit.width) / 2;
-  return { x, y: rect.y + (rect.h - h) / 2, w: fit.width, h };
+  return withWidow({ x, y: rect.y + (rect.h - h) / 2, w: fit.width, h }, fit);
 }
 
 /** Draw a fitted block; unlike base.js it supports right alignment. o: align, role, weight, color, alpha. */
@@ -113,6 +113,12 @@ export function lineItem(s, o) {
     },
     qa: (_api, t) => ({ rect: box, alpha: k(t), texts: [], overlap: true }),
   };
+}
+
+/** Size { w, h } of the pill `chipItem` draws for `text`. o: px, maxW. */
+export function chipSize(s, text, o = {}) {
+  const fit = fitIn(s, text, { x: 0, y: 0, w: o.maxW ?? 360, h: 80 }, { px: o.px ?? Math.round(s.style.defaults.labelPx * 0.7), pad: 0 });
+  return { w: fit.width + 32, h: fit.lineH + 14 };
 }
 
 /** A small pill with a text, drawn over lines (edge labels, transition labels). o: id, text, center [x, y], at, dur, color, px, bounds. */

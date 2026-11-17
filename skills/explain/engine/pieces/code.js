@@ -40,7 +40,9 @@ export const codeBlock = (s, o) => {
   const area = o.area ?? s.area;
   const lines = (o.lines ?? []).map(l => (typeof l === 'string' ? { text: l } : l));
   const hls = normalizeHighlights(o.highlights);
-  const codePx = o.px ?? s.style.defaults.codePx;
+  // Few lines in a tall area: the code grows (up to 1.5x the style's code size) so the panel fills the area.
+  const baseCodePx = s.style.defaults.codePx;
+  const codePx = o.px ?? Math.max(baseCodePx, Math.min(baseCodePx * 1.5, area.h / (lines.length + 3) / 1.55));
   let rect = o.rect ?? (s.reg.has(id) ? s.reg.get(id) : null);
   if (!rect) {
     const w = o.pointer ? area.w * 0.62 : area.w * 0.9;

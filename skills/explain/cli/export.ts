@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { launchChrome } from './chrome.ts';
+import { withErrorProbe } from './headless.ts';
 
 export interface ExportResult {
   file: string
@@ -27,6 +28,7 @@ async function runSession(
   timeoutMs: number,
   onPost: (path: string, url: URL, body: ArrayBuffer) => boolean,
 ): Promise<Session> {
+  const served = withErrorProbe(html);
   let resolve!: () => void;
   let reject!: (e: Error) => void;
   const done = new Promise<void>((res, rej) => {
@@ -39,11 +41,11 @@ async function runSession(
     maxRequestBodySize: 1024 * 1024 * 1024,
     async fetch(req) {
       const url = new URL(req.url);
-      if (req.method === 'GET' && url.pathname === '/') { return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } }); }
+      if (req.method === 'GET' && url.pathname === '/') { return new Response(served, { headers: { 'content-type': 'text/html; charset=utf-8' } }); }
       if (req.method === 'POST') {
         const body = await req.arrayBuffer();
         if (url.pathname === '/__error') {
-          reject(new Error(`Export failed in the page: ${new TextDecoder().decode(body)}`));
+          reject(new Error(`The page threw: ${new TextDecoder().decode(body)}`));
           return new Response('ok');
         }
         try {
@@ -73,10 +75,10 @@ async function runSession(
   return { files: [], done, chrome: chrome.binary };
 }
 
-export async function exportVideo(opts: { html: string, out: string, duration: number, fps?: number, timeoutMs?: number }): Promise<ExportResult> {
+export async function exportVideo(opts: { html: string, out: string, duration: number, fps?: number, bitrate?: number, timeoutMs?: number }): Promise<ExportResult> {
   const start = performance.now();
   let bytes = 0;
-  const session = await runSession(opts.html, '?export=1', opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, (path, _url, body) => {
+  const session = await runSession(opts.html, opts.bitrate ? `?export=1&bitrate=${Math.round(opts.bitrate)}` : '?export=1', opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, (path, _url, body) => {
     if (path !== '/__export') { return false; }
     mkdirSync(dirname(opts.out), { recursive: true });
     writeFileSync(opts.out, new Uint8Array(body));

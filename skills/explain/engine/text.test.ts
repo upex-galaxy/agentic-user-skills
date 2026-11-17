@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { makeStubCtx } from './stub-ctx.ts';
-import { fitText, layoutCode, measure, revealLines, wrapText } from './text.js';
+import { fitText, isWidow, layoutCode, measure, revealLines, wrapText } from './text.js';
 
 // Stub metrics: width = chars * px * 0.5, so at 20px every character is 10px wide.
 const { ctx } = makeStubCtx(0.5);
@@ -18,6 +18,36 @@ describe('wrapText', () => {
     const lines = wrapText(ctx, 'abcdefghij', 50, font(20));
     expect(lines.join('')).toBe('abcdefghij');
     for (const l of lines) { expect(measure(ctx, l, font(20))).toBeLessThanOrEqual(50); }
+  });
+});
+
+describe('widows', () => {
+  test('wrapText rebalances a lone short last word without losing words', () => {
+    const lines = wrapText(ctx, 'alpha beta gamma delta ok', 130, font(20));
+    expect(lines).toEqual(['alpha beta', 'gamma', 'delta ok']);
+    expect(isWidow(ctx, lines, font(20))).toBe(false);
+    for (const l of lines) { expect(measure(ctx, l, font(20))).toBeLessThanOrEqual(130); }
+  });
+
+  test('text without a widow wraps as before, and a one-line paragraph is never a widow', () => {
+    expect(wrapText(ctx, 'aaa bbb ccc ddd', 70, font(20))).toEqual(['aaa bbb', 'ccc ddd']);
+    expect(wrapText(ctx, 'a long first paragraph here\nok', 150, font(20)).at(-1)).toBe('ok');
+    const f = fitText(ctx, 'a long first paragraph here\nok', { w: 150, h: 400 }, { fontFor: font, maxPx: 20, minPx: 10 });
+    expect(f.widow).toBe(false);
+  });
+
+  test('fitText shrinks one step when rebalancing cannot help', () => {
+    const f = fitText(ctx, 'aaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbb c', { w: 210, h: 400 }, { fontFor: font, maxPx: 20, minPx: 10 });
+    expect(f.px).toBe(19);
+    expect(f.widow).toBe(false);
+    expect(f.lines.length).toBe(2);
+  });
+
+  test('fitText keeps the larger size and reports the widow when one smaller step does not remove it', () => {
+    const f = fitText(ctx, 'aaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbb c', { w: 200, h: 400 }, { fontFor: font, maxPx: 20, minPx: 10 });
+    expect(f.px).toBe(20);
+    expect(f.widow).toBe(true);
+    expect(f.overflow).toBe(false);
   });
 });
 
