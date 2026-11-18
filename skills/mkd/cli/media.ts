@@ -583,6 +583,246 @@ export async function resolveMedia(
   return { spec: out, report };
 }
 
+// ============================================================================
+// ARTIFACT MODE: the viewer CSP admits only the page's own content, Google
+// Fonts and npm scripts on cdn.jsdelivr.net, so remote frames and images are
+// blocked. Everything a page shows must be inline.
+// ============================================================================
+
+export interface ArtifactCaps {
+  /** Largest embed thumbnail inlined, in bytes. */
+  thumbMax: number
+  /** Largest remote image (figure, link card, poster) inlined, in bytes. */
+  imageMax: number
+}
+
+export const ARTIFACT_CAPS: ArtifactCaps = { thumbMax: 150 * 1024, imageMax: 200 * 1024 };
+
+/** Fetch an image (no cookies, time-boxed, size-capped) as a data URI. */
+export async function fetchImageData(url: string, max: number, deps: MediaDeps): Promise<string> {
+  const response = await deps.fetch(url, {
+    redirect: 'follow',
+    credentials: 'omit',
+    signal: AbortSignal.timeout(deps.ogTimeoutMs),
+    headers: { 'accept': 'image/avif,image/webp,image/png,image/jpeg,image/gif,image/*', 'user-agent': 'Mozilla/5.0 (compatible; mkd-linkcard/1.0)' },
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const mime = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+  if (!mime.startsWith('image/') || mime === 'image/svg+xml') {
+    throw new Error(`not a raster image (${mime || 'no content-type'})`);
+  }
+  const declared = Number(response.headers.get('content-length') ?? 0);
+  if (declared > max) {
+    throw new Error(`${formatMb(declared)} is over the ${Math.round(max / 1024)} KB cap`);
+  }
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error('empty body');
+  }
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done || !value) {
+      break;
+    }
+    size += value.length;
+    if (size > max) {
+      await reader.cancel().catch(() => {});
+      throw new Error(`over the ${Math.round(max / 1024)} KB cap`);
+    }
+    chunks.push(value);
+  }
+  return dataUri(Buffer.concat(chunks), mime);
+}
+
+/** The thumbnail URL of a Loom or YouTube video. */
+async function embedThumbnailUrl(entry: { provider: 'loom' | 'youtube', url: string, embedUrl: string }, deps: MediaDeps): Promise<string> {
+  if (entry.provider === 'youtube') {
+    const id = /\/embed\/([\w-]+)/.exec(entry.embedUrl)?.[1];
+    if (!id) {
+      throw new Error('no video id');
+    }
+    return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+  }
+  const share = entry.embedUrl.replace('/embed/', '/share/');
+  const response = await deps.fetch(`https://www.loom.com/v1/oembed?url=${encodeURIComponent(share)}`, {
+    redirect: 'follow',
+    credentials: 'omit',
+    signal: AbortSignal.timeout(deps.ogTimeoutMs),
+    headers: { accept: 'application/json' },
+  });
+  if (!response.ok) {
+    throw new Error(`oEmbed HTTP ${response.status}`);
+  }
+  const data = await response.json() as { thumbnail_url?: unknown };
+  if (typeof data.thumbnail_url !== 'string' || !/^https:/i.test(data.thumbnail_url)) {
+    throw new Error('oEmbed has no thumbnail_url');
+  }
+  return data.thumbnail_url;
+}
+
+async function inlineRemote(url: string, max: number, path: string, kind: string, deps: MediaDeps, report: MediaReport): Promise<string | undefined> {
+  try {
+    const data = await fetchImageData(url, max, deps);
+    report.weights.push({ path, kind, bytes: data.length });
+    return data;
+  }
+  catch (error) {
+    deps.warn(`${path}: could not inline ${url} for the artifact (${error instanceof Error ? error.message : String(error)}); it renders without the image.`);
+    return undefined;
+  }
+}
+
+async function prepareEntry(entry: MediaEntry, path: string, deps: MediaDeps, caps: ArtifactCaps, report: MediaReport): Promise<MediaEntry> {
+  switch (entry.type) {
+    case 'embed': {
+      let thumbnail: string | undefined;
+      try {
+        const url = await embedThumbnailUrl(entry, deps);
+        // Loom's oEmbed thumbnail is an animated GIF (often over the cap);
+        // the same frame is published as a lighter static JPEG.
+        const still = /\.gif(?:\?|$)/i.test(url) ? url.replace(/\.gif(?=\?|$)/i, '.jpg') : null;
+        if (still) {
+          try {
+            thumbnail = await fetchImageData(still, caps.thumbMax, deps);
+            report.weights.push({ path: `${path}.thumbnail`, kind: 'thumbnail', bytes: thumbnail.length });
+          }
+          catch {
+            thumbnail = undefined;
+          }
+        }
+        thumbnail ??= await inlineRemote(url, caps.thumbMax, `${path}.thumbnail`, 'thumbnail', deps, report);
+      }
+      catch (error) {
+        deps.warn(`${path}: no thumbnail for ${entry.url} (${error instanceof Error ? error.message : String(error)}); showing a plain play card.`);
+      }
+      return thumbnail ? { ...entry, thumbnail } : entry;
+    }
+    case 'image':
+      if (/^https:/i.test(entry.src)) {
+        const src = await inlineRemote(entry.src, caps.imageMax, `${path}.src`, 'image', deps, report);
+        return src ? { ...entry, src } : entry;
+      }
+      return entry;
+    case 'link':
+      if (entry.image && /^https:/i.test(entry.image)) {
+        const image = await inlineRemote(entry.image, caps.imageMax, `${path}.image`, 'image', deps, report);
+        const out = { ...entry };
+        if (image) {
+          out.image = image;
+        }
+        else {
+          delete out.image;
+        }
+        return out;
+      }
+      return entry;
+    case 'video':
+      if (entry.poster && /^https:/i.test(entry.poster)) {
+        const poster = await inlineRemote(entry.poster, caps.imageMax, `${path}.poster`, 'poster', deps, report);
+        const out = { ...entry };
+        if (poster) {
+          out.poster = poster;
+        }
+        else {
+          delete out.poster;
+        }
+        return out;
+      }
+      return entry;
+    default:
+      return entry;
+  }
+}
+
+/**
+ * Artifact mode only, after resolveMedia: inline every remote picture the
+ * page would show (embed thumbnails, https images, link-card images, video
+ * posters) within the caps. What cannot be inlined stays a URL and render.ts
+ * draws it without the remote resource; nothing remote is ever loaded.
+ */
+export async function prepareForArtifact(
+  spec: NormalizedSpec,
+  overrides: Partial<MediaDeps> = {},
+  caps: ArtifactCaps = ARTIFACT_CAPS,
+): Promise<{ spec: NormalizedSpec, report: MediaReport }> {
+  const deps: MediaDeps = { ...defaultDeps, ...overrides };
+  const report: MediaReport = { weights: [], inlinedBytes: 0 };
+  const out: NormalizedSpec = structuredClone(spec);
+  const each = async (list: MediaEntry[] | undefined, path: string): Promise<MediaEntry[] | undefined> => {
+    if (!list) {
+      return undefined;
+    }
+    const done: MediaEntry[] = [];
+    for (let i = 0; i < list.length; i += 1) {
+      done.push(await prepareEntry(list[i], `${path}[${i}]`, deps, caps, report));
+    }
+    return done;
+  };
+  if (out.intro?.media) {
+    out.intro.media = await each(out.intro.media, 'intro.media');
+  }
+  for (let i = 0; i < out.items.length; i += 1) {
+    const item = out.items[i];
+    if (item.media) {
+      item.media = await each(item.media, `items[${i}].media`);
+    }
+    if (item.type === 'decision') {
+      for (let j = 0; j < item.options.length; j += 1) {
+        if (item.options[j].media) {
+          item.options[j].media = await each(item.options[j].media, `items[${i}].options[${j}].media`);
+        }
+      }
+    }
+  }
+  report.inlinedBytes = report.weights.reduce((sum, w) => sum + w.bytes, 0);
+  return { spec: out, report };
+}
+
+/** Hosts an artifact page may load from (the viewer CSP). */
+const ARTIFACT_ALLOWED_STYLE = /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\//i;
+const ARTIFACT_ALLOWED_SCRIPT = /^https:\/\/cdn\.jsdelivr\.net\/npm\//i;
+
+/**
+ * Scan the final artifact HTML (markup only: inline script and style bodies
+ * are skipped) for remote resources the viewer CSP would block: img, iframe,
+ * video, audio, source, track, embed and object sources and posters,
+ * stylesheets other than Google Fonts, scripts other than jsdelivr npm.
+ * Plain navigation links (`<a href>`) are not resources and are ignored.
+ */
+export function findBlockedResources(html: string): string[] {
+  const markup = html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, m => m.slice(0, m.indexOf('>') + 1))
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '<style>')
+    .replace(/<template\b[^>]*>/gi, '');
+  const found: string[] = [];
+  for (const tag of markup.match(/<(?:img|iframe|video|audio|source|track|embed|object|link|script|input)\b[^>]*>/gi) ?? []) {
+    const name = /^<(\w+)/.exec(tag)?.[1].toLowerCase() ?? '';
+    for (const [, attr, value] of tag.matchAll(/\s(src|srcset|poster|data|href)\s*=\s*["']([^"']*)["']/gi)) {
+      const urls = attr.toLowerCase() === 'srcset' ? value.split(',').map(part => part.trim().split(/\s+/)[0]) : [value];
+      for (const url of urls) {
+        if (!/^(?:https?:)?\/\//i.test(url)) {
+          continue;
+        }
+        if (name === 'link') {
+          const rel = /\brel\s*=\s*["']([^"']*)["']/i.exec(tag)?.[1].toLowerCase() ?? '';
+          if (!/stylesheet|preload|icon|modulepreload|prefetch/.test(rel) || ARTIFACT_ALLOWED_STYLE.test(url)) {
+            continue;
+          }
+        }
+        if (name === 'script' && ARTIFACT_ALLOWED_SCRIPT.test(url)) {
+          continue;
+        }
+        found.push(`<${name} ${attr.toLowerCase()}="${url}">`);
+      }
+    }
+  }
+  return found;
+}
+
 export const PAGE_WARN_BYTES = 8 * MB;
 export const PAGE_MAX_ARTIFACT_BYTES = 14 * MB;
 

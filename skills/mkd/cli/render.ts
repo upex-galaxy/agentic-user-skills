@@ -126,12 +126,43 @@ function caption(text: string | undefined): string {
   return text ? `<figcaption class="mkd-media__caption">${escapeHtml(text)}</figcaption>` : '';
 }
 
+/**
+ * The mode being rendered. An artifact page loads nothing remote (its viewer
+ * CSP blocks remote frames and images), so media.ts inlines what it can and
+ * the figures below draw anything still remote without loading it.
+ */
+let renderMode: RenderOptions['mode'] = 'copy';
+
+/** A remote URL the current page must not load (artifact mode only). */
+function blockedRemote(url: string | undefined): boolean {
+  return renderMode === 'artifact' && Boolean(url) && /^https?:/i.test(url ?? '');
+}
+
+const ICON_PLAY_LARGE = ICON('<path d="M8 5v14l11-7Z" fill="currentColor"/>', 28);
+
+/** Artifact mode: a link-out card in place of a frame or a remote video. */
+function renderVideoCard(url: string, thumbnail: string | undefined, label: string, text: string | undefined): string {
+  const image = thumbnail
+    ? `<img class="mkd-videocard__img" src="${escapeHtml(thumbnail)}" alt="" loading="lazy" decoding="async">`
+    : '';
+  return `<figure class="mkd-media__fig mkd-media__fig--videocard">
+            <a class="mkd-videocard${image ? ' has-image' : ''}" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(`${label}: open video in a new tab`)}">${image}<span class="mkd-videocard__play">${ICON_PLAY_LARGE}</span><span class="mkd-videocard__bar"><span class="mkd-videocard__host">${escapeHtml(hostOf(url))}</span><span class="mkd-videocard__cta">Open video in a new tab &#8599;</span></span></a>
+            ${caption(text)}
+          </figure>`;
+}
+
 /** One media entry as a full-size figure (item, intro, or lightbox slide). */
 function renderMediaFigure(entry: MediaEntry): string {
   switch (entry.type) {
     case 'image':
     case 'svg': {
       const src = entry.src ?? '';
+      if (blockedRemote(src)) {
+        return `<figure class="mkd-media__fig mkd-media__fig--missing">
+            <div class="mkd-media__missing" role="img" aria-label="${escapeHtml(entry.alt)}"><span class="mkd-media__missing-label">Image not available here</span><span class="mkd-media__missing-alt">${escapeHtml(entry.alt)}</span></div>
+            ${caption(entry.caption)}
+          </figure>`;
+      }
       const remote = /^https:/i.test(src) ? ' data-remote' : '';
       return `<figure class="mkd-media__fig mkd-media__fig--image">
             <button type="button" class="mkd-media__zoom" data-lightbox aria-label="Enlarge: ${escapeHtml(entry.alt)}"><img class="mkd-media__img" src="${escapeHtml(src)}" alt="${escapeHtml(entry.alt)}"${sizeAttrs(entry)} loading="lazy" decoding="async"${remote}><span class="mkd-media__zoom-icon">${ICON_EXPAND}</span></button>
@@ -139,7 +170,10 @@ function renderMediaFigure(entry: MediaEntry): string {
           </figure>`;
     }
     case 'video': {
-      const poster = entry.poster ? ` poster="${escapeHtml(entry.poster)}"` : '';
+      if (blockedRemote(entry.src)) {
+        return renderVideoCard(entry.src, blockedRemote(entry.poster) ? undefined : entry.poster, entry.caption ?? 'Video', entry.caption);
+      }
+      const poster = entry.poster && !blockedRemote(entry.poster) ? ` poster="${escapeHtml(entry.poster)}"` : '';
       return `<figure class="mkd-media__fig mkd-media__fig--video">
             <video class="mkd-media__video" controls muted playsinline preload="metadata" loading="lazy"${sizeAttrs(entry)}${poster}><source src="${escapeHtml(entry.src)}" type="${escapeHtml(entry.mime ?? 'video/mp4')}"></video>
             ${caption(entry.caption)}
@@ -147,6 +181,9 @@ function renderMediaFigure(entry: MediaEntry): string {
     }
     case 'embed': {
       const label = entry.provider === 'loom' ? 'Loom video' : 'YouTube video';
+      if (renderMode === 'artifact') {
+        return renderVideoCard(entry.url, entry.thumbnail, entry.caption ?? label, entry.caption);
+      }
       return `<figure class="mkd-media__fig mkd-media__fig--embed">
             <div class="mkd-embed"><iframe class="mkd-embed__frame" src="${escapeHtml(entry.embedUrl)}" title="${escapeHtml(entry.caption ?? label)}" loading="lazy" sandbox="allow-scripts allow-same-origin allow-presentation allow-popups" allow="fullscreen; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
             <a class="mkd-embed__open" href="${escapeHtml(entry.url)}" target="_blank" rel="noopener noreferrer"><span class="mkd-embed__host">${escapeHtml(hostOf(entry.url))}</span><span class="mkd-embed__cta">Open in new tab &#8599;</span></a>
@@ -154,7 +191,7 @@ function renderMediaFigure(entry: MediaEntry): string {
           </figure>`;
     }
     case 'link': {
-      const image = entry.image
+      const image = entry.image && !blockedRemote(entry.image)
         ? `<img class="mkd-linkcard__img" src="${escapeHtml(entry.image)}" alt="" loading="lazy" decoding="async"${/^https:/i.test(entry.image) ? ' data-remote' : ''}>`
         : '';
       const description = entry.description ? `<span class="mkd-linkcard__desc">${escapeHtml(entry.description)}</span>` : '';
@@ -219,12 +256,18 @@ function renderOptionMedia(media: MediaEntry[] | undefined): string {
     switch (entry.type) {
       case 'image':
       case 'svg':
+        if (blockedRemote(entry.src)) {
+          return '<span class="mkd-opt__chip">Image</span>';
+        }
         return `<span class="mkd-opt__thumb"><img src="${escapeHtml(entry.src ?? '')}" alt="" loading="lazy" decoding="async"${/^https:/i.test(entry.src ?? '') ? ' data-remote' : ''}></span>`;
       case 'video':
-        return entry.poster
+        return entry.poster && !blockedRemote(entry.poster)
           ? `<span class="mkd-opt__thumb mkd-opt__thumb--video"><img src="${escapeHtml(entry.poster)}" alt="" loading="lazy" decoding="async"><span class="mkd-opt__play">${ICON_PLAY}</span></span>`
           : `<span class="mkd-opt__chip">${ICON_PLAY}Video</span>`;
       case 'embed':
+        if (renderMode === 'artifact' && entry.thumbnail) {
+          return `<span class="mkd-opt__thumb mkd-opt__thumb--video"><img src="${escapeHtml(entry.thumbnail)}" alt="" loading="lazy" decoding="async"><span class="mkd-opt__play">${ICON_PLAY}</span></span>`;
+        }
         return `<span class="mkd-opt__chip">${ICON_PLAY}${entry.provider === 'loom' ? 'Loom' : 'YouTube'}</span>`;
       case 'link':
         return `<span class="mkd-opt__chip">${ICON_LINK}${escapeHtml(hostOf(entry.url))}</span>`;
@@ -456,6 +499,7 @@ export function render(spec: NormalizedSpec, opts: RenderOptions): string {
   const title = escapeHtml(spec.title);
   const total = spec.items.length;
   const mode = opts.mode;
+  renderMode = mode;
   const submitToken = typeof opts.submitToken === 'string' ? opts.submitToken : '';
 
   const cards = spec.items

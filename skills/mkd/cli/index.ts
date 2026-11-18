@@ -43,7 +43,7 @@ import type { ServeHandle } from './server.ts';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { checkPageBudget, formatMb, hasMedia, resolveMedia } from './media.ts';
+import { checkPageBudget, findBlockedResources, formatMb, hasMedia, prepareForArtifact, resolveMedia } from './media.ts';
 import { closeOrcaTab, derivePort, detectOrca, openOrcaTab, resolveMode, worktreeSelector } from './orca.ts';
 import { artifactDocId, render } from './render.ts';
 import { SpecError, validateSpec } from './schema.ts';
@@ -300,6 +300,17 @@ async function main(): Promise<void> {
   const specName = specNameFromPath(specPath);
   const name = specName ?? id;
 
+  if (artifact && hasMedia(spec)) {
+    // The artifact viewer loads nothing remote: inline thumbnails and remote
+    // images now; whatever cannot be inlined renders without the resource.
+    const prepared = await prepareForArtifact(spec);
+    spec = prepared.spec;
+    pageMedia = { weights: [...pageMedia.weights, ...prepared.report.weights], inlinedBytes: pageMedia.inlinedBytes + prepared.report.inlinedBytes };
+    if (prepared.report.weights.length > 0) {
+      console.error(`[mkd] artifact: inlined ${prepared.report.weights.length} remote picture(s), ${formatMb(prepared.report.inlinedBytes)}.`);
+    }
+  }
+
   if (artifact) {
     // Stable per deck, so a re-run republishes to the same artifact: the spec
     // name when the file is `spec-<name>.json`, else the session slug.
@@ -402,6 +413,9 @@ async function runArtifactMode(
 ): Promise<void> {
   const html = render(spec, { mode: 'artifact', titlePrefix });
   enforcePageBudget(html, 'artifact');
+  for (const blocked of findBlockedResources(html)) {
+    console.error(`[mkd] warning: the artifact viewer will block this remote resource: ${blocked}`);
+  }
   const pagePath = join(MKD_HOME, `artifact-${sanitizeForFilename(name)}.html`);
 
   try {

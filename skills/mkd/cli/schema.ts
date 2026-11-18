@@ -106,6 +106,11 @@ export interface EmbedMedia {
   /** Filled by validation: the only iframe source ever rendered. */
   provider: 'loom' | 'youtube'
   embedUrl: string
+  /**
+   * Artifact mode only: the video thumbnail as a data URI, fetched at build
+   * time (the artifact CSP blocks remote frames and images).
+   */
+  thumbnail?: string
 }
 
 export interface LinkMedia {

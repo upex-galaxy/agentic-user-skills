@@ -116,7 +116,7 @@ Each row's answer lives behind a compact "Answer" button that opens a popover (c
 | --- | --- | --- |
 | `image` | `src`, `alt` (required), `caption?` | Click to enlarge (lightbox). |
 | `video` | `src` (mp4, webm or mov), `poster?`, `caption?` | `<video controls muted playsinline preload="metadata">`, never autoplays. Without `poster`, the first frame becomes the poster when ffmpeg is present. |
-| `embed` | `url`, `caption?` | Loom (`loom.com/share/<id>`) or YouTube (`watch?v=`, `youtu.be/`, `/shorts/`, `/live/`, `/embed/`; `t=` becomes the start time). Rendered as a sandboxed 16:9 iframe (`loom.com/embed/<id>` or `youtube-nocookie.com/embed/<id>`) with an "Open in new tab" link that is always visible. Any other host fails validation. |
+| `embed` | `url`, `caption?` | Loom (`loom.com/share/<id>`) or YouTube (`watch?v=`, `youtu.be/`, `/shorts/`, `/live/`, `/embed/`; `t=` becomes the start time). Copy and wait modes: a sandboxed 16:9 iframe (`loom.com/embed/<id>` or `youtube-nocookie.com/embed/<id>`) with an "Open in new tab" link that is always visible. `--artifact` mode: a poster card (thumbnail, play icon, caption) that opens the video in a new tab, with no iframe. Any other host fails validation. |
 | `link` | `url` (https), `title?`, `description?`, `image?` | A preview card, never an iframe. Missing fields are read from the page's Open Graph tags at build time; when that fails the card is a plain titled link. |
 | `diagram` | `format: "mermaid"`, `code`, `caption?` | Mermaid is loaded from the CDN only when a deck has a diagram, follows the deck theme, and falls back to the source code block when it cannot load or parse. |
 | `svg` | exactly one of `src` (local path) or `svg` (inline markup), `alt` (required), `caption?` | Sanitized at build time and rendered as an image. |
@@ -128,6 +128,12 @@ Build-time rules (the CLI, not `validateSpec`):
 - A missing local file exits 2 and names the path (`items[3].media[0].src: file not found: ...`).
 - A local video is transcoded with ffmpeg to WebM VP9 (480p max height, about 700 kbps, no audio, 24 fps cap) and cached under `~/.mkd/media/`. Without ffmpeg, or for a WebM already under 1.5 MB, it is inlined as is with a warning. A video over 6 MB after processing exits 2.
 - Page budget: a warning above 8 MB; in `--artifact` mode a page over 14 MB exits 2 and names the heaviest media to shrink or host.
+- `--artifact` mode loads nothing remote, because the artifact viewer blocks remote frames and images:
+  - Embeds become poster cards. The thumbnail (YouTube `i.ytimg.com/vi/<id>/hqdefault.jpg`, Loom oEmbed `thumbnail_url`, its still JPEG first) is fetched at build time and inlined when it is under 150 KB; otherwise the card shows a plain play icon.
+  - https images, link-card images and video posters are fetched and inlined when they are under 200 KB; otherwise the figure shows its `alt` text and the card renders without the image. A remote video becomes a poster card that opens it in a new tab.
+  - The CLI then scans the page and warns on stderr about any remaining remote `src`/`href` that loads a resource (fonts from Google Fonts and scripts from `cdn.jsdelivr.net/npm/` are allowed).
+
+  Copy and wait modes keep the iframes and https URLs.
 
 ---
 

@@ -122,7 +122,9 @@ describe('render: copy and wait modes are unchanged', () => {
   // order buttons, SVG header icons, the sticky action bar (Previous / Skip /
   // Next moved out of the cards, More overflow on phones), compact 4+ option
   // decisions, viewport-fit=cover, the media lightbox dialog and media CSS
-  // (carousel, embeds, link cards, diagrams, option thumbnails),
+  // (carousel, embeds, link cards, diagrams, option thumbnails), and the
+  // artifact-only video-card / missing-image styles (shared CSS; the copy and
+  // wait markup itself is unchanged),
   // and the color-mix guard on the translucent header.
   // Update these only for an intentional change to the copy/wait markup.
   const shellHash = (html: string): string =>
@@ -130,12 +132,12 @@ describe('render: copy and wait modes are unchanged', () => {
 
   it('copy mode', () => {
     expect(shellHash(render(spec, { mode: 'copy' })))
-      .toBe('d09ff5be3702ea1909e137710ba1a68cb65e7146f6542c816550dd17465b673d');
+      .toBe('729a328519c1a2b1a075613c4a5e22c32f18135eade928e9a3b454bc09c1c1f5');
   });
 
   it('wait mode', () => {
     expect(shellHash(render(spec, { mode: 'wait', submitToken: 'tok-123' })))
-      .toBe('a8d2ca2710cd89fa9450e0d709ccc1cc0d1eacdd96f9d22785bbed0d6bc660a0');
+      .toBe('2e1b4d054aafa44ee78e7c64a1a5c40fd468b8c9a83c8ec059b209e04a48835d');
   });
 
   it('never leaks the artifact globals into copy or wait pages', () => {

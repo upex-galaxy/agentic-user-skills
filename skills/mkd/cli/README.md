@@ -149,6 +149,28 @@ in the deck theme, and keeps the source code block when the script or the
 diagram fails. Embeds are sandboxed iframes on `loom.com/embed` or
 `youtube-nocookie.com/embed` only, always followed by an "Open in new tab" link.
 
+### Artifact mode loads nothing remote
+
+The claude.ai artifact viewer admits only the page's own content, Google Fonts
+and npm scripts on `cdn.jsdelivr.net`, so remote frames and images are blocked.
+With `--artifact`, `prepareForArtifact` (in `media.ts`) runs after
+`resolveMedia`:
+
+- Embeds become poster cards: a build-time thumbnail (YouTube `hqdefault.jpg`,
+  Loom oEmbed `thumbnail_url`, preferring its still JPEG), inlined when under
+  150 KB, with a play icon and an "Open video in a new tab" link. No iframe is
+  emitted.
+- https images, link-card images and video posters are fetched and inlined when
+  under 200 KB; otherwise images show their `alt` text and link cards render
+  without a picture.
+- `findBlockedResources` scans the final HTML and prints a stderr warning for
+  any remaining remote resource (img, iframe, video, audio, source, track,
+  embed, object, a stylesheet other than Google Fonts, a script outside
+  `cdn.jsdelivr.net/npm/`).
+
+Mermaid stays a lazy `cdn.jsdelivr.net/npm/mermaid@<exact version>` script
+with SRI, which the artifact rules allow. Copy and wait modes are unchanged.
+
 ## File layout
 
 ```

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'bun:test';
-import { checkPageBudget, fetchLinkPreview, imageSize, MediaError, parsePreview, resolveMedia, sanitizeSvg } from './media.ts';
+import { checkPageBudget, fetchLinkPreview, findBlockedResources, imageSize, MediaError, parsePreview, prepareForArtifact, resolveMedia, sanitizeSvg } from './media.ts';
 import { render } from './render.ts';
 import { SpecError, validateSpec } from './schema.ts';
 
@@ -249,7 +249,7 @@ describe('render: media markup', () => {
 
   it('renders embeds sandboxed with an always-visible open link, and several entries as a carousel', () => {
     const spec = validateSpec(deck([{ type: 'embed', url: 'https://youtu.be/aqz-KE-bpKQ' }, { type: 'link', url: 'https://example.com', title: 'Ex' }]));
-    const html = render(spec, { mode: 'artifact' });
+    const html = render(spec, { mode: 'copy' });
     expect(html).toContain('sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"');
     expect(html).toContain('referrerpolicy="strict-origin-when-cross-origin"');
     expect(html).toContain('<a class="mkd-embed__open" href="https://youtu.be/aqz-KE-bpKQ" target="_blank" rel="noopener noreferrer">');
@@ -290,5 +290,119 @@ describe('cli: media errors exit 2', () => {
     expect(proc.exitCode).toBe(2);
     expect(proc.stdout.toString()).toBe('');
     expect(proc.stderr.toString()).toContain(`items[0].media[0].src: file not found: ${join(home, 'gone.png')}`);
+  });
+});
+
+describe('artifact mode: nothing remote', () => {
+  const JPEG = Uint8Array.from([0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0]);
+  /** A fake network: url -> response factory; anything else fails. */
+  function net(routes: Record<string, () => Response>, seen: string[] = []) {
+    return async (url: string) => {
+      seen.push(url);
+      const route = routes[url];
+      if (!route) {
+        throw new Error(`offline: ${url}`);
+      }
+      return route();
+    };
+  }
+  const img = (bytes: Uint8Array, type = 'image/jpeg') => () => new Response(Buffer.from(bytes), { headers: { 'content-type': type, 'content-length': String(bytes.length) } });
+  const embeds = [
+    { type: 'embed', url: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ' },
+    { type: 'embed', url: 'https://www.loom.com/share/0123456789abcdef0123456789abcdef' },
+  ];
+  const loomOembed = `https://www.loom.com/v1/oembed?url=${encodeURIComponent('https://www.loom.com/share/0123456789abcdef0123456789abcdef')}`;
+
+  it('turns embeds into poster cards with inlined thumbnails (YouTube hqdefault, Loom still JPEG first)', async () => {
+    const seen: string[] = [];
+    const fetch = net({
+      'https://i.ytimg.com/vi/aqz-KE-bpKQ/hqdefault.jpg': img(JPEG),
+      [loomOembed]: () => Response.json({ thumbnail_url: 'https://cdn.loom.com/t/x-00001.gif' }),
+      'https://cdn.loom.com/t/x-00001.jpg': img(JPEG),
+    }, seen);
+    const { spec } = await prepareForArtifact(validateSpec(deck(embeds)), { ...quiet, fetch });
+    const html = render(spec, { mode: 'artifact' });
+    expect(html).not.toContain('<iframe');
+    expect(html.match(/<a class="mkd-videocard has-image" href="https:\/\/(?:www\.youtube\.com|www\.loom\.com)\/[^"]+" target="_blank" rel="noopener noreferrer"/g)).toHaveLength(2);
+    expect(html).toContain('Open video in a new tab &#8599;');
+    expect(html.match(/class="mkd-videocard__img" src="data:image\/jpeg;base64,/g)).toHaveLength(2);
+    expect(seen).not.toContain('https://cdn.loom.com/t/x-00001.gif');
+    expect(findBlockedResources(html)).toEqual([]);
+  });
+
+  it('shows a plain play card when the thumbnail is over the cap or unreachable', async () => {
+    const notes: string[] = [];
+    const big = new Uint8Array(200 * 1024);
+    big.set(JPEG);
+    const fetch = net({ 'https://i.ytimg.com/vi/aqz-KE-bpKQ/hqdefault.jpg': img(big) });
+    const { spec } = await prepareForArtifact(validateSpec(deck(embeds)), { warn: (m: string) => notes.push(m), fetch });
+    const html = render(spec, { mode: 'artifact' });
+    expect(html.match(/<a class="mkd-videocard" href=/g)).toHaveLength(2);
+    expect(notes.some(n => n.includes('over the 150 KB cap'))).toBe(true);
+    expect(findBlockedResources(html)).toEqual([]);
+  });
+
+  it('inlines remote images, link-card images and posters within 200 KB; drops what it cannot', async () => {
+    const notes: string[] = [];
+    const fetch = net({
+      'https://example.com/ok.png': img(PNG, 'image/png'),
+      'https://example.com/og.jpg': img(JPEG),
+    });
+    const raw = deck([
+      { type: 'image', src: 'https://example.com/ok.png', alt: 'fine' },
+      { type: 'image', src: 'https://example.com/gone.png', alt: 'A chart of weekly signups' },
+      { type: 'link', url: 'https://example.com/a', title: 'A', description: 'd', image: 'https://example.com/og.jpg' },
+      { type: 'link', url: 'https://example.com/b', title: 'B', description: 'd', image: 'https://example.com/404.jpg' },
+      { type: 'video', src: 'https://example.com/v.mp4', poster: 'https://example.com/gone.jpg' },
+    ]);
+    const { spec } = await prepareForArtifact(validateSpec(raw), { warn: (m: string) => notes.push(m), fetch });
+    const html = render(spec, { mode: 'artifact' });
+    expect(html).toContain('<img class="mkd-media__img" src="data:image/png;base64,');
+    expect(html).toContain('<div class="mkd-media__missing" role="img" aria-label="A chart of weekly signups"><span class="mkd-media__missing-label">Image not available here</span><span class="mkd-media__missing-alt">A chart of weekly signups</span></div>');
+    expect(html).toContain('<img class="mkd-linkcard__img" src="data:image/jpeg;base64,');
+    expect(html).toContain('<a class="mkd-linkcard" href="https://example.com/b"');
+    expect(html).toContain('<a class="mkd-videocard" href="https://example.com/v.mp4"');
+    expect(findBlockedResources(html)).toEqual([]);
+    expect(notes).toHaveLength(3);
+  });
+
+  it('leaves copy and wait pages as they were (frames and remote images stay)', () => {
+    const spec = validateSpec(deck([...embeds, { type: 'image', src: 'https://example.com/a.png', alt: 'a' }]));
+    for (const mode of ['copy', 'wait'] as const) {
+      const html = render(spec, { mode, submitToken: 't' });
+      expect(html.match(/<iframe class="mkd-embed__frame"/g)).toHaveLength(2);
+      expect(html).toContain('src="https://example.com/a.png"');
+      expect(html).not.toContain('<a class="mkd-videocard');
+    }
+  });
+
+  it('pins Mermaid to an exact jsdelivr npm version with SRI, injected with crossorigin', () => {
+    const html = render(validateSpec(deck([{ type: 'diagram', format: 'mermaid', code: 'flowchart LR\nA-->B' }])), { mode: 'artifact' });
+    const config = JSON.parse(/window\.__MKD_MERMAID__ = (\{.*?\});/.exec(html)?.[1] ?? '{}') as { src: string, integrity: string };
+    expect(config.src).toMatch(/^https:\/\/cdn\.jsdelivr\.net\/npm\/mermaid@\d+\.\d+\.\d+\/dist\/mermaid\.min\.js$/);
+    expect(config.integrity).toMatch(/^sha384-[\w+/]{64}$/);
+    expect(html).toContain('script.crossOrigin = \'anonymous\';');
+    expect(html.indexOf('script.integrity = mermaidConfig.integrity')).toBeLessThan(html.indexOf('script.src = mermaidConfig.src'));
+    expect(findBlockedResources(html)).toEqual([]);
+  });
+});
+
+describe('findBlockedResources', () => {
+  it('names remote img, iframe, video, source, stylesheet and script', () => {
+    const html = '<img src="https://a.test/i.png"><iframe src="https://b.test/f"></iframe><video poster="https://c.test/p.jpg"><source src="https://c.test/v.mp4"></video><link rel="stylesheet" href="https://d.test/s.css"><script src="https://e.test/x.js"></script><img srcset="https://f.test/1.png 1x, data:image/png;base64,AA 2x">';
+    expect(findBlockedResources(html)).toEqual([
+      '<img src="https://a.test/i.png">',
+      '<iframe src="https://b.test/f">',
+      '<video poster="https://c.test/p.jpg">',
+      '<source src="https://c.test/v.mp4">',
+      '<link href="https://d.test/s.css">',
+      '<script src="https://e.test/x.js">',
+      '<img srcset="https://f.test/1.png">',
+    ]);
+  });
+
+  it('allows Google Fonts, jsdelivr npm scripts, data: URIs, links and inline script text', () => {
+    const html = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=X"><script src="https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js"></script><img src="data:image/png;base64,AA"><a href="https://example.com">x</a><script>const s = \'<img src="https://evil.test/x.png">\';</script>';
+    expect(findBlockedResources(html)).toEqual([]);
   });
 });

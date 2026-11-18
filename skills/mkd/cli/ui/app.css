@@ -2737,6 +2737,105 @@ button {
   color: var(--mkd-text-muted);
 }
 
+/* Artifact mode: a video is a poster card that opens it in a new tab (the
+   viewer blocks remote frames), and a remote image that could not be inlined
+   shows its alt text instead of a broken icon. */
+.mkd-videocard {
+  position: relative;
+  display: block;
+  max-width: calc(min(44vh, 400px) * 16 / 9);
+  margin-inline: auto;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius-sm);
+  background:
+    radial-gradient(circle at 50% 45%, var(--mkd-surface-raised), var(--mkd-code-bg) 70%);
+  color: inherit;
+  text-decoration: none;
+  overflow: hidden;
+}
+
+.mkd-videocard__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mkd-videocard__play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--mkd-radius-pill);
+  background: rgba(5, 8, 15, 0.72);
+  color: #fff;
+  transform: translate(-50%, -60%);
+  transition: transform 160ms var(--mkd-ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mkd-videocard:hover .mkd-videocard__play {
+    transform: translate(-50%, -60%) scale(1.06);
+  }
+}
+
+.mkd-videocard__bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: linear-gradient(to top, rgba(5, 8, 15, 0.85), rgba(5, 8, 15, 0));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mkd-videocard__host {
+  font-family: var(--mkd-font-mono);
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.mkd-videocard:focus-visible {
+  outline: 2px solid var(--mkd-accent);
+  outline-offset: 2px;
+}
+
+.mkd-media__missing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 140px;
+  padding: 18px;
+  border: 1px dashed var(--mkd-border-strong);
+  border-radius: var(--mkd-radius-sm);
+  background: var(--mkd-code-bg);
+  text-align: center;
+}
+
+.mkd-media__missing-label {
+  font-family: var(--mkd-font-mono);
+  font-size: 12px;
+  color: var(--mkd-text-muted);
+}
+
+.mkd-media__missing-alt {
+  color: var(--mkd-text);
+  font-size: 14.5px;
+}
+
 /* Link cards: a preview, never a frame of the page. */
 .mkd-linkcard {
   display: flex;
