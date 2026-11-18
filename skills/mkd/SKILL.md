@@ -35,7 +35,7 @@ Read `references/examples.md` (copy-pasteable specs) before writing the first on
 | `report` | A report section to react to | `text`, `quotes` |
 | `table` | One answer per row (popover controls + text) | `rows[]` with `controlAnswer`/`text`/`quotes`, plus item `note` |
 
-Deck chrome, always on: intro screen, progress rail, arrow-key navigation, per-item **Skip for now** (decide later, never a rejection), summary screen, live footer stats, light/dark theme, localStorage persistence (closing the tab loses nothing).
+Deck chrome, always on: intro screen, progress rail, sticky Previous / Skip for now / Next bar (skip means decide later, never a rejection), keyboard keys (1-6 pick, Enter or right arrow next, S skip), summary screen, progress footer, dark default theme with a light toggle, localStorage persistence (closing the tab loses nothing). The user can also **Shuffle** the options and **Hide recommended** to decide without your nudge; both are display only.
 
 ### Justified options (the point of the tool)
 
@@ -49,6 +49,12 @@ Deck chrome, always on: intro screen, progress rail, arrow-key navigation, per-i
 7. Refer to options by `label`, never by letter: the user can **Shuffle** the options, and the letters then follow the screen position, not the spec `key`. The Result still carries your original `key` in `chosen`.
 
 Write `title`, `problem`, `content` and justifications in the user's language; the UI chrome is English.
+
+## Media
+
+`media` is an array on the intro, any item and any decision option: `image` (alt required), `video`, `embed` (Loom or YouTube URL), `link` (a preview card; the CLI reads Open Graph at build time), `diagram` (`format: "mermaid"`), `svg`. Two or more entries make a carousel. Local files are inlined; videos become muted 480p WebM when `ffmpeg` exists (6 MB each). Fields, limits and errors: `references/schema.md`.
+
+The claude.ai artifact viewer blocks frames and remote images, so in artifact mode embeds become poster cards that open in a new tab. A deck that leans on playable embeds goes through the Orca, copy or `--wait` flow (full HTML, embeds play).
 
 ## Pick the flow
 
