@@ -16,8 +16,8 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { buildHash, buildPage, insideSkillDir, readBuildHash, scenePreset, SKILL_DIR } from './build.ts';
-import { exportVideo, stills, stillsFromMp4 } from './export.ts';
-import { inspectPage } from './headless.ts';
+import { exportVideo, sheet, sheetFromMp4, stillName, stills, stillsFromMp4 } from './export.ts';
+import { inspectPage, pageScenes } from './headless.ts';
 import { findPreset, listPresets, loadPreset, newPreset, presetNames, promotePreset } from './presets.ts';
 import { summarizeReport } from './qa.ts';
 
@@ -101,6 +101,49 @@ export function parseTimes(value: string): number[] {
   const times = value.split(',').map(s => Number(s.trim()));
   if (times.length === 0 || times.some(t => !Number.isFinite(t) || t < 0)) { throw new UsageError(`--at needs comma-separated seconds, got "${value}"`); }
   return times;
+}
+
+/** One requested still: a global time, or a scene name and a scene-local time. */
+export interface AtEntry { scene?: string, t: number }
+
+/** Parse "ci:3.5,git:5.2,12.4": `<scene>:<local seconds>` or global seconds. */
+export function parseAt(value: string): AtEntry[] {
+  const out = value.split(',').map((raw) => {
+    const part = raw.trim();
+    const m = /^(.+):([\d.]+)$/.exec(part);
+    const t = Number(m ? m[2] : part);
+    if (!part || !Number.isFinite(t) || t < 0) { throw new UsageError(`--at needs "<scene>:<seconds>" or global seconds, comma-separated; got "${part}"`); }
+    return m ? { scene: m[1], t } : { t };
+  });
+  return out;
+}
+
+export interface StillPlan { t: number, name: string }
+
+/**
+ * Resolve still requests against the scene list: a scene-local time becomes global (start + t, rejected past the
+ * scene's end), a global time is named after the scene showing it (the latest one started). Files: NN-<scene>@<lt>.png.
+ */
+export function planStills(entries: AtEntry[], scenes: { name: string, start: number, dur: number }[]): StillPlan[] {
+  return entries.map((e) => {
+    if (e.scene !== undefined) {
+      const i = scenes.findIndex(sc => sc.name === e.scene);
+      if (i < 0) { throw new UsageError(`no scene "${e.scene}" (scenes: ${scenes.map(sc => sc.name).join(', ')})`); }
+      const sc = scenes[i];
+      if (e.t > sc.dur) { throw new UsageError(`scene "${sc.name}" lasts ${sc.dur} s; ${e.t} is past its end`); }
+      return { t: Math.round((sc.start + e.t) * 1000) / 1000, name: stillName(i, sc.name, e.t) };
+    }
+    let i = 0;
+    scenes.forEach((sc, k) => { if (sc.start <= e.t + 1e-9) { i = k; } });
+    return { t: e.t, name: stillName(i, scenes[i].name, e.t - scenes[i].start) };
+  });
+}
+
+/** Default still requests: 2 per scene at 40 % and 85 % of its time, or 4 (20, 40, 60, 85 %) for one --scene. */
+export function defaultAt(scenes: { name: string, dur: number }[], only?: string): AtEntry[] {
+  if (only !== undefined && !scenes.some(sc => sc.name === only)) { throw new UsageError(`no scene "${only}" (scenes: ${scenes.map(sc => sc.name).join(', ')})`); }
+  const fr = only === undefined ? [0.4, 0.85] : [0.2, 0.4, 0.6, 0.85];
+  return scenes.filter(sc => only === undefined || sc.name === only).flatMap(sc => fr.map(f => ({ scene: sc.name, t: Math.round(sc.dur * f * 100) / 100 })));
 }
 
 /** Default stills: 2 per scene, at 40 % and 85 % of the scene's own time. */
@@ -272,14 +315,18 @@ async function cmdStills(p: ParsedArgs): Promise<number> {
   const t = resolveTarget(p.positional[0]);
   const b = await ensureBuilt(t, parsePreset(p.flags));
   const html = readFileSync(b.index, 'utf8');
-  const times = typeof p.flags.at === 'string' ? parseTimes(p.flags.at) : defaultStillTimes((await inspectPage(html)).scenes);
+  const { scenes } = await pageScenes(html);
+  const only = typeof p.flags.scene === 'string' ? p.flags.scene : undefined;
+  const entries = typeof p.flags.at === 'string' ? parseAt(p.flags.at).map(e => (only !== undefined && e.scene === undefined ? { ...e, scene: only } : e)) : defaultAt(scenes, only);
+  const plan = planStills(entries, scenes);
+  const times = plan.map(x => x.t);
   let res: { files: string[], seconds: number };
   if (p.flags['from-mp4'] === true) {
     const mp4 = resolveOut(p.flags.out, t, b);
     if (!existsSync(mp4)) { throw new UsageError(`no MP4 at ${mp4}: run export first (or pass its --out)`); }
     res = await stillsFromMp4({ mp4, outDir: join(b.dir, 'stills', 'mp4'), times });
   }
-  else { res = await stills({ html, outDir: join(b.dir, 'stills'), times }); }
+  else { res = await stills({ html, outDir: join(b.dir, 'stills'), times, names: plan.map(x => x.name) }); }
   for (const f of res.files.sort()) { console.log(f); }
   log(`${res.files.length} stills in ${res.seconds.toFixed(1)} s`);
   return res.files.length === times.length ? 0 : 1;
@@ -331,6 +378,31 @@ async function cmdPreview(p: ParsedArgs): Promise<number> {
   return 0;
 }
 
+/** Write <build dir>/sheet.png: cols x rows frames rendered in the page (or cut from the MP4 with --from-mp4). */
+async function writeSheet(t: Target, b: Build, p: ParsedArgs): Promise<string> {
+  const cols = p.flags.cols === undefined ? 3 : Number(p.flags.cols);
+  const rows = p.flags.rows === undefined ? 2 : Number(p.flags.rows);
+  if (![cols, rows].every(n => Number.isInteger(n) && n >= 1 && n <= 8)) { throw new UsageError('--cols and --rows need whole numbers from 1 to 8'); }
+  const out = join(b.dir, 'sheet.png');
+  const html = readFileSync(b.index, 'utf8');
+  if (p.flags['from-mp4'] === true) {
+    const mp4 = resolveOut(p.flags.out, t, b);
+    if (!existsSync(mp4)) { throw new UsageError(`no MP4 at ${mp4}: run export first (or pass its --out)`); }
+    const { duration } = await pageScenes(html);
+    return (await sheetFromMp4({ mp4, out, duration, cols, rows })).file;
+  }
+  let times: number[] | 'all' = 'all';
+  if (typeof p.flags.at === 'string') { times = planStills(parseAt(p.flags.at), (await pageScenes(html)).scenes).map(x => x.t); }
+  return (await sheet({ html, out, times, cols, rows })).file;
+}
+
+async function cmdSheet(p: ParsedArgs): Promise<number> {
+  const t = resolveTarget(p.positional[0]);
+  const b = await ensureBuilt(t, parsePreset(p.flags));
+  console.log(await writeSheet(t, b, p));
+  return 0;
+}
+
 /** Run the preset check: validate, build the gallery scene in it, QA must pass. Returns the build. */
 export async function checkPreset(name: string): Promise<{ ok: boolean, build: Build, warnings: string[] }> {
   const info = findPreset(name);
@@ -343,6 +415,7 @@ export async function checkPreset(name: string): Promise<{ ok: boolean, build: B
   const t: Target = { dir, scene };
   const { info: page, build } = await runCheck(t, undefined);
   for (const w of resolved.warnings) { log(`preset ${name}: ${w}`); }
+  log(`sheet: ${await writeSheet(t, build, { positional: [], flags: {} })}`);
   return { ok: page.qa.errors.length === 0 && page.qa.ok, build, warnings: resolved.warnings };
 }
 
@@ -396,7 +469,8 @@ const HELP: Record<string, string> = {
   new: 'new <slug> [--preset <name>] [--title "..."]\n  Create ~/explainers/<yyyy-mm-dd>-<slug>/scene.js from a 2-scene template and explain.json with the preset; prints its path.',
   build: 'build <dir|scene.js> [--preset <name>]\n  Build the self-contained index.html into the explainer folder (a scene file other than scene.js builds into ~/explainers/<date>-<name>/); prints its path. A --preset other than the configured one (explain.json, else the scene, else hologram) is a one-off build in <dir>/presets/<name>/; explain.json is never rewritten. --style is an alias of --preset.',
   check: 'check <dir|scene.js> [--preset <name>]\n  Build if needed, run the QA gate headless; QA JSON on stdout. Exit 1 on errors, 0 on warnings only.',
-  stills: 'stills <dir|scene.js> [--at 1,5,9] [--from-mp4 [--out video.mp4]]\n  PNGs to <dir>/stills/ (old ones replaced). Default: 2 per scene, at 40 % and 85 % of each scene. --from-mp4 cuts them from the exported MP4 with ffmpeg into <dir>/stills/mp4/.',
+  stills: 'stills <dir|scene.js> [--preset <name>] [--at ci:3.5,git:5.2,12.4] [--scene <name>] [--from-mp4 [--out video.mp4]]\n  PNGs named NN-<scene>@<local seconds>.png to <dir>/stills/ (old ones replaced). --at takes <scene>:<seconds of that scene> or global seconds. Default: 2 per scene at 40 % and 85 % of it; --scene <name> gives 4 of that scene. --from-mp4 cuts them from the exported MP4 with ffmpeg into <dir>/stills/mp4/.',
+  sheet: 'sheet <dir|scene.js> [--preset <name>] [--cols 3] [--rows 2] [--at ...] [--from-mp4]\n  One contact-sheet PNG (cols x rows frames at 960x540; 3x2 = 2880x1080) to <dir>/sheet.png, rendered in the page without ffmpeg; frames spread evenly over the video unless --at names them. --from-mp4 cuts it from the exported MP4 with ffmpeg.',
   export: 'export <dir|scene.js> [--out video.mp4] [--bitrate 2] [--force]\n  Run check (refuses on errors unless --force), export <dir>/<slug>.mp4 (a relative --out is inside <dir>), print path, duration, size, time; ffprobe verifies when available.',
   preview: 'preview <dir> [--preset <name>]\n  Open index.html in the default browser.',
   preset: 'preset list | new <name> [--from sketch|hologram|poster] | check <name> | use <dir> <name> | promote <name>\n  Presets are the look of a video. list: built-in and user presets (~/.explain/presets, or EXPLAIN_PRESETS). new: copy one into the user folder with a README checklist. check: validate it, build the gallery scene in it, QA must pass. use: save it in the folder\'s explain.json. promote: copy a checked user preset into the skill (maintainers).',
@@ -424,6 +498,7 @@ export async function main(argv: string[]): Promise<number> {
       case 'stills': return await cmdStills(p);
       case 'export': return await cmdExport(p);
       case 'preset': return await cmdPreset(p);
+      case 'sheet': return await cmdSheet(p);
       default: return await cmdPreview(p);
     }
   }

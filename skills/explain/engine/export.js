@@ -1,5 +1,6 @@
 // In-page export: encodes H.264 with WebCodecs (Mediabunny) and POSTs the result to the local CLI server.
-// Modes by query string: ?export=1 -> MP4 to /__export ; ?still=1.5,4 -> PNGs to /__still?t=<t>.
+// Modes by query string: ?export=1 -> MP4 to /__export ; ?still=1.5,4 -> PNGs to /__still?t=<t>&i=<index> ;
+// ?sheet=1.5,4,...&cols=3&rows=2 -> one contact-sheet PNG (cols x rows frames at 960x540) to /__sheet.
 // Every POST carries the per-run token the CLI put in the page URL (?token=) as the x-explain-token header.
 import { BufferTarget, CanvasSource, Mp4OutputFormat, Output } from '../vendor/mediabunny.min.mjs';
 
@@ -47,20 +48,51 @@ export async function encodeMp4({ canvas, render, duration, fps = 30, bitrate = 
 }
 
 async function stills({ canvas, render, times }) {
-  for (const t of times) {
+  for (const [i, t] of times.entries()) {
     render(t);
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-    await post(`/__still?t=${encodeURIComponent(t)}`, blob, 'image/png');
+    await post(`/__still?t=${encodeURIComponent(t)}&i=${i}`, blob, 'image/png');
   }
   await post('/__done', '', 'text/plain');
 }
+
+/**
+ * Contact sheet drawn in the page: each time rendered on the main canvas and copied, scaled to 960x540, into a
+ * cols x rows grid (a 3x2 sheet is 2880x1080). Returns the sheet canvas. No ffmpeg involved.
+ */
+export function drawSheet({ canvas, render, times, cols = 3, rows = 2, cellW = 960 }) {
+  const cellH = Math.round((cellW * canvas.height) / canvas.width);
+  const sheet = document.createElement('canvas');
+  sheet.width = cols * cellW;
+  sheet.height = rows * cellH;
+  const g = sheet.getContext('2d');
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, sheet.width, sheet.height);
+  times.slice(0, cols * rows).forEach((t, i) => {
+    render(t);
+    g.drawImage(canvas, (i % cols) * cellW, Math.floor(i / cols) * cellH, cellW, cellH);
+  });
+  return sheet;
+}
+
+/** Evenly spread sheet times: the middle of each of n equal slices of the video. */
+export const sheetTimes = (duration, n) => Array.from({ length: n }, (_, i) => Math.round((duration * (i + 0.5) / n) * 100) / 100);
 
 /** Entry point: call once the scene is ready. No-op without ?export=1 or ?still=. */
 export async function runExport({ canvas, render, duration, fps = 30, bitrate = DEFAULT_BITRATE }) {
   const params = new URLSearchParams(location.search);
   bitrate = Number(params.get('bitrate')) || bitrate; // ?bitrate=<bits per second> overrides the default (the CLI's --bitrate)
   try {
-    if (params.has('still')) {
+    if (params.has('sheet')) {
+      const cols = Number(params.get('cols')) || 3;
+      const rows = Number(params.get('rows')) || 2;
+      const raw = params.get('sheet');
+      const times = raw === 'all' ? sheetTimes(duration, cols * rows) : raw.split(',').map(Number).filter(Number.isFinite);
+      const sheet = drawSheet({ canvas, render, times, cols, rows });
+      const blob = await new Promise(resolve => sheet.toBlob(resolve, 'image/png'));
+      await post('/__sheet', blob, 'image/png');
+    }
+    else if (params.has('still')) {
       const times = params.get('still').split(',').map(Number).filter(Number.isFinite);
       await stills({ canvas, render, times });
     }

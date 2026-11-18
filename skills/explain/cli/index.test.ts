@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, test } from 'bun:test';
 import { buildHash, buildPage, insideSkillDir, readBuildHash, SKILL_DIR } from './build.ts';
 import { findChrome } from './chrome.ts';
-import { dateStamp, defaultStillTimes, ensureBuilt, explainerDir, parseArgs, parseBitrate, parsePreset, parseTimes, resolveOut, resolveTarget, sceneTemplate, slugify, UsageError } from './index.ts';
+import { dateStamp, defaultAt, defaultStillTimes, ensureBuilt, explainerDir, parseArgs, parseAt, parseBitrate, parsePreset, parseTimes, planStills, resolveOut, resolveTarget, sceneTemplate, slugify, UsageError } from './index.ts';
 import { listPresets, newPreset } from './presets.ts';
 
 const temps: string[] = [];
@@ -53,6 +53,18 @@ describe('argument parsing', () => {
     expect(() => parsePreset({ preset: 'neon' })).toThrow(UsageError);
     expect(parseTimes('1,5.5,9')).toEqual([1, 5.5, 9]);
     expect(() => parseTimes('a,2')).toThrow(UsageError);
+  });
+  test('--at takes scene-local times and names stills NN-<scene>@<lt>.png', () => {
+    const scenes = [{ name: 'intro', start: 0, dur: 6 }, { name: 'ci', start: 5.4, dur: 8 }];
+    expect(parseAt('ci:3.5,12.4')).toEqual([{ scene: 'ci', t: 3.5 }, { t: 12.4 }]);
+    const plan = planStills(parseAt('ci:3.5,12.4,1'), scenes);
+    expect(plan).toEqual([{ t: 8.9, name: '02-ci@3.5.png' }, { t: 12.4, name: '02-ci@7' + '.png' }, { t: 1, name: '01-intro@1.png' }]);
+    // ci:3.5 is the same frame as global 8.9.
+    expect(planStills([{ t: 8.9 }], scenes)[0].t).toBe(plan[0].t);
+    expect(() => planStills(parseAt('nope:1'), scenes)).toThrow(UsageError);
+    expect(() => planStills(parseAt('ci:9'), scenes)).toThrow('past its end');
+    expect(defaultAt(scenes)).toHaveLength(4);
+    expect(defaultAt(scenes, 'ci').map(e => e.t)).toEqual([1.6, 3.2, 4.8, 6.8]);
   });
   test('default still times: 40 % and 85 % of each scene', () => {
     expect(defaultStillTimes([{ start: 0, dur: 10 }, { start: 9, dur: 4 }])).toEqual([4, 8.5, 10.6, 12.4]);

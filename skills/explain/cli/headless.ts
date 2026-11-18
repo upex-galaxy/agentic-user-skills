@@ -67,15 +67,15 @@ export function withErrorProbe(html: string): string {
   return head ? html.replace(head[0], `${head[0]}${ERROR_PROBE}`) : ERROR_PROBE + html;
 }
 
-/** Load the built page headless with ?qa=1 and return its QA report and scene list. */
-export async function inspectPage(html: string, timeoutMs = 120_000, launch?: (url: string) => ChromeHandle): Promise<PageInfo> {
+/** Load the built page headless with ?qa=1 and return its QA report and scene list (`info: true`: scene list only, no QA run). */
+export async function inspectPage(html: string, timeoutMs = 120_000, launch?: (url: string) => ChromeHandle, opts: { info?: boolean } = {}): Promise<PageInfo> {
   const start = performance.now();
   const probed = html.includes('</body>') ? html.replace('</body>', `${PROBE}</body>`) : html + PROBE;
   let info: Omit<PageInfo, 'chrome' | 'seconds'> | undefined;
   const session = await runSession({
     html: withErrorProbe(probed),
-    query: { qa: '1' },
-    label: 'QA',
+    query: opts.info ? { info: '1' } : { qa: '1' },
+    label: opts.info ? 'Scenes' : 'QA',
     timeoutMs,
     limits: { __info: 8 * 1024 * 1024 },
     launch,
@@ -86,4 +86,10 @@ export async function inspectPage(html: string, timeoutMs = 120_000, launch?: (u
     },
   });
   return { ...info!, chrome: session.chrome, seconds: (performance.now() - start) / 1000 };
+}
+
+/** The page's scene list and timing, without running the QA gate. */
+export async function pageScenes(html: string): Promise<{ scenes: SceneInfo[], duration: number }> {
+  const info = await inspectPage(html, 120_000, undefined, { info: true });
+  return { scenes: info.scenes, duration: info.duration };
 }

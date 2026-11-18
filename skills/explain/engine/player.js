@@ -4,7 +4,8 @@
 // URL parameters:
 //   ?t=<seconds>   static frame, UI hidden (used for stills and screenshots)
 //   ?qa=1          run the QA gate and write the JSON report into <pre id="qa">
-//   ?export=1 / ?still=<t,t,...>   handed to engine/export.js (runExport) when that module is present
+//   ?export=1 / ?still=<t,t,...> / ?sheet=<t,...|all>   handed to engine/export.js (runExport) when that module is present
+//   ?info=1        build only and report the scene list (no QA run)
 // Page hooks:
 //   window.__explainQA(times?, opts?)  -> JSON report from engine/qa.js (see runQA for the options)
 //   window.__explainRender(t)          -> draw one frame
@@ -53,6 +54,17 @@ export async function boot({ makeScene, preset, loadExport }) {
 
   engine.render(Number(params.get('t')) || 0);
 
+  if (params.has('info')) {
+    // ?info=1: the scene list only, for the CLI to resolve scene-local times (the QA report slot carries a stub).
+    document.body.classList.add('still');
+    const pre = document.createElement('pre');
+    pre.id = 'qa';
+    pre.textContent = JSON.stringify({ ok: true, errors: [], warnings: [], stats: {}, skipped: true });
+    document.body.appendChild(pre);
+    window.__ready = true;
+    return engine;
+  }
+
   if (params.has('qa')) {
     // ?qa=1 writes the QA report into the page (read it with chrome --dump-dom or the console).
     document.body.classList.add('still');
@@ -69,7 +81,7 @@ export async function boot({ makeScene, preset, loadExport }) {
     window.__ready = true;
     return engine;
   }
-  if (params.has('export') || params.has('still')) {
+  if (params.has('export') || params.has('still') || params.has('sheet')) {
     const m = await loadExport();
     window.__ready = true;
     await m.runExport?.({ canvas, render: engine.render, duration, fps });

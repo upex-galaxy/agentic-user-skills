@@ -43,5 +43,5 @@ export function installRoughStub(log: unknown[][]) {
   const rec = (name: string) => (...args: unknown[]) => {
     log.push([`rough.${name}`, ...args]);
   };
-  (globalThis as any).rough = { canvas: () => ({ rectangle: rec('rectangle'), ellipse: rec('ellipse'), linearPath: rec('linearPath'), line: rec('line') }) };
+  (globalThis as any).rough = { canvas: () => ({ rectangle: rec('rectangle'), ellipse: rec('ellipse'), linearPath: rec('linearPath'), line: rec('line'), path: rec('path'), curve: rec('curve'), polygon: rec('polygon'), circle: rec('circle'), arc: rec('arc') }) };
 }
