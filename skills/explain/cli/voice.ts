@@ -104,7 +104,9 @@ export function planVoice(cues: CueLike[], settings: VoiceSettings, rules: Pronu
   });
 }
 
-const creditRate = (model: string) => /flash|turbo/i.test(model) ? 0.5 : 1;
+// Credits per character per take through the claude.ai ElevenLabs connector: eleven_flash_v2_5 measured 1 (31 credits
+// for a 31-character take, 2026-11-18); its model guide says eleven_v3 and eleven_v4 cost twice as much as flash or turbo.
+const creditRate = (model: string) => /eleven_v[34]/i.test(model) ? 2 : 1;
 
 /** The text `voice plan` prints: one block per line still to generate, a credits estimate and the agent's steps. */
 export function formatPlan(entries: PlanEntry[], settings: VoiceSettings): string {
@@ -134,7 +136,7 @@ export function formatPlan(entries: PlanEntry[], settings: VoiceSettings): strin
     out.push(
       '',
       'Agent steps: generate each line with the ElevenLabs MCP using exactly this voice and model, pick one take, and download it to the "save to" path above.',
-      'Then run the voice ingest step on this spec: it picks the files up by hash.',
+      'Then run any build command on this target (build, check, stills or export, with the same voice settings): it ingests the saved files by hash, keeping each MP3.',
     );
   }
   return out.join('\n');

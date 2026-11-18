@@ -97,7 +97,7 @@ describe('plan', () => {
     }
     const chars = entries[1].chars + entries[2].chars;
     expect(text).toContain(`Missing characters: ${chars}`);
-    expect(text).toMatch(/Estimated credits: about 38 /);
+    expect(text).toMatch(/Estimated credits: about 76 /);
     expect(text).toContain('eleven_flash_v2_5');
   });
   test('kokoro entries have no source and applied pronunciation', () => {
