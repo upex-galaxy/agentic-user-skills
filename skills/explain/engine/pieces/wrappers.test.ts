@@ -90,3 +90,23 @@ describe('wrappers', () => {
     })).toThrow(/wipe/);
   });
 });
+
+describe('wrapper targets', () => {
+  test('a composite id wraps the item and its children; a registered sub-rect throws a clear error', () => {
+    const { engine } = build(hologram, (s: any) => {
+      s.node({ id: 'a', text: 'Hola', rect: R, at: 0, dur: 0.1 });
+      s.node({ id: 'a.sub', text: 'Hijo', rect: { x: 100, y: 400, w: 200, h: 100 }, at: 0, dur: 0.1 });
+      s.node({ id: 'a-2', text: 'Otro', rect: { x: 100, y: 600, w: 200, h: 100 }, at: 0, dur: 0.1 });
+      s.reg.add('host.body', { x: 10, y: 10, w: 50, h: 50 });
+      s.animate({ targets: 'a', x: [[0, 0], [1, 100]], ease: 'linear' });
+    });
+    expect(rec(engine, 1, 'a').rect.x).toBeCloseTo(R.x + 100, 3);
+    expect(rec(engine, 1, 'a.sub').rect.x).toBeCloseTo(100 + 100, 3);
+    expect(rec(engine, 1, 'a-2').rect.x).toBeCloseTo(100 + 100, 3);
+    expect(() => build(hologram, (s: any) => {
+      s.reg.add('br.body', { x: 10, y: 10, w: 50, h: 50 });
+      s.enter({ targets: 'br.body' });
+    })).toThrow(/sub-rects of a composite|cannot be wrapped on its own[\s\S]*Target the composite id/);
+    expect(() => build(hologram, (s: any) => s.enter({ targets: 'nope' }))).toThrow(/no item "nope"/);
+  });
+});

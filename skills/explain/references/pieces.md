@@ -161,7 +161,7 @@ s.diffView({ id: 'diff', rect: s.area, file: 'src/auth.ts', stat: '+1 -1', lines
 |---|---|
 | `browser` | `rect | in`, `url`, `typeUrl` (true), `at`, `dur` (0.7), `color`, `until`. Registers `<id>.body` |
 | `phone` | `rect | in`, `at`, `dur` (0.7), `tilt` (0, degrees it settles from), `color`, `until`. Kept 1:2; registers `<id>.screen` |
-| `appScreen` | `rect | in`, `at`, `title`, `rows` (`[{ label, value?, on? }]`), `total` (`{ label, from, to, at, dur (1.2), prefix, suffix, decimals }`), `cta`, `banner` (text or `{ text, at, color }`), `feature` (`{ label, at, badge }`), `color`, `until`. A narrow screen (a phone at video scale) packs tighter: slim padding and rows, text down to 0.7 of the minimum, the badge left out when it would take over half a row. Registers `<id>.total`, `.cta`, `.feature` |
+| `appScreen` | `rect | in`, `at`, `title`, `rows` (`[{ label, value?, on? }]`), `total` (`{ label, from, to, at, dur (1.2), prefix, suffix, decimals }`), `cta`, `banner` (text or `{ text, at, color }`), `feature` (`{ label, at (the piece `at`), badge }`), `color`, `until`. A narrow screen (a phone at video scale) packs tighter: slim padding and rows, text down to 0.7 of the minimum, the badge left out when it would take over half a row. Registers `<id>.total`, `.cta`, `.feature` |
 | `prPage` | `rect | in`, `at`, `title`, `number`, `from`, `to`, `author`, `stats` (`{ add, del }`), `labels`, `checks` (`[{ name, start, end, ok }]`), `reviewers` (`[{ name, initials, approveAt }]`), `button` (call-to-action text: the page starts as a draft and `openAt` opens it), `openAt`, `mergeAt`. Merge unlocks when every check passed and every reviewer approved. Registers `<id>.badge`, `.checks`, `.reviewers`, `.merge` (alias `.button`). Exposes `end`, `marks { open, ready, merge }` |
 | `cursor` | `path` (`[[t, x, y] | [t, id | { id, anchor }]]`, eased), `clicks` (`[t]`), `color`, `until`. Exposes `pos(t)`, `end` |
 
@@ -183,7 +183,7 @@ All take `rect | in`, `at`, `until`.
 | `counter` | `from` (0), `to`, `dur` (1.5) or `keys` (`[[t, value]]`), `decimals`, `prefix`, `suffix`, `sep`, `label`, `ease`, `color`, `px`, `font`. Fitted for its widest value; bumps when it lands |
 | `progress` | (label and percent fit the rect height) `dur` (2), `from` (0), `to` (1), `label`, `pct` (true), `segments`, `color`, `doneColor` (`good`), `linear` |
 | `gauge` | `to` (1), `dur` (1.5), `label`, `suffix` (` %`), `scale` (100), `color` |
-| `chart` | `type` (`line`, `area`, `bars`), `data` (numbers, or arrays for several lines), `labels`, `colors`, `title`, `yMax`, `dur` (2), `step` (bars one by one), `mark` (`{ i, text, color }` on a line or area point; the text sits inside the plot, clear of the lines). Every chart text stays inside the rect: end labels slide in, bars keep headroom for their value |
+| `chart` | `type` (`line`, `area`, `bars`), `data` (numbers, or arrays for several lines), `labels`, `colors`, `title`, `yMax`, `yMin` (min of the data and 0; negative values draw below the zero line), `dur` (2), `step` (bars one by one), `mark` (`{ i, text, color }` on a line or area point; the text sits inside the plot, clear of the lines). Every chart text stays inside the rect: end labels slide in, bars keep headroom for their value |
 | `dotGrid` | `rows`, `cols`, `dur` (2), `fail` (indices that turn bad), `color` (`good`) |
 
 ```js
@@ -269,7 +269,7 @@ s.layers({ id: 'stack', rect: s.area, layers: [{ text: 'Database' }, { text: 'AP
 
 ## Wrappers
 
-Wrap items that already exist (`targets`: id or array; ids registered by composites work). QA follows the motion: a moved rect is checked where it really is, and an enter that leaves the frame fails `out-of-bounds`. They return an item with `end`.
+Wrap items that already exist (`targets`: id or array of ids. An id resolves to the item with that id; else to every item whose id starts with `<id>.` or `<id>-` (a composite's children, so a composite id wraps the whole piece). The sub-rects a composite registers (`br.body`, a flow node id) are not items: wrapping one throws, target the composite id instead). QA follows the motion: a moved rect is checked where it really is, and an enter that leaves the frame fails `out-of-bounds`. They return an item with `end`.
 
 | Wrapper | Options (defaults) |
 |---|---|

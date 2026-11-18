@@ -258,3 +258,46 @@ describe('chart text stays inside the rect', () => {
     expect(runQA(engine, [2, 4, 6, 8], { determinism: false }).ok).toBe(true);
   });
 });
+
+describe('review fixes', () => {
+  test('gauge: ring and stroke stay inside the rect', () => {
+    const { engine, log } = build(hologram, (s: any) => { s.gauge({ id: 'g', rect: { x: 200, y: 200, w: 700, h: 700 }, to: 0.8, at: 0 }); });
+    engine.render(5);
+    // The ring is a polyline of equidistant points around the centre: find the radius that many points share.
+    const byR = new Map<number, number>();
+    for (const e of log.filter((x: any[]) => x[0] === 'lineTo')) {
+      const d = Math.round(Math.hypot((e[1] as number) - 550, (e[2] as number) - 550));
+      if (d > 100 && d < 400) { byR.set(d, (byR.get(d) ?? 0) + 1); }
+    }
+    const ringR = [...byR.entries()].filter(([, n]) => n >= 40).map(([d]) => d);
+    expect(ringR.length).toBeGreaterThan(0);
+    // outer edge = ring radius + half the stroke (0.14 r wide) must be inside the 350 px half size
+    for (const d of ringR) { expect(d * 1.07).toBeLessThanOrEqual(350); }
+  });
+
+  test('chart: all-zero data has finite geometry; negative values stay inside the frame', () => {
+    const { engine } = build(hologram, (s: any) => {
+      s.chart({ id: 'z', rect: { x: 100, y: 100, w: 600, h: 300 }, type: 'line', data: [0, 0, 0] });
+      s.chart({ id: 'n', rect: { x: 800, y: 100, w: 600, h: 300 }, type: 'bars', data: [-4, 6, -2], labels: ['a', 'b', 'c'] });
+    });
+    expect(runQA(engine, [1, 4, 8], { determinism: false }).ok).toBe(true);
+    const z = recs(engine, 8).z;
+    for (const tx of z.texts) { expect(Number.isFinite(tx.rect.y)).toBe(true); }
+  });
+
+  test('chart bars: a negative value draws as a bar below the zero line, inside the rect', () => {
+    const { engine, log } = build(hologram, (s: any) => { s.chart({ id: 'n', rect: { x: 800, y: 100, w: 600, h: 300 }, type: 'bars', data: [-4, 6, -2], at: 0 }); });
+    engine.render(8);
+    const bars = log.filter((e: any[]) => e[0] === 'roundRect' && (e[4] as number) > 1 && (e[1] as number) >= 800 && (e[1] as number) < 1400);
+    expect(bars.length).toBe(3);
+    for (const b of bars) { expect((b[2] as number) + (b[4] as number)).toBeLessThanOrEqual(400); }
+  });
+
+  test('progress: a very short rect keeps the bar inside', () => {
+    const { engine, log } = build(hologram, (s: any) => { s.progress({ id: 'p', rect: { x: 100, y: 100, w: 600, h: 20 }, label: 'x', at: 0 }); });
+    engine.render(5);
+    const bottoms = log.filter((e: any[]) => e[0] === 'roundRect' || e[0] === 'rect').map((e: any[]) => (e[2] as number) + (e[4] as number));
+    expect(bottoms.length).toBeGreaterThan(0);
+    for (const b of bottoms) { expect(b).toBeLessThanOrEqual(120.5); }
+  });
+});

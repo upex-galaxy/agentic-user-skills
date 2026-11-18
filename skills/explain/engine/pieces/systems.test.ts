@@ -227,3 +227,27 @@ describe('gitGraph label band', () => {
     expect(r.texts.every((x: any) => !x.overflow && x.rect.x >= rect.x && x.rect.x + x.rect.w <= rect.x + rect.w)).toBe(true);
   });
 });
+
+describe('review fixes', () => {
+  test('pipeline, machine and fleet QA alpha follows `until`', () => {
+    const { engine } = build(hologram, (s: any) => {
+      s.pipeline({ id: 'p', rect: { x: 80, y: 244, w: 1700, h: 300 }, stages: STAGES, until: 6 });
+      s.machine({ id: 'm', rect: { x: 80, y: 560, w: 800, h: 300 }, inputs: [{ kind: 'doc', label: 'a' }], until: 6 });
+      s.fleet({ id: 'f', rect: { x: 900, y: 560, w: 800, h: 300 }, until: 6 });
+    });
+    for (const id of ['p', 'm', 'f']) {
+      expect(recs(engine, 3.0)[id].alpha).toBe(1);
+      expect(recs(engine, 6.4)[id].alpha).toBe(0);
+      expect(recs(engine, 6.1)[id].alpha).toBeLessThan(1);
+    }
+  });
+
+  test('a pipeline stage without jobs has zero duration and does not poison later stages', () => {
+    let it: any;
+    build(hologram, (s: any) => {
+      it = s.pipeline({ id: 'p', rect: { x: 80, y: 244, w: 1700, h: 300 }, stages: [{ name: 'A', jobs: [{ name: 'x', dur: 1 }] }, { name: 'Empty', jobs: [] }, { name: 'B', jobs: [{ name: 'y', dur: 1 }] }] });
+    });
+    expect(Number.isFinite(it.end)).toBe(true);
+    for (const v of Object.values(it.marks.stageEnd)) { expect(Number.isFinite(v as number)).toBe(true); }
+  });
+});

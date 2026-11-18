@@ -394,7 +394,7 @@ export function terminal(s, o) {
     rect,
     tk,
     vis,
-    texts: [...rows.map(r => r.text), ...extra],
+    texts: [...rows.map(r => r.text), ...extra, ...(o.prompt ? [String(o.prompt)] : [])],
     end,
     marks,
     extra: { body },
@@ -406,6 +406,7 @@ export function terminal(s, o) {
         if (!insideBody(y)) { return; }
         const w = (shown[i].length + (r.cmd ? prompt.length : 0)) * cw;
         live.push({ text: shown[i], rect: { x: body.x, y: y - px * 0.6, w, h: px * 1.2 }, overflow: w > body.w + 1, px });
+        if (r.cmd && o.prompt) { live.push({ text: String(o.prompt), rect: { x: body.x, y: y - px * 0.6, w: prompt.length * cw, h: px * 1.2 }, px }); }
       });
       return { rect, alpha: vis(t), container: true, host: o.in, texts: [...tk.qa(t), ...live] };
     },

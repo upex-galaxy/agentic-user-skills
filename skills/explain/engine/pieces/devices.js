@@ -124,7 +124,7 @@ export function appScreen(s, o) {
   const at = o.at ?? 0;
   const tall = rect.h > rect.w * 1.2;
   const rows = o.rows ?? [];
-  const feat = o.feature;
+  const feat = o.feature ? { ...o.feature, at: o.feature.at ?? at } : undefined;
   const total = o.total;
   const banner = typeof o.banner === 'string' ? { text: o.banner } : o.banner;
   const nRows = rows.length + (feat ? 1 : 0);

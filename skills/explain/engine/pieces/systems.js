@@ -13,7 +13,8 @@ const need = (cond, msg) => {
 };
 
 /** Shared QA record of a composite: its rect, the visible texts, the inner parts. */
-const record = (rect, o, alpha, texts, parts) => ({ rect, alpha, container: true, host: o.in, texts, parts });
+const untilFade = (o, t) => (o.until === undefined ? 1 : 1 - prog(t, o.until, 0.35));
+const record = (rect, o, alpha, texts, parts, t) => ({ rect, alpha: alpha * untilFade(o, t), container: true, host: o.in, texts, parts });
 
 // ---- pipeline -----------------------------------------------------------------------------------------------------
 
@@ -76,7 +77,7 @@ export function pipeline(s, o) {
       s.reg.add(`${id}.j${i + 1}.${k + 1}`, j.rect);
       if (j.id) { s.reg.add(`${id}.${j.id}`, j.rect); }
     });
-    st.end = Math.max(...st.jobs.map(j => j.end));
+    st.end = st.jobs.length ? Math.max(...st.jobs.map(j => j.end)) : cur;
     st.start = Math.min(st.start, ...st.jobs.map(j => j.start));
     st.ok = st.jobs.every(j => j.ok);
     st.spec = tk.make(st.name, x + pad * 1.4, st.rect.y + headH / 2, colW - pad * 1.4 - headH, { px: px.stage, weight: 700, at: st.enter + 0.15 });
@@ -104,7 +105,7 @@ export function pipeline(s, o) {
     qa: (_api, t) => record(rect, o, t < at ? 0 : 1, [
       ...tk.qa(t),
       ...stages.flatMap(st => st.jobs.filter(j => t >= j.start && t >= j.enter).map(j => timerSpec(j, t))),
-    ], parts()),
+    ], parts(), t),
     draw(api, t) {
       if (o.title) { drawT(api, tk.list[0], { alpha: up(t, at) }); }
       stages.forEach((st, i) => {
@@ -368,7 +369,7 @@ export function machine(s, o) {
     end: outEnd,
     marks: { processStart, processEnd },
     parts: () => [{ id: 'machine', rect: M }, { id: 'out', rect: outRect }],
-    qa: (_api, t) => record(rect, o, t < at ? 0 : 1, [...tk.qa(t), ...feeds.filter(f => f.label && flying(f, t) && labelAlpha(f, t) > 0.05).map(f => inLabelRec(f, t))], [{ id: 'machine', rect: M }, { id: 'out', rect: outRect }]),
+    qa: (_api, t) => record(rect, o, t < at ? 0 : 1, [...tk.qa(t), ...feeds.filter(f => f.label && flying(f, t) && labelAlpha(f, t) > 0.05).map(f => inLabelRec(f, t))], [{ id: 'machine', rect: M }, { id: 'out', rect: outRect }], t),
     draw(api, t) {
       const p = ease.out(prog(t, at, 0.6));
       if (p <= 0) { return; }
@@ -540,7 +541,7 @@ export function fleet(s, o) {
         });
       });
     },
-    qa: (_api, t) => record(rect, o, up(t, at), tk.qa(t), parts()),
+    qa: (_api, t) => record(rect, o, up(t, at), tk.qa(t), parts(), t),
   });
 }
 

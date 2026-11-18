@@ -193,3 +193,15 @@ for (const style of [hologram, sketch]) {
     });
   });
 }
+
+describe('review fixes', () => {
+  test('terminal: a custom prompt is a text, so an opening mark in it fails QA', () => {
+    let it: any;
+    const h = build(hologram, (s: any) => { it = s.terminal({ id: 'tm', rect: { x: 80, y: 244, w: 1000, h: 300 }, prompt: '¿', steps: [{ cmd: 'ls' }] }); });
+    expect(it.texts()).toContain('¿');
+    const r = recs(h, 3).find((x: any) => x.id === 'tm');
+    expect(r.texts.some((x: any) => x.text === '¿')).toBe(true);
+    const qa = runQA(h.engine, [1, 3], { determinism: false });
+    expect(qa.errors.some((e: any) => e.type === 'opening-punctuation')).toBe(true);
+  });
+});

@@ -87,7 +87,9 @@ export function progress(s, o) {
   // The header text fits the rect height: a short rect shrinks the label and the percent so the bar keeps at least 12 px.
   const headPx = hasHead ? clamp((rect.h - 16) / 1.5, 8, size(s, 'label', 0.85)) : size(s, 'label', 0.85);
   const headH = hasHead ? headPx * 1.5 : 0;
-  const bar = { x: rect.x, y: rect.y + headH + (hasHead ? 4 : 0), w: rect.w, h: Math.max(12, rect.h - headH - (hasHead ? 4 : 0)) };
+  const barY = rect.y + headH + (hasHead ? 4 : 0);
+  // At least 12 px tall when the rect has room; a very short rect gets what is left, never a bar past its bottom.
+  const bar = { x: rect.x, y: barY, w: rect.w, h: Math.max(1, Math.min(Math.max(12, rect.h - headH - (hasHead ? 4 : 0)), rect.y + rect.h - barY)) };
   const pctW = showPct ? textW(s, '100 %', headPx, 'mono') + 12 : 0;
   const tk = textKit(s);
   if (o.label) { tk.make(o.label, rect.x, rect.y + headH / 2, rect.w - pctW - 16, { px: headPx }); }
@@ -141,7 +143,9 @@ export function gauge(s, o) {
   const suffix = o.suffix ?? ' %';
   const labelPx = o.label ? fitPx(s, o.label, rect.w, size(s, 'label', 0.85)) : 0;
   const labelH = o.label ? labelPx * 1.6 : 0;
-  const r = Math.max(8, Math.min(rect.w, rect.h - labelH) / 2 - 12);
+  // The ring and its stroke (lw = max(8, 0.14 r), centered on the ring) stay inside the rect with a 4 px margin.
+  const half = Math.min(rect.w, rect.h - labelH) / 2;
+  const r = Math.max(8, Math.min(half - 8, (half - 4) / 1.07));
   const cx = rect.x + rect.w / 2;
   const cy = rect.y + (rect.h - labelH) / 2;
   const lw = Math.max(8, r * 0.14);
@@ -184,7 +188,7 @@ const fmtVal = v => (Number.isInteger(v) ? String(v) : v.toFixed(1));
 
 /**
  * Chart that draws itself. o: rect, type ('line' | 'area' | 'bars'), data (numbers, or an array of number arrays for
- * several lines), labels (under the x axis), colors (per bar or per line), title, yMax, at, dur (2), step (bars appear
+ * several lines), labels (under the x axis), colors (per bar or per line), title, yMax, yMin (min of the data and 0), at, dur (2), step (bars appear
  * one by one every `step` seconds; default spreads them over dur), mark { i, text, color } (event marker on a line or
  * area point), until.
  */
@@ -208,9 +212,15 @@ export function chart(s, o) {
   const base = plot.y + plot.h;
   // Bars keep room above the tallest one for its value label (it must not reach the title).
   const headroom = bars ? Math.max(1.18, 1 / Math.max(0.3, 1 - (textPx * 2) / Math.max(1, plot.h))) : 1.18;
-  const yMax = o.yMax ?? Math.max(...series.flat()) * headroom;
+  const flat = series.flat();
+  // The frame spans zero and the data: negatives get room below the zero line instead of drawing under the frame.
+  const yMin = o.yMin ?? Math.min(0, ...flat);
+  const top = Math.max(0, ...flat);
+  const yMax = o.yMax ?? (top > yMin ? yMin + (top - yMin) * headroom : yMin + 1);
+  const range = yMax - yMin || 1;
   const xs = i => (bars ? plot.x + (plot.w / n) * (i + 0.5) : plot.x + 24 + ((plot.w - 48) * i) / Math.max(1, n - 1));
-  const ys = v => base - (v / yMax) * plot.h;
+  const ys = v => base - ((v - yMin) / range) * plot.h;
+  const zeroY = clamp(ys(0), plot.y, base);
   const palette = ['accent', 'accent2', 'good', 'warn'];
   const colorOf = i => o.colors?.[i] ?? (bars ? o.color ?? 'accent' : o.color && i === 0 ? o.color : palette[i % palette.length]);
   const t0 = at + 0.4;
@@ -228,7 +238,7 @@ export function chart(s, o) {
     tk.make(l, clamp(xs(idx), rect.x + 4 + lw / 2, rect.x + rect.w - 4 - lw / 2), rect.y + rect.h - labelH / 2 - 2, slot, { px: textPx, align: 'center', color: 'dim', at: at + 0.2 });
   });
   // bars: one value label per bar, visible once the bar has grown
-  if (bars) { series[0].forEach((v, i) => tk.make(fmtVal(v), xs(i), Math.max(ys(v) - textPx * 0.95, plot.y + textPx * 0.6), (plot.w / n) * 0.9, { px: textPx, weight: 700, align: 'center', role: 'mono', color: 'ink', at: barAt(i) + barDur * 0.6 })); }
+  if (bars) { series[0].forEach((v, i) => tk.make(fmtVal(v), xs(i), v < 0 ? Math.min(zeroY - textPx * 0.95, base - textPx * 0.6) : Math.max(ys(v) - textPx * 0.95, plot.y + textPx * 0.6), (plot.w / n) * 0.9, { px: textPx, weight: 700, align: 'center', role: 'mono', color: 'ink', at: barAt(i) + barDur * 0.6 })); }
   // line / area: fraction of the path length at which the marker point is reached, then the time it takes
   const draw0 = t0;
   const lineP = t => ease.inOut(prog(t, draw0, dur));
@@ -292,8 +302,8 @@ export function chart(s, o) {
         series[0].forEach((v, i) => {
           const k = ease.back(prog(t, barAt(i), barDur));
           if (k <= 0) { return; }
-          const h = Math.max(0, (v / yMax) * plot.h * k);
-          const r = { x: xs(i) - bw / 2, y: base - h, w: bw, h };
+          const h = Math.max(0, (Math.abs(v) / range) * plot.h * k);
+          const r = { x: xs(i) - bw / 2, y: v < 0 ? zeroY : zeroY - h, w: bw, h };
           const c = colorOf(i);
           fillRect(api, r, c, 0.3, 5);
           box(api, r, { kind: 'rect', stroke: c, fill: null, lw: 2.5 });
@@ -313,7 +323,7 @@ export function chart(s, o) {
                 acc += Math.hypot(sp[i][0] - sp[i - 1][0], sp[i][1] - sp[i - 1][1]);
                 shown.push(acc / total <= p ? sp[i] : [tip.x, tip.y]);
               }
-              poly(api, [...shown, [shown[shown.length - 1][0], base], [sp[0][0], base]], { fill: c, fillAlpha: 0.18, stroke: null });
+              poly(api, [...shown, [shown[shown.length - 1][0], zeroY], [sp[0][0], zeroY]], { fill: c, fillAlpha: 0.18, stroke: null });
             }
             line(api, sp, { color: c, lw: 4, glow: 14, p });
             let run = 0;

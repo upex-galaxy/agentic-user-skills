@@ -257,3 +257,16 @@ describe('appScreen in a phone', () => {
     for (const tx of app.texts) { expect(tx.rect.x).toBeGreaterThanOrEqual(app.rect.x); expect(tx.rect.x + tx.rect.w).toBeLessThanOrEqual(app.rect.x + app.rect.w); }
   });
 });
+
+describe('review fixes', () => {
+  test('appScreen: a feature without `at` defaults to the piece `at` and keeps its label in QA', () => {
+    let it: any;
+    const { engine } = build(hologram, (s: any) => {
+      it = s.appScreen({ id: 'app', rect: { x: 400, y: 244, w: 700, h: 600 }, at: 1, title: 'App', rows: [{ label: 'Uno' }], feature: { label: 'Modo oscuro', badge: 'nuevo' } });
+    });
+    expect(Number.isFinite(it.end)).toBe(true);
+    expect(it.marks.feature).toBe(1);
+    expect(textsOf(engine, 8, 'app')).toContain('Modo oscuro');
+    expect(runQA(engine, [2, 5, 8], { determinism: false }).ok).toBe(true);
+  });
+});

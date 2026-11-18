@@ -22,13 +22,22 @@ const SHOWN = 0.001;
 function targetsOf(s, targets, what) {
   const ids = [targets].flat().filter(Boolean);
   if (!ids.length) { throw new Error(`${what}: needs targets (an id or an array of ids)`); }
-  const hits = [];
+  const wrappable = it => it.kind !== 'fx' && typeof it.draw === 'function';
+  const groups = [];
   for (const id of ids) {
-    const found = s.items.filter(it => it.id === id && it.kind !== 'fx' && typeof it.draw === 'function');
-    if (!found.length) { throw new Error(`${what}: no item "${id}" yet. Create it first (known ids: ${s.reg.ids().join(', ') || 'none'})`); }
-    hits.push(...found);
+    // The item with that id, plus the items of a composite it owns (`<id>.x`, `<id>-x`: links, steps, hosted pieces).
+    const found = s.items.filter(it => wrappable(it) && (it.id === id || String(it.id).startsWith(`${id}.`) || String(it.id).startsWith(`${id}-`)));
+    if (found.length) {
+      groups.push(found);
+      continue;
+    }
+    if (s.reg.has(id)) {
+      throw new Error(`${what}: "${id}" is a rect a composite registered, not an item, so it cannot be wrapped on its own (sub-rects of a composite such as a browser body or a flow node). Target the composite id instead`);
+    }
+    const known = [...new Set(s.items.filter(wrappable).map(it => it.id))];
+    throw new Error(`${what}: no item "${id}" yet. Create it first (items: ${known.join(', ') || 'none'})`);
   }
-  return hits;
+  return groups;
 }
 
 function rectOfItem(s, it, what) {
@@ -74,44 +83,57 @@ function mapRect(r, m, pivot) {
  * alpha, clip?(ctx), after?(api), hideQa?, transient? }.
  */
 function wrap(s, targets, what, spec) {
-  for (const it of targetsOf(s, targets, what)) {
-    const rect = rectOfItem(s, it, what);
-    const { pivot, mod } = spec(rect, it);
-    const draw = it.draw;
-    const qa = it.qa;
-    it.draw = (api, t) => {
-      const m = mod(t);
-      const alpha = m.alpha ?? 1;
-      if (alpha <= SHOWN || m.skip) { return; }
-      const inner = alpha < 1 ? api.fade(alpha) : api;
-      around(api, pivot[0], pivot[1], { sx: m.sx ?? 1, sy: m.sy ?? m.sx ?? 1, dx: m.dx ?? 0, dy: m.dy ?? 0, rot: m.rot ?? 0 }, () => {
-        if (m.clip) {
-          api.ctx.save();
-          api.ctx.beginPath();
-          m.clip(api.ctx);
-          api.ctx.clip();
-          draw.call(it, inner, t);
-          api.ctx.restore();
-        }
-        else { draw.call(it, inner, t); }
-        m.after?.(api);
-      });
-    };
-    if (typeof qa === 'function') {
-      it.qa = (api, t) => {
-        const rec = qa.call(it, api, t);
-        if (!rec) { return rec; }
+  const done = new Set();
+  for (const group of targetsOf(s, targets, what)) {
+    // The items of one target id share one rect (their union) and so one pivot: a composite moves and scales as a whole.
+    const rects = group.flatMap((it) => {
+      try { return [rectOfItem(s, it, what)]; }
+      catch { return []; }
+    });
+    if (!rects.length) { rectOfItem(s, group[0], what); }
+    const x0 = Math.min(...rects.map(r => r.x));
+    const y0 = Math.min(...rects.map(r => r.y));
+    const rect = { x: x0, y: y0, w: Math.max(...rects.map(r => r.x + r.w)) - x0, h: Math.max(...rects.map(r => r.y + r.h)) - y0 };
+    for (const it of group) {
+      if (done.has(it)) { continue; }
+      done.add(it);
+      const { pivot, mod } = spec(rect, it);
+      const draw = it.draw;
+      const qa = it.qa;
+      it.draw = (api, t) => {
         const m = mod(t);
-        const map = r => mapRect(r, m, pivot);
-        const out = mapRecord(rec, map);
-        let alpha = rec.alpha * (m.alpha ?? 1);
-        if (m.hideQa) { alpha = 0; }
-        else if (m.transient) {
-          const b = out.rect;
-          if (b.x < MARGIN || b.y < MARGIN || b.x + b.w > s.W - MARGIN || b.y + b.h > s.H - MARGIN) { alpha = 0; }
-        }
-        return { ...out, alpha };
+        const alpha = m.alpha ?? 1;
+        if (alpha <= SHOWN || m.skip) { return; }
+        const inner = alpha < 1 ? api.fade(alpha) : api;
+        around(api, pivot[0], pivot[1], { sx: m.sx ?? 1, sy: m.sy ?? m.sx ?? 1, dx: m.dx ?? 0, dy: m.dy ?? 0, rot: m.rot ?? 0 }, () => {
+          if (m.clip) {
+            api.ctx.save();
+            api.ctx.beginPath();
+            m.clip(api.ctx);
+            api.ctx.clip();
+            draw.call(it, inner, t);
+            api.ctx.restore();
+          }
+          else { draw.call(it, inner, t); }
+          m.after?.(api);
+        });
       };
+      if (typeof qa === 'function') {
+        it.qa = (api, t) => {
+          const rec = qa.call(it, api, t);
+          if (!rec) { return rec; }
+          const m = mod(t);
+          const map = r => mapRect(r, m, pivot);
+          const out = mapRecord(rec, map);
+          let alpha = rec.alpha * (m.alpha ?? 1);
+          if (m.hideQa) { alpha = 0; }
+          else if (m.transient) {
+            const b = out.rect;
+            if (b.x < MARGIN || b.y < MARGIN || b.x + b.w > s.W - MARGIN || b.y + b.h > s.H - MARGIN) { alpha = 0; }
+          }
+          return { ...out, alpha };
+        };
+      }
     }
   }
 }
