@@ -4,7 +4,8 @@
 // A preset file is `export default ({ math, rough }) => ({ ... })`: a factory with no imports, so a user preset in
 // ~/.explain/presets/<name>/preset.js works without the skill's sources. definePreset() resolves it, fills defaults,
 // builds color() and font(), installs fallbacks for the optional renderers and validates the result, listing every
-// missing member in one error.
+// missing member in one error. The optional `sound` block (see audio.js) flavors the sound effects; it stays raw on the style.
+import { soundProblems } from './audio.js';
 import * as math from './math.js';
 
 export const REQUIRED_PALETTE = ['bg', 'ink', 'dim', 'accent', 'accent2', 'good', 'warn', 'bad', 'panel'];
@@ -97,7 +98,7 @@ function fallbackDot(api, x, y, r, o = {}) {
 /**
  * Resolve a preset factory (or an already-built preset object) into the style object the engine draws with.
  * kit: { math, rough } handed to the factory (defaults: the engine's math and the global Rough.js when loaded).
- * Returns the style; `style.warnings` lists contrast findings (below 4.5:1). Throws one error naming every missing member.
+ * Returns the style; `style.warnings` lists contrast findings (below 4.5:1). Throws one error naming every missing member and every invalid `sound` param.
  */
 export function definePreset(factory, kit = {}) {
   if (factory && factory.__preset === true) { return factory; }
@@ -114,6 +115,7 @@ export function definePreset(factory, kit = {}) {
     if (typeof raw[k] !== 'function') { missing.push(`${k}()`); }
   }
   if (!Array.isArray(raw.faces)) { missing.push('faces'); }
+  missing.push(...soundProblems(raw.sound));
   if (missing.length) { throw new Error(`Preset "${raw.name ?? '?'}" is missing: ${missing.join(', ')}`); }
 
   const palette = { onPanel: raw.palette.ink, onAccent: raw.palette.panel, ...raw.palette };

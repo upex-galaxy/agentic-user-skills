@@ -90,8 +90,10 @@ Checklist:
    fonts. Bundle only fonts whose license allows it (OFL) and keep the license file next to them.
 4. Renderers: \`background, shape, line, poly, text, highlight\` are required; \`overlay, fill, dot\` and
    \`transitions: { sweep, glitch, flash, ring, edge }\` are optional. Set alpha only through \`api.alpha(a)\`.
-5. Run \`bun <skill-dir>/cli/index.ts preset check ${name}\` until it passes, and look at the sheet it prints.
-6. Use it: \`build <dir> --preset ${name}\` (one-off) or \`preset use <dir> ${name}\` (saves it in explain.json).
+5. Sound (optional): \`sound: { gain, voices: { <kind>: partial params }, space }\` flavors the sound effects; omit it for the
+   engine defaults. Data only, see the header of the skill's \`engine/audio.js\` for kinds and params.
+6. Run \`bun <skill-dir>/cli/index.ts preset check ${name}\` until it passes, and look at the sheet it prints.
+7. Use it: \`build <dir> --preset ${name}\` (one-off) or \`preset use <dir> ${name}\` (saves it in explain.json).
 `;
 
 /** Copy a preset into the user presets folder under a new name. Returns the new folder. */

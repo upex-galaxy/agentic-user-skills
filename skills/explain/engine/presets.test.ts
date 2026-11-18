@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import hologramFactory from '../presets/hologram/preset.js';
 import posterFactory from '../presets/poster/preset.js';
 import sketchFactory from '../presets/sketch/preset.js';
+import { soundProblems, synth } from './audio.js';
 import { definePreset } from './preset.js';
 import { makeStubCtx } from './stub-ctx.ts';
 
@@ -164,5 +165,42 @@ describe('sketch legibility', () => {
     const hologram = definePreset(hologramFactory);
     expect(sketch.defaults.minPx).toBeGreaterThanOrEqual(hologram.defaults.minPx * 1.5);
     expect(sketch.weights.body).toBeGreaterThanOrEqual(600);
+  });
+});
+
+describe('preset sound flavor', () => {
+  const centroid = (x: Float32Array) => {
+    // Plain DFT over the first 4096 samples, bins up to 12 kHz.
+    const n = Math.min(4096, x.length);
+    let num = 0;
+    let den = 0;
+    for (let k = 1; k < n / 2; k++) {
+      let re = 0;
+      let im = 0;
+      for (let i = 0; i < n; i++) {
+        const a = 2 * Math.PI * k * i / n;
+        re += x[i] * Math.cos(a);
+        im -= x[i] * Math.sin(a);
+      }
+      const mag = Math.hypot(re, im);
+      const f = k * 48000 / n;
+      num += f * mag;
+      den += mag;
+    }
+    return num / den;
+  };
+
+  test('every built-in carries a valid sound block', () => {
+    for (const name of NAMES) {
+      const style = definePreset(FACTORIES[name]);
+      expect(style.sound).toBeDefined();
+      expect(soundProblems(style.sound)).toEqual([]);
+    }
+  });
+
+  test('the pop of sketch and hologram differs by more than 30 percent in spectral centroid', () => {
+    const c = (name: string) => centroid(synth('pop', definePreset(FACTORIES[name]).sound.voices.pop, 1));
+    const [a, b] = [c('sketch'), c('hologram')];
+    expect(Math.abs(a - b) / Math.min(a, b)).toBeGreaterThan(0.3);
   });
 });

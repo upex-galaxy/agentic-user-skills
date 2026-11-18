@@ -88,10 +88,25 @@ export default ({ math }) => {
     pts.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])));
   };
 
+  // Sound flavor: digital. High sine blips with a short FM shimmer, band-passed noise sweeps, a bit-crushed tear.
+  const sound = {
+    voices: {
+      pop: { wave: 'sine', f0: 1568, f1: 2093, glide: 0.02, decay: 0.05, dur: 0.08, noise: 0, filter: null, fm: { ratio: 2, depth: 2 } },
+      tick: { wave: 'sine', f0: 3136, f1: 2637, glide: 0.012, decay: 0.02, dur: 0.035, noise: 0.05, filter: { type: 'hp', f: 1800, q: 0.7 } },
+      blip: { wave: 'sine', f0: 1760, decay: 0.07, dur: 0.1, fm: { ratio: 3, depth: 3 } },
+      sparkle: { wave: 'sine', f0: 2637, decay: 0.06, dur: 0.08, fm: { ratio: 5, depth: 2 }, repeat: { n: 4, gap: 0.04, step: 4, fade: 0.7 } },
+      whoosh: { wave: null, noise: 1, attack: 0.12, decay: 0.2, dur: 0.36, filter: { type: 'bp', f: [800, 6000], q: 2.5 } },
+      glitch: { wave: null, noise: 1, attack: 0.001, decay: 0.07, dur: 0.1, crush: 3, filter: { type: 'bp', f: [3000, 900], q: 1.2 }, repeat: { n: 3, gap: 0.045, step: -3, fade: 0.8 } },
+      ding: { wave: 'sine', f0: 1567.98, decay: 0.3, dur: 0.38, fm: { ratio: 7, depth: 1.5 } },
+    },
+    space: { delay: 0.11, feedback: 0.2, wet: 0.14 },
+  };
+
   return {
     name: 'hologram',
     description: 'Dark grid, glowing neon lines, scanlines and a tearing glitch: technical and dramatic. Pick it for engineering, systems and code topics.',
     palette,
+    sound,
     stacks,
     weights,
     faces: [

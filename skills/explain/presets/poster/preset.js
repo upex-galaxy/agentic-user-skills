@@ -92,10 +92,25 @@ export default ({ math }) => {
     pts.forEach((q, i) => (i ? ctx.lineTo(q[0] + dx, q[1] + dy) : ctx.moveTo(q[0] + dx, q[1] + dy)));
   };
 
+  // Sound flavor: bouncy. Upward-sweeping bubble pops, a clap-like stamp, a brighter room.
+  const sound = {
+    voices: {
+      pop: { wave: 'sine', f0: 400, f1: 1100, glide: 0.06, decay: 0.09, dur: 0.13, noise: 0, filter: null },
+      tick: { wave: 'sine', f0: 900, f1: 1500, glide: 0.03, decay: 0.03, dur: 0.05, noise: 0 },
+      blip: { wave: 'sine', f0: 700, f1: 1250, glide: 0.05, decay: 0.08, dur: 0.11, fm: null },
+      stamp: { wave: null, noise: 1, attack: 0.001, decay: 0.05, dur: 0.07, filter: { type: 'bp', f: 1600, q: 1.4 }, repeat: { n: 3, gap: 0.03, step: 0, fade: 0.8 } },
+      whoosh: { wave: null, noise: 1, attack: 0.12, decay: 0.22, dur: 0.36, filter: { type: 'bp', f: [500, 3200], q: 0.9 } },
+      success: { wave: 'sine', f0: 523.25, f1: 659.25, glide: 0.05, decay: 0.16, dur: 0.2, repeat: { n: 3, gap: 0.09, step: 4, fade: 1 } },
+      fail: { wave: 'sine', f0: 523.25, f1: 392, glide: 0.1, decay: 0.2, dur: 0.26, repeat: { n: 2, gap: 0.14, step: -4, fade: 0.9 } },
+    },
+    space: { delay: 0.08, feedback: 0.25, wet: 0.2 },
+  };
+
   return {
     name: 'poster',
     description: 'Saturated violet field, flat shapes with hard shadows, thick round strokes, Fredoka: bold and playful. Pick it for friendly pitches and product explainers.',
     palette,
+    sound,
     stacks,
     weights,
     faces: [

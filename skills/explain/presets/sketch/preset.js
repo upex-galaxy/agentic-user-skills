@@ -78,10 +78,26 @@ export default ({ math, rough }) => {
     return out;
   }
 
+  // Sound flavor: wood and paper. Triangle plucks, low-passed paper-scratch whooshes, a dry room.
+  const sound = {
+    gain: 0.9,
+    voices: {
+      pop: { wave: 'triangle', f0: 392, f1: 523.25, glide: 0.04, decay: 0.09, dur: 0.13, noise: 0, filter: { type: 'lp', f: 1800, q: 0.7 } },
+      tick: { wave: 'triangle', f0: 1568, f1: 1397, glide: 0.015, decay: 0.025, dur: 0.045, noise: 0.15, filter: { type: 'lp', f: 2600, q: 0.7 } },
+      blip: { wave: 'triangle', f0: 880, decay: 0.14, dur: 0.18, fm: { ratio: 4, depth: 0.4 }, filter: { type: 'lp', f: 3000, q: 0.7 } },
+      stamp: { wave: 'sine', f0: 130.8, f1: 73.4, glide: 0.08, decay: 0.2, dur: 0.26, noise: 0.2, filter: { type: 'lp', f: [1200, 350], q: 0.7 } },
+      whoosh: { wave: null, noise: 1, attack: 0.16, decay: 0.26, dur: 0.42, filter: { type: 'lp', f: [400, 1800], q: 0.6 } },
+      ding: { wave: 'triangle', f0: 987.77, decay: 0.34, dur: 0.4, fm: { ratio: 2.76, depth: 0.25 } },
+      success: { wave: 'triangle', f0: 523.25, decay: 0.2, dur: 0.24, repeat: { n: 2, gap: 0.11, step: 7, fade: 1 } },
+    },
+    space: { delay: 0.05, feedback: 0.1, wet: 0.05 },
+  };
+
   return {
     name: 'sketch',
     description: 'Warm graph paper, hand-drawn boiling strokes, handwriting font, marker highlights: friendly and explanatory. Pick it for teaching and walkthroughs.',
     palette,
+    sound,
     stacks,
     weights,
     faces: [

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { resolveSound } from './audio.js';
 import { contrast, definePreset, parseColor } from './preset.js';
 import { hologram } from './test-presets.ts';
 
@@ -48,5 +49,26 @@ describe('definePreset', () => {
     const sweep = () => {};
     const p = definePreset({ ...minimal(), sweep });
     expect(typeof p.transitions.sweep).toBe('function');
+  });
+});
+
+describe('definePreset sound block', () => {
+  test('a preset without sound resolves to the engine defaults', () => {
+    const p = definePreset(minimal);
+    expect(p.sound).toBeUndefined();
+    expect(resolveSound(p.sound)).toEqual(resolveSound());
+  });
+
+  test('a valid sound block stays raw on the style', () => {
+    const sound = { gain: 0.8, voices: { pop: { f0: 600 } }, space: { wet: 0.1 } };
+    const p = definePreset(() => ({ ...minimal(), sound }));
+    expect(p.sound).toEqual(sound);
+    expect(resolveSound(p.sound).voices.pop.f0).toBe(600);
+  });
+
+  test('unknown kinds and params fail in the single error', () => {
+    const bad = () => definePreset(() => ({ ...minimal(), sound: { voices: { boing: { f0: 300 }, pop: { wobble: 1 } } } }));
+    expect(bad).toThrow(/sound\.voices\.boing.*sound\.voices\.pop\.wobble/);
+    expect(() => definePreset(() => ({ name: 'x', faces: [], sound: { voices: { boing: {} } } }))).toThrow(/palette.*sound\.voices\.boing/);
   });
 });
