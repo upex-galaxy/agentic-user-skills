@@ -37,11 +37,13 @@
  * step: run it from the skill directory with `bun <skill-dir>/cli/index.ts`.
  */
 
+import type { MediaReport } from './media.ts';
 import type { Result } from './schema.ts';
 import type { ServeHandle } from './server.ts';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { checkPageBudget, formatMb, hasMedia, resolveMedia } from './media.ts';
 import { closeOrcaTab, derivePort, detectOrca, openOrcaTab, resolveMode, worktreeSelector } from './orca.ts';
 import { artifactDocId, render } from './render.ts';
 import { SpecError, validateSpec } from './schema.ts';
@@ -206,6 +208,9 @@ async function runOpenArtifact(url: string | undefined): Promise<void> {
 // MAIN
 // ============================================================================
 
+/** What media.ts inlined for this run, for the page-budget messages. */
+let pageMedia: MediaReport = { weights: [], inlinedBytes: 0 };
+
 async function main(): Promise<void> {
   const { positional, flags } = parseArgs(process.argv.slice(2));
 
@@ -270,6 +275,26 @@ async function main(): Promise<void> {
     throw error;
   }
 
+  // Inline local media, transcode videos, read link previews: once, before
+  // any mode renders, so copy / wait / artifact pages are identical.
+  let mediaReport: MediaReport = { weights: [], inlinedBytes: 0 };
+  if (hasMedia(spec)) {
+    try {
+      const resolved = await resolveMedia(spec, dirname(resolve(specPath)));
+      spec = resolved.spec;
+      mediaReport = resolved.report;
+    }
+    catch (error) {
+      if (error instanceof SpecError) {
+        console.error(`[mkd] invalid spec at ${error.path}: ${error.message}`);
+        process.exit(2);
+      }
+      throw error;
+    }
+    console.error(`[mkd] media: ${mediaReport.weights.length} inlined payload(s), ${formatMb(mediaReport.inlinedBytes)}.`);
+  }
+  pageMedia = mediaReport;
+
   // Short run id for the fallback filenames + logging.
   const id = Date.now().toString(36);
   const specName = specNameFromPath(specPath);
@@ -314,6 +339,28 @@ async function main(): Promise<void> {
 }
 
 // ============================================================================
+// PAGE BUDGET (media can make a page heavy)
+// ============================================================================
+
+/** Report the page weight; exit 2 when an artifact page is over budget. */
+function enforcePageBudget(html: string, mode: 'copy' | 'wait' | 'artifact'): void {
+  const bytes = new TextEncoder().encode(html).length;
+  try {
+    checkPageBudget(bytes, mode, pageMedia);
+  }
+  catch (error) {
+    if (error instanceof SpecError) {
+      console.error(`[mkd] error: ${error.message}`);
+      process.exit(2);
+    }
+    throw error;
+  }
+  if (pageMedia.weights.length > 0) {
+    console.error(`[mkd] page size: ${formatMb(bytes)} (${mode} mode).`);
+  }
+}
+
+// ============================================================================
 // COPY MODE (default, non-blocking)
 // ============================================================================
 
@@ -323,6 +370,7 @@ async function runCopyMode(
   open: boolean,
 ): Promise<void> {
   const html = render(spec, { mode: 'copy' });
+  enforcePageBudget(html, 'copy');
   const pagePath = join(MKD_HOME, `deck-${sanitizeForFilename(name)}.html`);
 
   try {
@@ -353,6 +401,7 @@ async function runArtifactMode(
   titlePrefix: string | undefined,
 ): Promise<void> {
   const html = render(spec, { mode: 'artifact', titlePrefix });
+  enforcePageBudget(html, 'artifact');
   const pagePath = join(MKD_HOME, `artifact-${sanitizeForFilename(name)}.html`);
 
   try {
@@ -389,6 +438,7 @@ async function runWaitMode(
   name: string,
   opts: WaitOptions,
 ): Promise<void> {
+  enforcePageBudget(render(spec, { mode: 'wait', submitToken: 'budget-check' }), 'wait');
   let handle: ServeHandle | null = null;
   let boundUrl = `http://localhost:${opts.port}/`;
   let boundPort = opts.port;

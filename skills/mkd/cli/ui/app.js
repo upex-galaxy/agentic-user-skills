@@ -424,6 +424,9 @@
       delete root.dataset.theme;
     }
     syncThemeToggle();
+    if (typeof renderVisibleDiagrams === 'function' && document.querySelector('.mkd-diagram')) {
+      void renderVisibleDiagrams();
+    }
   }
 
   function syncThemeToggle() {
@@ -438,8 +441,8 @@
 
   function toggleTheme() {
     const next = effectiveTheme() === 'light' ? 'dark' : 'light';
-    applyTheme(next);
     writeStoredTheme(next);
+    applyTheme(next);
   }
 
   // --------------------------------------------------------------------------
@@ -637,6 +640,476 @@
     return position < 26 ? String.fromCharCode(65 + position) : String(position + 1);
   }
 
+
+  // --------------------------------------------------------------------------
+  // MEDIA — carousels, lightbox, option media, Mermaid diagrams (display only:
+  // nothing here touches `state` or the Result)
+  // --------------------------------------------------------------------------
+
+  const lightbox = byId('mkd-lightbox');
+  const lightboxBody = byId('mkd-lightbox-body');
+  const lightboxClose = byId('mkd-lightbox-close');
+  const reducedMotion = (() => {
+    try {
+      return window.matchMedia('(prefers-reduced-motion: reduce)');
+    }
+    catch {
+      return { matches: false };
+    }
+  })();
+
+  function isLightboxOpen() {
+    return Boolean(lightbox && lightbox.open);
+  }
+
+  /** Native scroll-snap track + buttons, markers, counter and polite status. */
+  function initCarousel(root) {
+    if (!root || root.dataset.ready === '1') {
+      return;
+    }
+    root.dataset.ready = '1';
+    const track = root.querySelector('.mkd-carousel__track');
+    const slides = track ? [...track.children] : [];
+    const dots = [...root.querySelectorAll('.mkd-carousel__dot')];
+    const prev = root.querySelector('.mkd-carousel__btn--prev');
+    const next = root.querySelector('.mkd-carousel__btn--next');
+    const count = root.querySelector('.mkd-carousel__count');
+    const status = root.querySelector('.mkd-carousel__status');
+    if (!track || slides.length === 0) {
+      return;
+    }
+    let current = 0;
+    let settled = 0;
+    let pending = null;
+
+    function nearest() {
+      const center = track.scrollLeft + track.clientWidth / 2;
+      let best = 0;
+      let bestDistance = Infinity;
+      slides.forEach((slide, i) => {
+        const distance = Math.abs(slide.offsetLeft + slide.offsetWidth / 2 - center);
+        if (distance < bestDistance) {
+          best = i;
+          bestDistance = distance;
+        }
+      });
+      return best;
+    }
+
+    function mark(index) {
+      current = index;
+      dots.forEach((dot, i) => {
+        if (i === index) {
+          dot.setAttribute('aria-current', 'true');
+        }
+        else {
+          dot.removeAttribute('aria-current');
+        }
+      });
+      if (count) {
+        count.textContent = `${index + 1}/${slides.length}`;
+      }
+    }
+
+    function scrollToSlide(index) {
+      const target = Math.max(0, Math.min(index, slides.length - 1));
+      pending = target;
+      mark(target);
+      const slide = slides[target];
+      track.scrollTo({
+        left: slide.offsetLeft - (track.clientWidth - slide.offsetWidth) / 2,
+        behavior: reducedMotion.matches ? 'auto' : 'smooth',
+      });
+    }
+
+    function settle() {
+      pending = null;
+      const index = nearest();
+      mark(index);
+      if (prev) {
+        prev.disabled = index === 0;
+      }
+      if (next) {
+        next.disabled = index === slides.length - 1;
+      }
+      // Keep focus on a live control when the one pressed becomes disabled.
+      if (document.activeElement === prev && prev.disabled && next) {
+        next.focus();
+      }
+      else if (document.activeElement === next && next.disabled && prev) {
+        prev.focus();
+      }
+      if (index !== settled && status) {
+        status.textContent = `Slide ${index + 1} of ${slides.length}`;
+      }
+      settled = index;
+      for (const video of track.querySelectorAll('video')) {
+        if (!slides[index].contains(video)) {
+          video.pause();
+        }
+      }
+      renderVisibleDiagrams();
+    }
+
+    let frame = 0;
+    track.addEventListener('scroll', () => {
+      if (pending !== null || frame) {
+        return;
+      }
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        const index = nearest();
+        if (index !== current) {
+          mark(index);
+        }
+      });
+    }, { passive: true });
+
+    if ('onscrollend' in window) {
+      track.addEventListener('scrollend', settle);
+    }
+    else {
+      let timer = 0;
+      track.addEventListener('scroll', () => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(settle, 120);
+      }, { passive: true });
+    }
+
+    if (prev) {
+      prev.addEventListener('click', () => scrollToSlide((pending ?? current) - 1));
+    }
+    if (next) {
+      next.addEventListener('click', () => scrollToSlide((pending ?? current) + 1));
+    }
+    dots.forEach((dot, i) => dot.addEventListener('click', () => scrollToSlide(i)));
+
+    // Left/right move slides while focus is inside the carousel (never a
+    // nested video's own keys), and never reach deck navigation.
+    root.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+        return;
+      }
+      if (event.target && event.target.closest && event.target.closest('video, iframe')) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      scrollToSlide((pending ?? current) + (event.key === 'ArrowRight' ? 1 : -1));
+    });
+    root.carouselGoTo = (index) => {
+      const slide = slides[index];
+      if (slide) {
+        track.scrollLeft = slide.offsetLeft - (track.clientWidth - slide.offsetWidth) / 2;
+        mark(index);
+        settle();
+      }
+    };
+  }
+
+  /** Build carousel markup in the browser (lightbox), matching render.ts. */
+  function buildCarousel(nodes, label) {
+    const root = el('section', 'mkd-carousel', { 'aria-roledescription': 'carousel', 'aria-label': label });
+    const controls = el('div', 'mkd-carousel__controls');
+    const prev = el('button', 'mkd-carousel__btn mkd-carousel__btn--prev', { 'type': 'button', 'data-dir': '-1', 'aria-label': 'Previous slide' });
+    prev.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>';
+    prev.disabled = true;
+    const next = el('button', 'mkd-carousel__btn mkd-carousel__btn--next', { 'type': 'button', 'data-dir': '1', 'aria-label': 'Next slide' });
+    next.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>';
+    controls.append(prev, next);
+    const count = el('span', 'mkd-carousel__count', { 'aria-hidden': 'true' });
+    count.textContent = `1/${nodes.length}`;
+    const track = el('div', 'mkd-carousel__track', { 'tabindex': '0', 'role': 'group', 'aria-label': 'Slides' });
+    nodes.forEach((node, i) => {
+      const slide = el('div', 'mkd-carousel__slide', { 'role': 'group', 'aria-roledescription': 'slide', 'aria-label': node.dataset.slideLabel || `${i + 1} of ${nodes.length}` });
+      slide.appendChild(node);
+      track.appendChild(slide);
+    });
+    const status = el('p', 'mkd-visually-hidden mkd-carousel__status', { 'role': 'status', 'aria-live': 'polite' });
+    const dots = el('div', 'mkd-carousel__dots', { 'role': 'group', 'aria-label': 'Choose a slide' });
+    nodes.forEach((_n, i) => {
+      const dot = el('button', 'mkd-carousel__dot', { 'type': 'button', 'aria-label': `Go to slide ${i + 1}` });
+      if (i === 0) {
+        dot.setAttribute('aria-current', 'true');
+      }
+      dots.appendChild(dot);
+    });
+    root.append(controls, count, track, status, dots);
+    return root;
+  }
+
+  /** Open the lightbox on clones of `nodes`, starting at `start`. */
+  function openLightbox(nodes, start, label) {
+    if (!lightbox || !lightboxBody || typeof lightbox.showModal !== 'function' || nodes.length === 0) {
+      return;
+    }
+    lightboxBody.textContent = '';
+    lightbox.setAttribute('aria-label', label);
+    if (nodes.length === 1) {
+      lightboxBody.appendChild(nodes[0]);
+    }
+    else {
+      const carousel = buildCarousel(nodes, label);
+      lightboxBody.appendChild(carousel);
+      lightbox.showModal();
+      initCarousel(carousel);
+      carousel.carouselGoTo(start);
+      prepareLightboxContent();
+      return;
+    }
+    lightbox.showModal();
+    prepareLightboxContent();
+  }
+
+  function prepareLightboxContent() {
+    // Inside the viewer an image needs no zoom button: keep the image itself,
+    // drop the other enlarge controls (the diagram one).
+    for (const zoom of lightboxBody.querySelectorAll('[data-lightbox]')) {
+      if (zoom.classList.contains('mkd-media__zoom')) {
+        zoom.replaceWith(...zoom.querySelectorAll('img'));
+      }
+      else {
+        zoom.remove();
+      }
+    }
+    for (const fig of lightboxBody.querySelectorAll('.mkd-diagram')) {
+      delete fig.dataset.renderedTheme;
+    }
+    renderVisibleDiagrams();
+  }
+
+  function closeLightbox() {
+    if (lightbox && lightbox.open) {
+      lightbox.close();
+    }
+  }
+
+  /** A clean copy of a figure for the lightbox (a rendered diagram keeps its SVG). */
+  function cloneFigure(fig) {
+    const copy = fig.cloneNode(true);
+    for (const zoom of copy.querySelectorAll('[data-lightbox]')) {
+      if (zoom.classList.contains('mkd-media__zoom')) {
+        zoom.replaceWith(...zoom.querySelectorAll('img'));
+      }
+    }
+    return copy;
+  }
+
+  /** Option media in screen order, each slide labelled with its screen letter. */
+  function openOptionMedia(button) {
+    const card = button.closest('.mkd-card');
+    if (!card) {
+      return;
+    }
+    const nodes = [];
+    for (const opt of card.querySelectorAll('.mkd-opt[data-opt-key]')) {
+      const template = opt.querySelector('template.mkd-opt__full');
+      if (!template) {
+        continue;
+      }
+      const letter = (opt.querySelector('.mkd-opt__key') || {}).textContent || '';
+      const label = (opt.querySelector('.mkd-opt__label') || {}).textContent || '';
+      const slides = [...template.content.querySelectorAll('.mkd-opt__full-slide')];
+      slides.forEach((slide, i) => {
+        const node = slide.cloneNode(true);
+        const tag = el('p', 'mkd-opt__full-tag');
+        tag.textContent = `${letter} · ${label}${slides.length > 1 ? ` (${i + 1}/${slides.length})` : ''}`;
+        node.insertBefore(tag, node.firstChild);
+        node.dataset.slideLabel = `Option ${letter}${slides.length > 1 ? `, ${i + 1} of ${slides.length}` : ''}`;
+        nodes.push(node);
+      });
+    }
+    openLightbox(nodes, 0, 'Option media');
+  }
+
+  /**
+   * Leaving a card stops its media: videos pause, embeds unload (a hidden
+   * YouTube frame keeps playing sound) and come back when the card returns.
+   */
+  function syncCardMedia() {
+    const currentCard = document.querySelector('.mkd-card.is-current');
+    for (const video of document.querySelectorAll('.mkd-stage video')) {
+      if (!currentCard || !currentCard.contains(video)) {
+        video.pause();
+      }
+    }
+    for (const frame of document.querySelectorAll('.mkd-stage .mkd-embed__frame')) {
+      const inCurrent = currentCard && currentCard.contains(frame);
+      if (!frame.dataset.src) {
+        frame.dataset.src = frame.getAttribute('src') || '';
+      }
+      const want = inCurrent ? frame.dataset.src : 'about:blank';
+      if (frame.getAttribute('src') !== want) {
+        frame.setAttribute('src', want);
+      }
+    }
+    renderVisibleDiagrams();
+  }
+
+  // ---- Mermaid: lazy CDN load, strict security, theme-aware, never breaks ----
+
+  const mermaidConfig = window.__MKD_MERMAID__ && typeof window.__MKD_MERMAID__ === 'object' ? window.__MKD_MERMAID__ : null;
+  let mermaidPromise = null;
+  let mermaidSeq = 0;
+
+  function loadMermaid() {
+    if (mermaidPromise) {
+      return mermaidPromise;
+    }
+    mermaidPromise = new Promise((resolve, reject) => {
+      if (!mermaidConfig) {
+        reject(new Error('no mermaid config'));
+        return;
+      }
+      if (window.mermaid) {
+        resolve(window.mermaid);
+        return;
+      }
+      const script = document.createElement('script');
+      script.crossOrigin = 'anonymous';
+      if (mermaidConfig.integrity) {
+        script.integrity = mermaidConfig.integrity;
+      }
+      const timer = window.setTimeout(() => reject(new Error('timeout')), 15000);
+      script.onload = () => {
+        window.clearTimeout(timer);
+        if (window.mermaid) {
+          resolve(window.mermaid);
+        }
+        else {
+          reject(new Error('mermaid global missing'));
+        }
+      };
+      script.onerror = () => {
+        window.clearTimeout(timer);
+        reject(new Error('load failed'));
+      };
+      script.src = mermaidConfig.src;
+      document.head.appendChild(script);
+    });
+    return mermaidPromise;
+  }
+
+  function diagramFallback(fig, message) {
+    fig.classList.remove('is-rendered');
+    fig.classList.add('is-failed');
+    const notice = fig.querySelector('.mkd-diagram__notice');
+    if (notice) {
+      notice.textContent = message;
+      notice.hidden = false;
+    }
+  }
+
+  function isShown(node) {
+    return node.getClientRects().length > 0;
+  }
+
+  async function renderVisibleDiagrams() {
+    const figs = [...document.querySelectorAll('.mkd-diagram')].filter(isShown);
+    const theme = effectiveTheme();
+    const todo = figs.filter(fig => fig.dataset.renderedTheme !== theme && !fig.classList.contains('is-failed'));
+    if (todo.length === 0) {
+      return;
+    }
+    let mermaid;
+    try {
+      mermaid = await loadMermaid();
+    }
+    catch {
+      for (const fig of todo) {
+        diagramFallback(fig, 'The diagram renderer could not load (offline?). Showing the diagram source instead.');
+      }
+      return;
+    }
+    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: theme === 'dark' ? 'dark' : 'neutral' });
+    for (const fig of todo) {
+      const code = (fig.querySelector('.mkd-diagram__src code') || {}).textContent || '';
+      const canvas = fig.querySelector('.mkd-diagram__canvas');
+      const id = `mkd-mermaid-${mermaidSeq += 1}`;
+      try {
+        const out = await mermaid.render(id, code);
+        canvas.innerHTML = out.svg;
+        fig.dataset.renderedTheme = theme;
+        fig.classList.add('is-rendered');
+      }
+      catch {
+        const stray = document.getElementById(`d${id}`) || document.getElementById(id);
+        if (stray && !fig.contains(stray)) {
+          stray.remove();
+        }
+        diagramFallback(fig, 'This diagram has a syntax error. Showing its source instead.');
+      }
+    }
+  }
+
+  function wireMedia() {
+    for (const carousel of document.querySelectorAll('.mkd-stage .mkd-carousel')) {
+      initCarousel(carousel);
+    }
+    document.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!target || !target.closest) {
+        return;
+      }
+      const zoom = target.closest('[data-lightbox]');
+      if (zoom && !lightbox.contains(zoom)) {
+        const fig = zoom.closest('figure');
+        if (fig) {
+          openLightbox([cloneFigure(fig)], 0, fig.classList.contains('mkd-diagram') ? 'Diagram' : 'Image');
+        }
+        return;
+      }
+      const optMedia = target.closest('[data-opt-media]');
+      if (optMedia) {
+        openOptionMedia(optMedia);
+      }
+    });
+    // A remote image the page cannot reach (offline, or a CSP that blocks it)
+    // disappears instead of leaving a broken icon.
+    document.addEventListener('error', (event) => {
+      const img = event.target;
+      if (img && img.tagName === 'IMG' && img.hasAttribute('data-remote')) {
+        const card = img.closest('.mkd-linkcard');
+        if (card) {
+          card.classList.remove('has-image');
+        }
+        img.remove();
+      }
+    }, true);
+    if (lightbox) {
+      lightbox.addEventListener('close', () => {
+        // Removing the content stops any video or embed playing inside it.
+        lightboxBody.textContent = '';
+      });
+      // Close on a click OUTSIDE the panel: the dialog element is also the
+      // target for its own padding, so test the pointer against its box.
+      lightbox.addEventListener('click', (event) => {
+        if (event.target !== lightbox) {
+          return;
+        }
+        const box = lightbox.getBoundingClientRect();
+        const outside = event.clientX < box.left || event.clientX > box.right
+          || event.clientY < box.top || event.clientY > box.bottom;
+        if (outside) {
+          closeLightbox();
+        }
+      });
+    }
+    if (lightboxClose) {
+      lightboxClose.addEventListener('click', closeLightbox);
+    }
+    try {
+      window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+        if (!readStoredTheme()) {
+          renderVisibleDiagrams();
+        }
+      });
+    }
+    catch {
+      // Old browsers without MediaQueryList events: the toggle still re-renders.
+    }
+  }
+
   // --------------------------------------------------------------------------
   // DECK NAVIGATION
   // --------------------------------------------------------------------------
@@ -687,6 +1160,7 @@
     renderRail();
     refreshAll();
     measureClamps();
+    syncCardMedia();
   }
 
   /**
@@ -2814,8 +3288,12 @@
     }
 
     document.addEventListener('keydown', (event) => {
-      // The native modal handles its own keys (Esc, Tab, Enter on a button).
-      if (isConfirmOpen()) {
+      // The native modals handle their own keys (Esc, Tab, Enter on a button).
+      if (isConfirmOpen() || isLightboxOpen()) {
+        return;
+      }
+      // A focused carousel owns its arrow keys (handled on the carousel).
+      if (event.target && event.target.closest && event.target.closest('.mkd-carousel')) {
         return;
       }
       if (event.key === 'Escape') {
@@ -3026,6 +3504,7 @@
     buildIntroNav();
     buildKbdLegend();
     wireGlobals();
+    wireMedia();
     render();
   }
 

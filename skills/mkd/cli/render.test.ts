@@ -78,7 +78,7 @@ describe('display options', () => {
   it('renders Hide recommended as a switch, Shuffle as a button, Original order hidden', () => {
     expect(page).toContain('<input type="checkbox" class="mkd-switch__input" id="mkd-hide-rec" role="switch">');
     expect(page).toMatch(/<button type="button" class="mkd-view__btn" id="mkd-shuffle"[^>]*>[\s\S]*?Shuffle options<\/button>/);
-    expect(page).toContain('id="mkd-unshuffle" title="Back to the author\'s order and letters" hidden>Original order</button>');
+    expect(page).toMatch(/id="mkd-unshuffle"[^>]*aria-label="Original order" hidden>[\s\S]*?Original order<\/span><\/button>/);
     expect(page).not.toMatch(/id="mkd-shuffle" role="switch"/);
   });
 
@@ -121,7 +121,8 @@ describe('render: copy and wait modes are unchanged', () => {
   // the Hide recommended and Auto-advance switches, the Shuffle / Original
   // order buttons, SVG header icons, the sticky action bar (Previous / Skip /
   // Next moved out of the cards, More overflow on phones), compact 4+ option
-  // decisions, viewport-fit=cover,
+  // decisions, viewport-fit=cover, the media lightbox dialog and media CSS
+  // (carousel, embeds, link cards, diagrams, option thumbnails),
   // and the color-mix guard on the translucent header.
   // Update these only for an intentional change to the copy/wait markup.
   const shellHash = (html: string): string =>
@@ -129,12 +130,12 @@ describe('render: copy and wait modes are unchanged', () => {
 
   it('copy mode', () => {
     expect(shellHash(render(spec, { mode: 'copy' })))
-      .toBe('7c2cdb5af1aac259a9f2362019ff1262163cc8a55b7f9126e0251e894d71267b');
+      .toBe('d09ff5be3702ea1909e137710ba1a68cb65e7146f6542c816550dd17465b673d');
   });
 
   it('wait mode', () => {
     expect(shellHash(render(spec, { mode: 'wait', submitToken: 'tok-123' })))
-      .toBe('5c6a6b41c19be8c64190952d57e8dc62240fc40b4c4d7eddf589409b739ab33a');
+      .toBe('a8d2ca2710cd89fa9450e0d709ccc1cc0d1eacdd96f9d22785bbed0d6bc660a0');
   });
 
   it('never leaks the artifact globals into copy or wait pages', () => {

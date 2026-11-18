@@ -119,6 +119,36 @@ Supported: ATX headings 1-6, bold, italic, inline code, fenced code blocks,
 `<br>`). Out of scope (escaped plain text): md tables, images, nested
 blockquotes, deep-nested lists.
 
+## Media
+
+Specs can carry `media` on the intro, on any item and on any decision option:
+images, videos, Loom/YouTube embeds, link cards, Mermaid diagrams and SVGs
+(field reference: `../references/schema.md`, "Media"). Media is display only
+and never changes the Result.
+
+`media.ts` resolves media once, after validation and before any mode renders:
+
+- Local files are inlined as `data:` URIs, so copy, wait and artifact pages are
+  self-contained; https URLs stay URLs. A missing file exits 2.
+- SVGs are sanitized with Bun's `HTMLRewriter` (no script, event handlers,
+  `foreignObject`, links or external references) and rendered as images.
+- Local videos are transcoded with ffmpeg when it is on PATH (WebM VP9, 480p,
+  about 700 kbps, no audio, 24 fps cap) and cached in `~/.mkd/media/` by
+  content hash, with a poster from the first frame. ffmpeg is optional: without
+  it the file is inlined as is and the CLI says so on stderr.
+- Link cards with missing fields read the page's Open Graph tags at build time
+  (5 s timeout, redirects followed, 512 KB cap, no cookies); on failure the card
+  is a plain titled link and stderr says why.
+- Budgets: 6 MB per video; a warning when a page passes 8 MB; `--artifact`
+  exits 2 above 14 MB and names the heaviest media.
+
+Mermaid is never bundled: a deck with a diagram loads
+`https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js` (pinned,
+with SRI) when a diagram is first shown, renders with `securityLevel: 'strict'`
+in the deck theme, and keeps the source code block when the script or the
+diagram fails. Embeds are sandboxed iframes on `loom.com/embed` or
+`youtube-nocookie.com/embed` only, always followed by an "Open in new tab" link.
+
 ## File layout
 
 ```
@@ -129,7 +159,9 @@ skills/mkd/cli/
   server.ts    # Bun.serve: GET / -> page | POST /submit -> shape against spec + resolve; token gate, timeout
   render.ts    # builds the deck HTML (header/rail, one card per item, footer bar, inline CSS+JS+spec); full document or artifact fragment
   render.test.ts # bun test: artifact fragment contract, copy/wait output pinned to pre-artifact hashes, --artifact CLI contract
-  schema.ts    # Spec / Item / Result types + hand-rolled validateSpec (source of truth, hard rule lives here)
+  schema.ts    # Spec / Item / Result types + hand-rolled validateSpec (source of truth, hard rule lives here), media validation
+  media.ts     # build-time media: inlining, svg sanitizing, ffmpeg video, link previews, page budgets (injectable deps)
+  media.test.ts # bun test: media validation, inlining, svg sanitizing, link-card fallback (local fake server), budgets, markup
   markdown.ts  # minimal markdown -> HTML (dependency-free)
   ui/app.css   # deck stylesheet: verdigris+amber tokens, light/dark, all components
   ui/app.js    # client logic: deck navigation, per-type builders, quotes, images, persistence, JSON/copy/submit (server or artifact db)
