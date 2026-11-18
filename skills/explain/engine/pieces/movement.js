@@ -428,7 +428,7 @@ export function splitScreen(s, o = {}) {
  * space (the camera never moves it) and zoomFade: it fades out while the camera zooms from 1 to 1.15. By default it
  * sits in the top band to the right of the section tag (when one was added before it), clear of the heading, the
  * caption and the footer. opts: id, steps (labels), active (0), from (active - 1: where the line starts), at (0.25),
- * rect, z. Exposes marks.arrive and end.
+ * rect, labelPx (0.6 x the preset labelPx, at least its minPx), z. Exposes marks.arrive and end.
  */
 export function journeyRail(s, o) {
   const steps = o.steps ?? [];
@@ -438,7 +438,8 @@ export function journeyRail(s, o) {
   const from = o.from ?? Math.max(0, active - 1);
   const at = o.at ?? 0.25;
   const dotY = 22;
-  const px = size(s, 'label', 0.5);
+  // Step labels: 0.6 of the preset's label size (never under its minPx), so sketch's handwriting stays readable.
+  const px = o.labelPx ?? Math.max(s.style.defaults.minPx, size(s, 'label', 0.6));
   const h = Math.round(dotY + 18 + px * 1.2 + 6);
   const tag = s.items.find(it => it.kind === 'tag' && it.rect);
   const x0 = tag ? tag.rect.x + tag.rect.w + 40 : 560;
