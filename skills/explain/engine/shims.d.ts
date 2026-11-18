@@ -54,3 +54,4 @@ declare module '*/narration.js';
 declare module '*/wav.js';
 declare module '*/audio.js';
 declare module '*/audio-qa.js';
+declare module '*/sound-kinds.js';
