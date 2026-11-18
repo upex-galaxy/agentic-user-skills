@@ -11,6 +11,7 @@
 //   window.__explainRender(t)          -> draw one frame
 //   window.__ready                     -> true once fonts are loaded and the first frame is drawn
 import { createEngine, kit } from './index.js';
+import { narrationOf, readPageAudio } from './page-audio.js';
 import { detectLang } from './pieces/titles.js';
 import { definePreset } from './preset.js';
 import { runQA } from './qa.js';
@@ -40,7 +41,10 @@ export async function boot({ makeScene, preset, loadExport }) {
   const canvas = $('c');
   await loadFonts(style);
   const spec = makeScene(kit);
-  const engine = createEngine({ canvas, style, spec });
+  // Sound and narration the build embedded (null for a silent page): narration sets the scene timing.
+  const audio = readPageAudio(document);
+  const engine = createEngine({ canvas, style, spec, narration: narrationOf(audio) });
+  window.__explainPageAudio = audio;
   const { duration, fps } = engine;
   document.title = spec.title ?? document.title;
   // The player UI speaks the video's language: `lang` on the spec, else detected from the title and the on-screen text.
@@ -50,7 +54,8 @@ export async function boot({ makeScene, preset, loadExport }) {
 
   window.__explainEngine = engine;
   window.__explainRender = t => engine.render(t);
-  window.__explainQA = (times, opts) => runQA(engine, times, opts);
+  // QA, the export and the preview read the page's audio (null for a silent page) through these hooks.
+  window.__explainQA = (times, opts) => runQA(engine, times, { audio, ...opts });
 
   engine.render(Number(params.get('t')) || 0);
 
@@ -70,7 +75,7 @@ export async function boot({ makeScene, preset, loadExport }) {
     document.body.classList.add('still');
     const pre = document.createElement('pre');
     pre.id = 'qa';
-    pre.textContent = JSON.stringify(runQA(engine));
+    pre.textContent = JSON.stringify(runQA(engine, undefined, { audio }));
     document.body.appendChild(pre);
     window.__ready = true;
     return engine;
@@ -84,7 +89,7 @@ export async function boot({ makeScene, preset, loadExport }) {
   if (params.has('export') || params.has('still') || params.has('sheet')) {
     const m = await loadExport();
     window.__ready = true;
-    await m.runExport?.({ canvas, render: engine.render, duration, fps });
+    await m.runExport?.({ canvas, render: engine.render, duration, fps, engine, audio });
     return engine;
   }
 
@@ -127,7 +132,7 @@ export async function boot({ makeScene, preset, loadExport }) {
     try {
       const m = await loadExport();
       const fn = m.exportMp4 ?? m.encodeMp4;
-      const data = await fn({ canvas, render: engine.render, duration, fps });
+      const data = await fn({ canvas, render: engine.render, duration, fps, engine, audio });
       const url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data], { type: 'video/mp4' }));
       const a = document.createElement('a');
       a.href = url;

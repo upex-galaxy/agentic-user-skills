@@ -11,15 +11,18 @@
  * Exit codes: 0 ok | 1 runtime failure or QA errors | 2 usage error.
  * Bun and node: built-ins only, no install step.
  */
+import type { AudioConfig, Provider } from './audio.ts';
 import type { PageInfo } from './headless.ts';
 import { existsSync, mkdirSync, readFileSync, statfsSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
-import { buildHash, buildPage, insideSkillDir, readBuildHash, scenePreset, SKILL_DIR } from './build.ts';
+import { AudioUsageError, pageAudio, resolveAudio, resolveProvider, resolveSound, resolveVoice } from './audio.ts';
+import { buildHash, buildPage, insideSkillDir, PAGE_WARN_BYTES, readBuildHash, scenePreset, SKILL_DIR } from './build.ts';
 import { exportVideo, sheet, sheetFromMp4, stillName, stills, stillsFromMp4 } from './export.ts';
 import { inspectPage, pageScenes } from './headless.ts';
 import { findPreset, listPresets, loadPreset, newPreset, presetNames, promotePreset } from './presets.ts';
 import { summarizeReport } from './qa.ts';
+import { formatPlan, ingest, planVoice, runKokoro, voiceDoctor } from './voice.ts';
 
 // ---------------------------------------------------------------------------
 // Pure helpers (tested)
@@ -32,7 +35,7 @@ export interface ParsedArgs {
   flags: Record<string, string | true>
 }
 
-const VALUE_FLAGS = new Set(['style', 'preset', 'title', 'at', 'out', 'bitrate', 'from', 'scene', 'cols', 'rows']);
+const VALUE_FLAGS = new Set(['style', 'preset', 'title', 'at', 'out', 'bitrate', 'from', 'scene', 'cols', 'rows', 'sound', 'voice', 'voice-id', 'voice-model']);
 
 export function parseArgs(args: string[]): ParsedArgs {
   const positional: string[] = [];
@@ -241,7 +244,7 @@ export function resolveOut(out: string | true | undefined, t: Target, b?: { dir:
 
 const configFile = (dir: string) => join(dir, 'explain.json');
 
-interface Config { preset?: string, style?: string, title?: string }
+interface Config extends AudioConfig { preset?: string, style?: string, title?: string }
 
 function readConfig(dir: string): Config {
   try { return JSON.parse(readFileSync(configFile(dir), 'utf8')) as Config; }
@@ -256,10 +259,19 @@ export interface Build {
   index: string
 }
 
-/** The preset a target uses when no flag is given: explain.json, then the scene file, then hologram. */
+/** EXPLAIN_PRESET when it names a known preset (an unknown name is a usage error). */
+export function envPreset(env = process.env): string | undefined {
+  const v = env.EXPLAIN_PRESET?.trim();
+  if (!v) { return undefined; }
+  const names = presetNames();
+  if (!names.includes(v)) { throw new UsageError(`EXPLAIN_PRESET must be one of: ${names.join(', ')}`); }
+  return v;
+}
+
+/** The preset a target uses when no flag is given: explain.json, then the scene file, then EXPLAIN_PRESET, then hologram. */
 export async function configuredPreset(t: Target): Promise<string> {
   const cfg = readConfig(t.dir);
-  return cfg.preset ?? cfg.style ?? await scenePreset(t.scene) ?? 'hologram';
+  return cfg.preset ?? cfg.style ?? await scenePreset(t.scene) ?? envPreset() ?? 'hologram';
 }
 
 const log = (msg: string) => console.error(msg);
@@ -268,59 +280,103 @@ const log = (msg: string) => console.error(msg);
 // Commands
 // ---------------------------------------------------------------------------
 
+const audioNote = (a: { sound: boolean, narration: { provider: string, voice: string, cues: unknown[] } | null }) =>
+  `${a.sound ? ', sound on' : ''}${a.narration ? `, voice ${a.narration.provider}/${a.narration.voice} (${a.narration.cues.length} lines)` : ''}`;
+
 /**
  * Preset precedence: --preset, explain.json, `export const preset` in the scene, hologram. A --preset other than the
  * configured one is a one-off: it builds into <dir>/presets/<name>/ and never rewrites explain.json (only `new` and
  * `preset use` write it).
  */
-export async function ensureBuilt(t: Target, preset: string | undefined, force = false): Promise<Build> {
+export async function ensureBuilt(t: Target, preset: string | undefined, force = false, flags: Record<string, string | true> = {}): Promise<Build> {
   const configured = await configuredPreset(t);
   const chosen = preset ?? configured;
   const dir = chosen === configured ? t.dir : join(t.dir, 'presets', chosen);
   const index = join(dir, 'index.html');
-  if (!force && existsSync(index) && readBuildHash(index) === buildHash(t.scene, chosen)) { return { dir, scene: t.scene, preset: chosen, index }; }
-  const r = await buildPage({ scenePath: t.scene, preset: chosen, outDir: dir });
-  log(`built ${r.indexHtml} (${(r.bytes / 1024 / 1024).toFixed(1)} MB, preset ${chosen})`);
+  // Audio (sound effects, narration clips from the cache) is part of the build; it never synthesizes anything.
+  const settings = await audioSettings(t, flags);
+  const { audio, hash: audioHash } = await pageAudio(settings, t.dir);
+  const key = audio.sound || audio.narration ? audioHash : '';
+  if (!force && existsSync(index) && readBuildHash(index) === buildHash(t.scene, chosen, key)) { return { dir, scene: t.scene, preset: chosen, index }; }
+  const r = await buildPage({ scenePath: t.scene, preset: chosen, outDir: dir, audio, audioHash: key });
+  log(`built ${r.indexHtml} (${(r.bytes / 1024 / 1024).toFixed(1)} MB, preset ${chosen}${audioNote(audio)})`);
+  if (r.bytes > PAGE_WARN_BYTES) { log(`warning: the page is ${(r.bytes / 1024 / 1024).toFixed(1)} MB; a claude.ai Artifact holds 16 MB at most (narration clips take about 48 KB per second)`); }
   return { dir, scene: t.scene, preset: chosen, index: r.indexHtml };
+}
+
+/** Audio settings of a build: flags, explain.json, env vars, defaults (a bad value is a usage error). */
+async function audioSettings(t: Target, flags: Record<string, string | true>) {
+  try { return await resolveAudio(t.scene, flags, readConfig(t.dir)); }
+  catch (e) {
+    if (e instanceof AudioUsageError) { throw new UsageError(e.message); }
+    throw e;
+  }
+}
+
+/**
+ * The audio fields `new` and `audio use` write to explain.json: each chosen by a flag, else by its env var (or, for
+ * `audio use`, kept from the existing file). Defaults are never written.
+ */
+export function audioChoice(flags: Record<string, string | true>, env: Record<string, string | undefined>, cfg: AudioConfig = {}): AudioConfig {
+  const out: AudioConfig = {};
+  const pick = (flag: string, name: string) => (flags[flag] !== undefined ? flags[flag] : env[name]?.trim() || undefined);
+  try {
+    const sound = pick('sound', 'EXPLAIN_SOUND');
+    if (sound !== undefined) { out.sound = resolveSound({ sound }, {}, {}) ? 'on' : 'off'; }
+    else if (cfg.sound) { out.sound = cfg.sound; }
+    const prov = pick('voice', 'EXPLAIN_VOICE');
+    const provider: Provider | undefined = prov !== undefined ? resolveProvider({ voice: prov }, {}, {}) : cfg.voice?.provider;
+    if (provider) {
+      const keep = cfg.voice?.provider === provider ? cfg.voice : {};
+      const id = pick('voice-id', 'EXPLAIN_VOICE_ID') ?? keep?.id;
+      const model = provider === 'elevenlabs' ? (pick('voice-model', 'EXPLAIN_ELEVENLABS_MODEL') ?? keep?.model) : undefined;
+      out.voice = { provider, ...(id && provider !== 'none' ? { id: String(id) } : {}), ...(model ? { model: String(model) } : {}) };
+    }
+  }
+  catch (e) { throw new UsageError(e instanceof Error ? e.message : String(e)); }
+  return out;
 }
 
 function cmdNew(p: ParsedArgs): number {
   const slug = p.positional[0];
   if (!slug) { throw new UsageError('missing <slug>'); }
-  const preset = parsePreset(p.flags) ?? 'hologram';
+  // Only what a flag or an env var chose is written: a pinned default would hide EXPLAIN_* on every later build, and a
+  // scene's own `export const preset` still applies when nothing chose a preset.
+  const preset = parsePreset(p.flags) ?? envPreset();
   const title = typeof p.flags.title === 'string' ? p.flags.title : slug.replace(/[-_]+/g, ' ');
+  const audio = audioChoice(p.flags, process.env);
   const dir = explainerDir(slug);
   if (existsSync(join(dir, 'scene.js'))) { throw new UsageError(`already exists: ${join(dir, 'scene.js')}`); }
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'scene.js'), sceneTemplate(title));
-  writeFileSync(configFile(dir), `${JSON.stringify({ preset, title }, null, 2)}\n`);
+  writeFileSync(configFile(dir), `${JSON.stringify({ ...(preset ? { preset } : {}), title, ...audio }, null, 2)}\n`);
   console.log(join(dir, 'scene.js'));
   return 0;
 }
 
 async function cmdBuild(p: ParsedArgs): Promise<number> {
   const t = resolveTarget(p.positional[0]);
-  const b = await ensureBuilt(t, parsePreset(p.flags), true);
+  const b = await ensureBuilt(t, parsePreset(p.flags), true, p.flags);
   console.log(b.index);
   return 0;
 }
 
-async function runCheck(t: Target, preset: string | undefined): Promise<{ info: PageInfo, build: Build }> {
-  const build = await ensureBuilt(t, preset);
+async function runCheck(t: Target, preset: string | undefined, flags: Record<string, string | true> = {}): Promise<{ info: PageInfo, build: Build }> {
+  const build = await ensureBuilt(t, preset, false, flags);
   const info = await inspectPage(readFileSync(build.index, 'utf8'));
   log(summarizeReport(info.qa));
   return { info, build };
 }
 
 async function cmdCheck(p: ParsedArgs): Promise<number> {
-  const { info } = await runCheck(resolveTarget(p.positional[0]), parsePreset(p.flags));
+  const { info } = await runCheck(resolveTarget(p.positional[0]), parsePreset(p.flags), p.flags);
   console.log(JSON.stringify(info.qa, null, 2));
   return info.qa.errors.length > 0 || !info.qa.ok ? 1 : 0;
 }
 
 async function cmdStills(p: ParsedArgs): Promise<number> {
   const t = resolveTarget(p.positional[0]);
-  const b = await ensureBuilt(t, parsePreset(p.flags));
+  const b = await ensureBuilt(t, parsePreset(p.flags), false, p.flags);
   const html = readFileSync(b.index, 'utf8');
   const { scenes } = await pageScenes(html);
   const only = typeof p.flags.scene === 'string' ? p.flags.scene : undefined;
@@ -379,7 +435,7 @@ async function cmdExport(p: ParsedArgs): Promise<number> {
     log(space);
     return 1;
   }
-  const { info, build } = await runCheck(t, parsePreset(p.flags));
+  const { info, build } = await runCheck(t, parsePreset(p.flags), p.flags);
   // Bitrate precedence: --bitrate, the preset's export.bitrate, the engine default (2 Mbps).
   const bitrate = parseBitrate(p.flags.bitrate) ?? (await loadPreset(findPreset(build.preset))).export.bitrate;
   if ((info.qa.errors.length > 0 || !info.qa.ok) && p.flags.force !== true) {
@@ -401,7 +457,7 @@ async function cmdExport(p: ParsedArgs): Promise<number> {
 
 async function cmdPreview(p: ParsedArgs): Promise<number> {
   const t = resolveTarget(p.positional[0]);
-  const { index } = await ensureBuilt(t, parsePreset(p.flags));
+  const { index } = await ensureBuilt(t, parsePreset(p.flags), false, p.flags);
   const cmd = process.platform === 'darwin' ? ['open', index] : process.platform === 'win32' ? ['cmd', '/c', 'start', '', index] : ['xdg-open', index];
   Bun.spawn(cmd, { stdout: 'ignore', stderr: 'ignore' });
   console.log(index);
@@ -441,7 +497,7 @@ async function writeSheet(t: Target, b: Build, p: ParsedArgs): Promise<string> {
 
 async function cmdSheet(p: ParsedArgs): Promise<number> {
   const t = resolveTarget(p.positional[0]);
-  const b = await ensureBuilt(t, parsePreset(p.flags));
+  const b = await ensureBuilt(t, parsePreset(p.flags), false, p.flags);
   console.log(await writeSheet(t, b, p));
   return 0;
 }
@@ -505,18 +561,69 @@ async function cmdPreset(p: ParsedArgs): Promise<number> {
   }
 }
 
+/**
+ * voice doctor | voice plan <dir> | voice kokoro <dir> | voice <dir>. Kokoro is started, used and stopped by
+ * `voice kokoro`; ElevenLabs takes come from an ElevenLabs MCP the agent calls (plan lists them, a build ingests them).
+ */
+async function cmdVoice(p: ParsedArgs): Promise<number> {
+  const [sub, arg] = p.positional;
+  if (sub === 'doctor') {
+    for (const line of await voiceDoctor()) { console.log(line); }
+    return 0;
+  }
+  const isSub = sub === 'plan' || sub === 'kokoro';
+  const t = resolveTarget(isSub ? arg : sub);
+  const flags = sub === 'kokoro' ? { ...p.flags, voice: 'kokoro' } : p.flags;
+  const a = await audioSettings(t, flags);
+  if (!a.voice) { throw new UsageError('the voice is none for this video: pass --voice kokoro|elevenlabs, save it with `audio use <dir> --voice ...`, or set EXPLAIN_VOICE'); }
+  if (!a.cues.length) { log('no scene has `say`: nothing to narrate'); return 0; }
+  const entries = planVoice(a.cues, a.voice);
+  if (a.voice.provider === 'elevenlabs') { await ingest(entries, a.voice); }
+  if (sub === 'plan') {
+    console.log(formatPlan(planVoice(a.cues, a.voice), a.voice));
+    return 0;
+  }
+  if (sub === 'kokoro') {
+    const r = await runKokoro(entries, a.voice);
+    const how = r.started ? `server started in ${r.startSeconds.toFixed(1)} s and stopped in ${r.stopSeconds.toFixed(2)} s, peak ${Math.round(r.peakRssMb)} MB RSS` : r.lines ? 'used the Kokoro server already running (left running)' : 'every line was cached; Kokoro was not started';
+    console.log(`kokoro: ${r.lines} new line${r.lines === 1 ? '' : 's'}, ${r.seconds.toFixed(1)} s of speech, voice ${a.voice.voiceId}; ${how}`);
+    return 0;
+  }
+  for (const e of planVoice(a.cues, a.voice)) { console.log(`${e.cached ? 'cached ' : 'missing'} ${e.id.padEnd(5)} ${e.scene}: ${e.text}`); }
+  return 0;
+}
+
+/** audio use <dir> [--sound on|off] [--voice none|kokoro|elevenlabs] [--voice-id <id>] [--voice-model <model>]. */
+function cmdAudio(p: ParsedArgs): number {
+  const [sub, a] = p.positional;
+  if (sub !== 'use' || !a) { throw new UsageError('usage: audio use <dir> [--sound on|off] [--voice none|kokoro|elevenlabs] [--voice-id <id>] [--voice-model <model>]'); }
+  const t = resolveTarget(a);
+  const cfg = readConfig(t.dir);
+  const chosen = audioChoice(p.flags, {}, cfg);
+  if (chosen.voice?.provider === 'elevenlabs' && !chosen.voice.id) {
+    try { resolveVoice('elevenlabs', {}, {}, 'es', {}); }
+    catch (e) { throw new UsageError(e instanceof Error ? e.message : String(e)); }
+  }
+  const { sound: _s, voice: _v, ...rest } = cfg;
+  writeFileSync(configFile(t.dir), `${JSON.stringify({ ...rest, ...chosen }, null, 2)}\n`);
+  console.log(configFile(t.dir));
+  return 0;
+}
+
 // ---------------------------------------------------------------------------
 // Help and dispatch
 // ---------------------------------------------------------------------------
 
 const HELP: Record<string, string> = {
   new: 'new <slug> [--preset <name>] [--title "..."]\n  Create ~/explainers/<yyyy-mm-dd>-<slug>/scene.js from a 2-scene template and explain.json with the preset; prints its path.',
-  build: 'build <dir|scene.js> [--preset <name>]\n  Build the self-contained index.html into the explainer folder (a scene file other than scene.js builds into ~/explainers/<date>-<name>/); prints its path. A --preset other than the configured one (explain.json, else the scene, else hologram) is a one-off build in <dir>/presets/<name>/; explain.json is never rewritten. --style is an alias of --preset.',
-  check: 'check <dir|scene.js> [--preset <name>]\n  Build if needed, run the QA gate headless; QA JSON on stdout. Exit 1 on errors, 0 on warnings only.',
+  build: 'build <dir|scene.js> [--preset <name>] [--sound on|off] [--voice none|kokoro|elevenlabs] [--voice-id <id>]\n  Build the self-contained index.html into the explainer folder (a scene file other than scene.js builds into ~/explainers/<date>-<name>/); prints its path. A --preset other than the configured one (explain.json, else the scene, else hologram) is a one-off build in <dir>/presets/<name>/; explain.json is never rewritten. --style is an alias of --preset.',
+  check: 'check <dir|scene.js> [--preset <name>] [--sound on|off] [--voice none|kokoro|elevenlabs] [--voice-id <id>]\n  Build if needed, run the QA gate headless; QA JSON on stdout. Exit 1 on errors, 0 on warnings only.',
   stills: 'stills <dir|scene.js> [--preset <name>] [--at ci:3.5,git:5.2,12.4] [--scene <name>] [--from-mp4 [--out video.mp4]]\n  PNGs named NN-<scene>@<local seconds>.png to <dir>/stills/ (old ones replaced). --at takes <scene>:<seconds of that scene> or global seconds. Default: 2 per scene at 40 % and 85 % of it; --scene <name> gives 4 of that scene. --from-mp4 cuts them from the exported MP4 with ffmpeg into <dir>/stills/mp4/.',
   sheet: 'sheet <dir|scene.js> [--preset <name>] [--cols 3] [--rows 2] [--at ...] [--from-mp4]\n  One contact-sheet PNG (cols x rows frames at 960x540; 3x2 = 2880x1080) to <dir>/sheet.png, rendered in the page without ffmpeg; frames at the settled time of scenes spread over the video (after the last caption or typing finishes) unless --at names them. --from-mp4 cuts it from the exported MP4 with ffmpeg.',
-  export: 'export <dir|scene.js> [--out video.mp4] [--bitrate 2] [--force]\n  Run check (refuses on errors unless --force), export <dir>/<slug>.mp4 (a relative --out is inside <dir>), print path, duration, size, time; ffprobe verifies when available.',
+  export: 'export <dir|scene.js> [--out video.mp4] [--bitrate 2] [--force] [--sound on|off] [--voice none|kokoro|elevenlabs] [--voice-id <id>]\n  Run check (refuses on errors unless --force), export <dir>/<slug>.mp4 (a relative --out is inside <dir>), print path, duration, size, time; ffprobe verifies when available.',
   preview: 'preview <dir> [--preset <name>]\n  Open index.html in the default browser.',
+  voice: 'voice doctor | voice plan <dir> | voice kokoro <dir> | voice <dir>\n  Narration (scene `say`). doctor: Kokoro installed/running, the ElevenLabs route, the cache (~/.explain/voice, or EXPLAIN_VOICE_DIR). plan: the lines missing from the cache, with the exact text, voice, model, target MP3 path and estimated credits, for an agent to generate with an ElevenLabs MCP (no API key is ever read). kokoro: start the installed Kokoro server, synthesize the missing lines, cache them and stop it (a server already running is used and left alone). voice <dir>: cached or missing per line. Builds never synthesize: they read the cache and name the command when a line is missing.',
+  audio: 'audio use <dir> [--sound on|off] [--voice none|kokoro|elevenlabs] [--voice-id <id>] [--voice-model <model>]\n  Save the video\'s sound and voice in explain.json. Both are off by default. Precedence on every build: flag, explain.json, env (EXPLAIN_SOUND, EXPLAIN_VOICE, EXPLAIN_VOICE_ID, EXPLAIN_ELEVENLABS_MODEL), default (sound off, voice none). Kokoro voices: ef_dora (Spanish) and af_heart by default; ElevenLabs needs a voice id from the MCP and uses eleven_flash_v2_5 unless --voice-model says otherwise.',
   preset: 'preset list | new <name> [--from sketch|hologram|poster] | check <name> | use <dir> <name> | promote <name>\n  Presets are the look of a video. list: built-in and user presets (~/.explain/presets, or EXPLAIN_PRESETS). new: copy one into the user folder with a README checklist. check: validate it, build the gallery scene in it, QA must pass. use: save it in the folder\'s explain.json. promote: copy a checked user preset into the skill (maintainers).',
 };
 
@@ -526,6 +633,7 @@ Usage: bun <skill-dir>/cli/index.ts <command> [args]
 
 ${Object.values(HELP).map(h => `  ${h}`).join('\n')}
 
+Sound effects and voice-over are optional and off by default: --sound on, --voice kokoro|elevenlabs on any build command, or \`audio use\` / EXPLAIN_SOUND / EXPLAIN_VOICE (see voice and audio above).
 Outputs go under ~/explainers/ (override with EXPLAIN_HOME) or the given directory. Exit: 0 ok, 1 failure/QA errors, 2 usage.`;
 
 export async function main(argv: string[]): Promise<number> {
@@ -543,6 +651,8 @@ export async function main(argv: string[]): Promise<number> {
       case 'export': return await cmdExport(p);
       case 'preset': return await cmdPreset(p);
       case 'sheet': return await cmdSheet(p);
+      case 'voice': return await cmdVoice(p);
+      case 'audio': return cmdAudio(p);
       default: return await cmdPreview(p);
     }
   }

@@ -1,6 +1,7 @@
 // Bundle the engine and a scene into ONE self-contained index.html (works from file://, no network):
 // JS inlined, Rough.js inlined, fonts inlined as base64 @font-face, preview UI, export button.
 //   bun cli/build.ts <scene.js> --preset <name> --out <dir>
+import type { PageAudio } from './audio.ts';
 import type { PresetInfo } from './presets.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
@@ -18,6 +19,10 @@ export interface BuildOptions {
   scenePath: string
   preset: string
   outDir: string
+  /** Sound and narration the page carries (cli/audio.ts); absent or all off: a silent page, as before. */
+  audio?: PageAudio
+  /** Hash of the audio settings and clip contents (part of the freshness key). */
+  audioHash?: string
 }
 
 export interface BuildResult {
@@ -67,10 +72,12 @@ function filesUnder(dir: string): string[] {
  * Freshness key of a build: the scene's path and content, the preset name and every file of its folder, and every
  * engine, vendor and build file. A page whose embedded key differs is rebuilt, whatever the mtimes say.
  */
-export function buildHash(scenePath: string, preset: string): string {
+export function buildHash(scenePath: string, preset: string, audioHash = ''): string {
   const h = createHash('sha256');
   const scene = resolve(scenePath);
   h.update(`${scene}\0${preset}\0`);
+  // The audio settings and the content of every narration clip: a regenerated clip rebuilds the page.
+  if (audioHash) { h.update(`audio\0${audioHash}\0`); }
   for (const f of [scene, fileURLToPath(import.meta.url), ...presetFiles(findPreset(preset)), ...filesUnder(ENGINE_DIR), ...filesUnder(VENDOR_DIR)]) {
     h.update(f);
     h.update('\0');
@@ -95,7 +102,15 @@ export async function scenePreset(scenePath: string): Promise<string | undefined
   return name;
 }
 
-function pageHtml(title: string, hash: string, css: string, rough: string, bundle: string): string {
+/** The page's audio data as an inert JSON script block (`<` escaped so no payload can close the element). */
+export const audioBlock = (audio: PageAudio | undefined) => (audio && (audio.sound || audio.narration)
+  ? `<script type="application/json" id="explain-audio">${JSON.stringify(audio).replace(/</g, '\\u003c')}</script>\n`
+  : '');
+
+/** A page above this size gets a warning: the claude.ai Artifact limit is 16 MB. */
+export const PAGE_WARN_BYTES = 12 * 1024 * 1024;
+
+function pageHtml(title: string, hash: string, css: string, rough: string, bundle: string, audio = ''): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="explain-build" content="${hash}"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title.replace(/[<&]/g, '')}</title>
@@ -115,14 +130,14 @@ body.still #bar{display:none}
 </style></head>
 <body><canvas id="c" width="1920" height="1080"></canvas>
 <div id="bar"><button id="play" type="button">Pause</button><input id="scrub" type="range" min="0" max="1" value="0" step="any"><span id="time">0:00</span><button id="export" type="button">Export MP4</button></div>
-<script>${escapeScript(rough)}</script>
+${audio}<script>${escapeScript(rough)}</script>
 <script type="module">${escapeScript(bundle)}</script>
 </body></html>
 `;
 }
 
 /** Build the single-file page for `scenePath` in the given preset and write outDir/index.html. */
-export async function buildPage({ scenePath, preset, outDir }: BuildOptions): Promise<BuildResult> {
+export async function buildPage({ scenePath, preset, outDir, audio, audioHash = '' }: BuildOptions): Promise<BuildResult> {
   const info = findPreset(preset);
   const resolved = await loadPreset(info);
   const scene = resolve(scenePath);
@@ -151,7 +166,7 @@ export async function buildPage({ scenePath, preset, outDir }: BuildOptions): Pr
   if (!built.success) { throw new Error(`Bundle failed:\n${built.logs.map(l => String(l)).join('\n')}`); }
   const bundle = await built.outputs[0].text();
 
-  const html = pageHtml(title, buildHash(scene, preset), fontCss(info, resolved.faces), ROUGH_NOTICE + readFileSync(join(VENDOR_DIR, 'rough.min.js'), 'utf8'), bundle);
+  const html = pageHtml(title, buildHash(scene, preset, audioHash), fontCss(info, resolved.faces), ROUGH_NOTICE + readFileSync(join(VENDOR_DIR, 'rough.min.js'), 'utf8'), bundle, audioBlock(audio));
   mkdirSync(outDir, { recursive: true });
   const indexHtml = join(resolve(outDir), 'index.html');
   writeFileSync(indexHtml, html);
