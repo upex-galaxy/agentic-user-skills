@@ -123,13 +123,14 @@ canvas{display:block;width:min(100vw,calc((100vh - 56px) * 16 / 9));aspect-ratio
 #bar input{flex:1}
 #bar button{font:inherit;padding:6px 12px;border:1px solid #3a3a44;border-radius:6px;background:#17171c;color:inherit;cursor:pointer}
 #bar button:disabled{opacity:.5;cursor:wait}
+#bar button[aria-pressed=true]{border-color:#8ab4a8}
 #time{min-width:84px;text-align:right;font-variant-numeric:tabular-nums}
 body.still{display:block}
 body.still canvas{width:100vw;height:100vh;aspect-ratio:auto}
 body.still #bar{display:none}
 </style></head>
 <body><canvas id="c" width="1920" height="1080"></canvas>
-<div id="bar"><button id="play" type="button">Pause</button><input id="scrub" type="range" min="0" max="1" value="0" step="any"><span id="time">0:00</span><button id="export" type="button">Export MP4</button></div>
+<div id="bar"><button id="play" type="button">Pause</button><input id="scrub" type="range" min="0" max="1" value="0" step="any"><span id="time">0:00</span><button id="sound" type="button" hidden></button><button id="export" type="button">Export MP4</button></div>
 ${audio}<script>${escapeScript(rough)}</script>
 <script type="module">${escapeScript(bundle)}</script>
 </body></html>

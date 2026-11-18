@@ -9,16 +9,17 @@
 // Page hooks:
 //   window.__explainQA(times?, opts?)  -> JSON report from engine/qa.js (see runQA for the options)
 //   window.__explainRender(t)          -> draw one frame
+//   window.__explainAudio              -> { offset(), playing(), enabled(), time() } preview sound state, for tests
 //   window.__ready                     -> true once fonts are loaded and the first frame is drawn
 import { createEngine, kit } from './index.js';
-import { narrationOf, readPageAudio } from './page-audio.js';
+import { narrationOf, pageMix, readPageAudio } from './page-audio.js';
 import { detectLang } from './pieces/titles.js';
 import { definePreset } from './preset.js';
 import { runQA } from './qa.js';
 
 const LABELS = {
-  en: { play: 'Play', pause: 'Pause', export: 'Export MP4', exporting: 'Exporting...', failed: 'Export failed' },
-  es: { play: 'Reproducir', pause: 'Pausa', export: 'Exportar MP4', exporting: 'Exportando...', failed: 'Error al exportar' },
+  en: { play: 'Play', pause: 'Pause', soundOn: 'Sound on', soundOff: 'Sound off', export: 'Export MP4', exporting: 'Exporting...', failed: 'Export failed' },
+  es: { play: 'Reproducir', pause: 'Pausa', soundOn: 'Sonido: sí', soundOff: 'Sonido: no', export: 'Exportar MP4', exporting: 'Exportando...', failed: 'Error al exportar' },
 };
 
 /** Player UI labels in the video's language ('es' or anything else for English). */
@@ -28,6 +29,18 @@ async function loadFonts(style) {
   await Promise.all(style.faces.map(f => document.fonts.load(`600 24px "${f.family}"`, 'AaÁáÉéÑñÜü')));
   await document.fonts.ready;
 }
+
+const SOUND_KEY = 'explain-sound';
+
+// localStorage can throw (private mode, blocked storage): the page works without it.
+const readSound = () => {
+  try { return localStorage.getItem(SOUND_KEY) === '1'; }
+  catch { return false; }
+};
+const writeSound = (on) => {
+  try { localStorage.setItem(SOUND_KEY, on ? '1' : '0'); }
+  catch {}
+};
 
 const mmss = (s) => {
   const t = Math.max(0, Math.floor(s));
@@ -103,6 +116,15 @@ export async function boot({ makeScene, preset, loadExport }) {
   let cur = 0;
   let paused = false;
   let t0 = real.now();
+  // Preview sound. While a source plays, the audio clock drives the time: t = ctx.currentTime - startedAt + offset.
+  const sound = $('sound');
+  let soundOn = !!audio && readSound();
+  let ctx = null;
+  let buffer = null;
+  let src = null;
+  let startedAt = 0;
+  let offset = 0;
+  let resumeAfterScrub = false;
   scrub.max = String(duration);
   scrub.step = String(1 / fps);
 
@@ -112,15 +134,85 @@ export async function boot({ makeScene, preset, loadExport }) {
     time.textContent = `${mmss(t)} / ${mmss(duration)}`;
     engine.render(t);
   };
+  const audioTime = () => ctx.currentTime - startedAt + offset;
+  const stopAudio = () => {
+    if (!src) { return; }
+    try { src.stop(); }
+    catch {}
+    src.disconnect();
+    src = null;
+  };
+  // Creates the one AudioContext (48 kHz) and the one AudioBuffer on first use; must run inside a click.
+  const ensureAudio = () => {
+    if (!ctx) { ctx = new AudioContext({ sampleRate: 48000 }); }
+    if (ctx.state === 'suspended') { ctx.resume().catch(() => {}); }
+    if (!buffer) {
+      const m = pageMix(engine, audio);
+      buffer = ctx.createBuffer(2, m.left.length, 48000);
+      buffer.copyToChannel(m.left, 0);
+      buffer.copyToChannel(m.right, 1);
+    }
+  };
+  const startAudio = (at) => {
+    stopAudio();
+    src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(ctx.destination);
+    offset = at;
+    startedAt = ctx.currentTime;
+    src.start(0, at);
+  };
+  // Make the source match the state: playing with sound on means a source at `cur`; anything else means none.
+  const syncAudio = () => {
+    if (soundOn && !paused && ctx) { startAudio(cur); }
+    else { stopAudio(); }
+  };
   const setPaused = (v) => {
     paused = v;
     play.textContent = v ? L.play : L.pause;
     t0 = real.now() - cur * 1000;
+    syncAudio();
   };
-  play.onclick = () => setPaused(!paused);
+  const renderSound = () => {
+    sound.textContent = soundOn ? L.soundOn : L.soundOff;
+    sound.setAttribute('aria-pressed', String(soundOn));
+  };
+  if (audio) {
+    sound.hidden = false;
+    renderSound();
+    sound.onclick = () => {
+      soundOn = !soundOn;
+      writeSound(soundOn);
+      renderSound();
+      if (soundOn) { ensureAudio(); }
+      // Off hands the clock back to performance.now at the same t (setPaused-style rebase); on starts the source at `cur`.
+      t0 = real.now() - cur * 1000;
+      syncAudio();
+    };
+  }
+  play.onclick = () => {
+    if (paused && soundOn) { ensureAudio(); }
+    setPaused(!paused);
+  };
   scrub.oninput = () => {
+    // Scrubbing is silent; with sound on, a scrub that interrupted playback resumes when the handle is released.
+    if (!resumeAfterScrub) { resumeAfterScrub = soundOn && !paused; }
     setPaused(true);
     show(Number(scrub.value));
+  };
+  scrub.onchange = () => {
+    if (!resumeAfterScrub) { return; }
+    resumeAfterScrub = false;
+    if (soundOn) {
+      ensureAudio();
+      setPaused(false);
+    }
+  };
+  window.__explainAudio = {
+    offset: () => (src ? audioTime() : cur),
+    playing: () => !!src && !paused,
+    enabled: () => soundOn,
+    time: () => cur,
   };
 
   $('export').onclick = async (ev) => {
@@ -150,7 +242,18 @@ export async function boot({ makeScene, preset, loadExport }) {
   };
 
   const frame = () => {
-    if (!paused) { show(((real.now() - t0) / 1000) % duration); }
+    if (!paused) {
+      if (src) {
+        let t = audioTime();
+        if (t >= duration) {
+          // Loop wrap: the source ran off the end of the mix; start it again at 0.
+          t = 0;
+          startAudio(0);
+        }
+        show(t);
+      }
+      else { show(((real.now() - t0) / 1000) % duration); }
+    }
     real.raf(frame);
   };
   show(0);
