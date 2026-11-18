@@ -58,6 +58,7 @@ export default ({ math, rough }) => ({ name, description, palette, faces, stacks
 | `stacks`, `weights` | CSS font stacks and weights per role `body`, `display`, `mono` |
 | `defaults` | `{ nodePx, labelPx, codePx, minPx, lw, pad, radius, fillAlpha }`. Every piece sizes text from these; `minPx` is the fitting floor |
 | `export` | `{ bitrate }` in bits per second (`4e6`). Precedence: `--bitrate` over the preset over 2 Mbps |
+| `sound` | optional: `{ gain, voices: { <kind>: params }, space: { delay, feedback, wet } }`, partial overrides of the effect voices in `engine/audio.js` (its header lists the params). Data only. Unknown kinds or params are listed in the preset's one error. Without it the engine defaults play |
 
 Contrast: `definePreset` warns when `ink` on `bg`, `onPanel` on `panel` or `onAccent` on `accent` is under 4.5:1. Fix the palette, not the warning.
 

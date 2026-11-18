@@ -15,6 +15,8 @@ export default ({ scene, W, H, ease, kf }) => ({    // the kit (below) is the on
       name: 'intro',                                // shown in QA reports and used by humans; default scene-N
       dur: 8,                                       // seconds, required, positive
       transition: { type: 'light-sweep', dur: 0.5 },// hand-over INTO the next scene (ignored on the last one)
+      say: 'One spoken line.',                      // optional narration: a string or beats [{ text, at?, spoken? }] (references/audio.md)
+      // fit: false,                                   with a voice the scene stretches to its narration; false keeps dur
       build(s) { /* create pieces with s.<piece>(...) */ },
     }),
   ],
@@ -73,6 +75,8 @@ An unknown name throws and lists all nine. Use at most two types in one video. T
 | `s.connect(fromId, toId, opts)` | edge geometry `{ pts, from, to, length }` without drawing; opts as `edge` (`from`, `to` anchor names, `route`, `gap`) |
 | `s.camera` | zoom and pan, below |
 | `s.raw(fn, { id, z })` | the escape hatch, below |
+| `s.voice` | the scene's narration windows `[{ at, end, text }]` in scene-local seconds, one per `say` beat (estimated at 15 characters per second when the video has no voice). Place visuals on them |
+| `s.sfx({ kind, at, gain, pan })` | one sound effect by hand; any piece also takes `sound: true \| '<kind>' \| false` ([audio.md](audio.md)) |
 | `s.area` | `{ x: 80, y: 244, w: 1760, h: 636 }`, the default content area: below the heading band (`y` 124 to 228), above the caption (`y` 890) and the footer. Pieces and layouts use it when you pass no `area` |
 | `s.lang`, `s.title` | the spec's `lang` and `title` (the footer's language detection reads them) |
 | `s.W`, `s.H`, `s.ctx`, `s.style` | canvas size, 2D context (measure text), the active preset (`s.style.defaults`: `nodePx`, `labelPx`, `codePx`, `minPx`) |
@@ -164,5 +168,7 @@ Each issue: `{ type, scene, id, t, count, detail }` (`t` is the first global tim
 | `nondeterministic` | error | the same frame rendered twice gave different pixels (more than 8 changed pixels), probed at max(3, 2 x scenes) times |
 | `composition-balance` | warning | on the settled scene without the HUD: a half of the frame holds under 12 % of the content; the content covers under 28 % of the frame or spans under 30 % of its height; or its vertical center of mass is outside 40 to 64 % of the height. Never blocks `export`; keep one only when deliberate and say why |
 | `widow` | warning | a single short word is alone on the last line of a text block |
+
+With sound or a voice on, the report also carries `audio` (`integratedLufs`, `peakDbfs`, `voiceSeconds`, `sfxEvents`) and the audio types (`narration-overlap`, `voice-suspect`, `loudness`, ...) listed in [audio.md](audio.md).
 
 Only elements visible above 5% alpha count, and rects are measured in frame pixels after the camera, except HUD items. To silence a real, intended overlap set `overlap: true` on the element that sits on top, not on everything.
