@@ -15,7 +15,7 @@ export default ({ scene, W, H, ease, kf }) => ({    // the kit (below) is the on
       name: 'intro',                                // shown in QA reports and used by humans; default scene-N
       dur: 8,                                       // seconds, required, positive
       transition: { type: 'light-sweep', dur: 0.5 },// hand-over INTO the next scene (ignored on the last one)
-      say: 'One spoken line.',                      // optional narration: a string or beats [{ text, at?, spoken? }] (references/audio.md)
+      say: 'One spoken line.',                      // optional narration: a string or beats [{ text, at?, spoken?, hold?, key? }] (references/narration.md)
       // fit: false,                                   with a voice the scene stretches to its narration; false keeps dur
       build(s) { /* create pieces with s.<piece>(...) */ },
     }),
@@ -75,7 +75,8 @@ An unknown name throws and lists all nine. Use at most two types in one video. T
 | `s.connect(fromId, toId, opts)` | edge geometry `{ pts, from, to, length }` without drawing; opts as `edge` (`from`, `to` anchor names, `route`, `gap`) |
 | `s.camera` | zoom and pan, below |
 | `s.raw(fn, { id, z })` | the escape hatch, below |
-| `s.voice` | the scene's narration windows `[{ at, end, text }]` in scene-local seconds, one per `say` beat (estimated at 15 characters per second when the video has no voice). Place visuals on them |
+| `s.voice` | the scene's narration windows `[{ at, end, text, key? }]` in scene-local seconds, one per `say` beat (estimated at 15 characters per second when the video has no voice). Place visuals on them |
+| `s.cue(key)` | one window of `s.voice` by beat `key` (or index): `s.node({ ..., at: s.cue('db').at + 0.3 })`. An unknown key throws and lists the keys |
 | `s.sfx({ kind, at, gain, pan })` | one sound effect by hand; any piece also takes `sound: true \| '<kind>' \| false` ([audio.md](audio.md)) |
 | `s.area` | `{ x: 80, y: 244, w: 1760, h: 636 }`, the default content area: below the heading band (`y` 124 to 228), above the caption (`y` 890) and the footer. Pieces and layouts use it when you pass no `area` |
 | `s.lang`, `s.title` | the spec's `lang` and `title` (the footer's language detection reads them) |

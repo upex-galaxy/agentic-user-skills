@@ -25,6 +25,7 @@ Open only the reference the step needs:
 | Rhythm, hierarchy, text and source rules | [references/direction.md](references/direction.md) |
 | Camera, transitions, layouts, raw drawing, QA error types | [references/scene-api.md](references/scene-api.md) |
 | Choosing or making a preset | [references/presets.md](references/presets.md) |
+| Writing the narration of a narrated video: pace, register, holds, reveals on cues | [references/narration.md](references/narration.md) |
 | Sound effects or voice-over: `say`, Kokoro, ElevenLabs, levels, audio QA | [references/audio.md](references/audio.md) |
 
 ## Setup (first run)
@@ -40,7 +41,7 @@ Resolve preset, length, sound and voice in this order, before step 2:
 1. **The request.** "con voz de ElevenLabs", "sin sonido", "en sketch": pass it as flags and ask nothing about it.
 2. **A person at the keyboard** (an interactive session nobody else launched): ask once, in one call of your harness's question tool, only what step 1 left open:
    - The preset: hologram, sketch, poster, user presets.
-   - The length: short 30-45 s, standard 45-75 s, long 75-90 s.
+   - The length: short 30-45 s, standard 45-75 s, long 75-90 s; with a voice also lesson, 2-5 min.
    - Sound effects: off, on.
    - The voice: none; Kokoro, with its status from `voice doctor`; ElevenLabs, at about 2 credits per character, roughly 900 characters per minute of narration.
    
@@ -53,9 +54,9 @@ Save the result in the folder with `new --preset ...` and `audio use <dir> --sou
 ## Loop
 
 1. **Understand and source the topic.** Read the material the video must be true to: the docs page, the document, or for a PR its diff (`gh pr diff`) and description. Note the exact source of every fact.
-2. **Storyboard 5 to 9 scenes**, one idea each, 6 to 12 s per scene (45 to 90 s in total). Per scene write: the one thing to show, the hero, the piece that fits it, the source. Pick a preset ([references/presets.md](references/presets.md)): `sketch` friendly and explanatory (light paper), `hologram` technical (dark), `poster` bold violet for broad audiences, or a user preset from `preset list`.
+2. **Storyboard 5 to 9 scenes**, one idea each, 6 to 12 s per scene (45 to 90 s in total). Per scene write: the one thing to show, the hero, the piece that fits it, the source. **With a voice, write the narration first**: every scene's `say` beats as spoken teaching, before any `build(s)`, following [references/narration.md](references/narration.md) (about 150 words per minute, the voice covering at least half of each scene, a lesson of 6 to 12 scenes of 12 to 40 s). The scenes are then built around the beats. Pick a preset ([references/presets.md](references/presets.md)): `sketch` friendly and explanatory (light paper), `hologram` technical (dark), `poster` bold violet for broad audiences, or a user preset from `preset list`.
 3. **`new <slug> --preset <name>`** creates `scene.js` from a template and prints its path.
-4. **Write `scene.js`** from the arsenal below. With a voice, give each scene a `say` (about 2.2 words per second of scene, written as speech) and place the visuals on `s.voice[i].at` / `.end`: [references/audio.md](references/audio.md). File shape, layouts, camera, transitions, raw escape hatch, QA types: [references/scene-api.md](references/scene-api.md). Composition rules: [references/direction.md](references/direction.md); read it before the first scene.
+4. **Write `scene.js`** from the arsenal below. With a voice, paste in the narration from step 2, run `voice plan <dir>` and fix every scene its `Script:` block marks `THIN` before generating; then place each visual on its beat (`s.cue('<key>').at`, `s.voice[i].at`) and give a big reveal a beat `hold` so it settles before the voice goes on: [references/narration.md](references/narration.md), [references/audio.md](references/audio.md). File shape, layouts, camera, transitions, raw escape hatch, QA types: [references/scene-api.md](references/scene-api.md). Composition rules: [references/direction.md](references/direction.md); read it before the first scene.
 5. **With a voice, make the clips first.**
    - Kokoro: `voice kokoro <dir>` starts the server, synthesizes, caches and always stops it. Run it in a subagent when your harness has one.
    - ElevenLabs: `voice plan <dir>` lists the missing lines. Generate each with the ElevenLabs MCP, save one take at its target path, then go on.
@@ -107,6 +108,7 @@ Save the result in the folder with `new --preset ...` and `audio use <dir> --sou
 - [references/scene-api.md](references/scene-api.md): scene file, kit, transitions, camera, layout, raw, QA report.
 - [references/presets.md](references/presets.md): the three presets, the contract, the user workflow.
 - [references/direction.md](references/direction.md): the visual rules, with numbers.
+- [references/narration.md](references/narration.md): writing the narration first, pace, spoken register, holds and reveals on cues.
 - [references/audio.md](references/audio.md): sound effects, voice-over (`say`, Kokoro, ElevenLabs through an MCP), levels, audio QA.
 - `examples/narrated.scene.js`: a 3-scene narrated video with `say` beats, `s.voice` and `s.sfx`.
 - `examples/skill.scene.js` (explain a skill, built from the layout recipes), `examples/gallery.scene.js` (every family in 7 scenes) and `examples/pieces/*.scene.js` (one runnable scene per family): copy from them.

@@ -4,7 +4,7 @@ Rules for scenes that read well on first view. Each rule has a number to hit and
 
 ## Length and rhythm
 
-- **5 to 9 scenes, 6 to 12 s each, 45 to 90 s in total.** One idea per scene. A tenth scene means two videos.
+- **5 to 9 scenes, 6 to 12 s each, 45 to 90 s in total.** One idea per scene. A tenth scene means two videos. With a voice the narration sets the length instead: [narration.md](narration.md).
 - **The first 3 s say what the video explains**: scene 1 opens with `titleCard`, or a heading plus the hero, never an empty frame. The **last scene recaps in at most 3 points** (a 3-node `row`, or one `table`).
 - **Reading time: about 1 s per 4 words**, counted from when the text finishes appearing. Leave the finished scene on screen at least that long before the transition. A 12-word caption needs 3 s visible.
 - Do: `caption` typed at 4.0, scene ends at 9.0. Don't: caption typed at 8.0 in a scene that ends at 9.0.

@@ -28,8 +28,8 @@ scene({
   say: 'El pipeline corre en cada push.',                 // one cue
   // or beats:
   // say: [
-  //   { text: 'Primero corren los tests.', at: 0.6 },     // `at`: scene-local start
-  //   { text: 'Si fallan, el merge se bloquea.' },         // no `at`: 0.25 s after the previous clip
+  //   { text: 'Primero corren los tests.', at: 0.6, key: 'tests' }, // `at`: scene-local start; `key`: s.cue('tests')
+  //   { text: 'Si fallan, el merge se bloquea.', hold: 1 },          // no `at`: 0.25 s after the previous clip (+ its hold)
   //   { text: 'Supabase guarda el resultado.', spoken: 'Supabéis guarda el resultado.' },
   // ],
   build(s) {
@@ -40,12 +40,13 @@ scene({
 ```
 
 - `say` lives on the scene, outside `build`. The CLI reads every line in Bun without a browser, and `build(s)` gets `s.voice`: `[{ at, end, text }]` in scene-local seconds. Place the visuals on the voice; the voice never waits on a piece.
-- The first cue starts at `max(0.3, trIn + 0.1)`, where `trIn` is the incoming transition. Each next cue starts 0.25 s after the previous clip ends.
+- The first cue starts at `max(0.3, trIn + 0.1)`, where `trIn` is the incoming transition. Each next cue starts 0.25 s after the previous clip ends, plus that beat's `hold`.
+- **`hold`** (0 to 2.5 s) is silence after a beat's clip so the picture settles before the voice goes on; on the last beat it lengthens the scene's tail. **`key`** names a beat: `s.cue('tests')` returns its `{ at, end, text, key }` (an unknown key throws and lists the keys). Neither field reaches the voice, so neither changes a line's cache key.
 - With a voice, a clip lasts its real length. Without one, it is estimated at 15 characters per second, so a scene chained to `s.voice` still lays out sensibly when the video is silent.
-- **The scene stretches; the voice is never cut or sped up.** With a voice, a scene's duration becomes `max(dur, last clip end + 0.5 + the outgoing transition)`. Only the settled hold after the last animation grows; authored times do not move. `fit: false` keeps `dur`, and the QA gate then fails a clip that leaves the window.
+- **The scene stretches; the voice is never cut or sped up.** With a voice, a scene's duration becomes `max(dur, last clip end + its hold + 0.5 + the outgoing transition)`. Only the settled hold after the last animation grows; authored times do not move. `fit: false` keeps `dur`, and the QA gate then fails a clip that leaves the window.
 - `spoken` replaces the text sent to the voice for that cue. Use it for words the voice misreads.
 - `~/.explain/pronunciation.txt` (or `EXPLAIN_PRONUNCIATION`) holds one rule per line: `pattern<two spaces or a tab>replacement`. Matching is case-insensitive and on whole words, longest pattern first.
-- Write narration as speech: plain words, no paths or identifiers, numbers as they are said. Budget about 2.2 words per second of scene, so 45 to 90 s of video stays 45 to 90 s.
+- Write narration as speech, first, before the scenes: [narration.md](narration.md) has the pace (about 150 words per minute), the register and the checklist. With a voice the script sets the length: a lesson runs 2 to 5 minutes.
 
 ## Voice providers
 
@@ -63,7 +64,7 @@ Builds never synthesize speech. They read the cache (`~/.explain/voice/<hash>.wa
 The CLI reads no ElevenLabs key and calls no ElevenLabs endpoint. The agent generates each line with the ElevenLabs MCP its harness has. For example, the claude.ai ElevenLabs connector: `creative_list_voices`, `creative_generate_speech`, `creative_get_flow_run_status`.
 
 1. **Pick a voice.** Ask the MCP for voices in the video's language (`creative_list_voices` with `languages`). Then save the id: `audio use <dir> --voice elevenlabs --voice-id <id>`.
-2. **`voice plan <dir>`** lists every line missing from the cache. For each line it gives the exact text to send, the voice, the model, the character count and the target path (`~/.explain/voice/<hash>.mp3`), plus the estimated credits.
+2. **`voice plan <dir>`** first prints a `Script:` block: per narrated scene, its words and estimated speech against the authored `dur`, `THIN` under half (fix those before paying for a line). Then it lists every line missing from the cache. For each line it gives the exact text to send, the voice, the model, the character count and the target path (`~/.explain/voice/<hash>.mp3`), plus the estimated credits.
 3. **For each listed line:**
    - Call `creative_generate_speech` with exactly that text, voice and model (`eleven_flash_v2_5` unless the user asked for a professional one; record the model with `audio use --voice-model`).
    - Poll `creative_get_flow_run_status` until it completes.
@@ -110,13 +111,14 @@ The audio checks run with the rest of `check` when sound or a voice is on.
 | Type | Kind | Rule |
 |---|---|---|
 | `narration-overlap` | error | two clips of a scene overlap |
-| `narration-window` | error | a clip starts before the incoming transition ends or runs into the outgoing one (only with `fit: false` or a late `at`) |
+| `narration-window` | error | a clip starts before the incoming transition ends or overruns into the outgoing one (only with `fit: false` or a late `at`) |
 | `voice-missing` | error | a cue has no clip |
 | `voice-suspect` | error | a clip is too short or too long for its text, or nearly silent: a broken take |
 | `audio-clipping` | error | the mix peaks above -1 dBFS |
 | `audio-nondeterministic` | error | two mixes of the same input differ |
 | `loudness` | warning | with a voice, the mix is outside -14 ± 1 LUFS; with effects only, a 400 ms block is above -12 LUFS |
 | `silent-gap` | warning | in a narrated video, more than 3 s without voice between cues, or a scene with no `say` |
+| `narration-sparse` | warning | a narrated scene's clips cover under half of its duration: the voice explains too little of what is on screen |
 | `sfx-density` | warning | more than 3 effects in a second or 12 in a scene |
 | `cue-after-end` | warning | an effect after its scene ends |
 
