@@ -183,7 +183,7 @@ function slide(s, o, what, mode, enter) {
   return s.add(fxItem(s, o, at + dur));
 }
 
-/** Target arrives. Invisible (and not checked) before `at`. o: targets, at (0), dur (0.7), from (left), dist (px, default: from beyond the frame), ease. */
+/** Target arrives. Invisible (and not checked) before `at`. o: targets, at (0), dur (0.7), from ('fade'), dist (px, default: from beyond the frame), ease. */
 export function enter(s, o = {}) {
   return slide(s, o, 'enter', o.from ?? 'fade', true);
 }

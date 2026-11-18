@@ -15,38 +15,62 @@ You write one `scene.js`; the bundled CLI turns it into a self-contained `index.
 
 ## Setup (first run)
 
-Nothing to install. Needs Bun and a Chrome or Chromium. The search order is: `EXPLAIN_CHROME=<binary>` (an error when it does not exist), system Chrome, the newest Playwright browser (Chrome for Testing or Chromium under `PLAYWRIGHT_BROWSERS_PATH`, `~/Library/Caches/ms-playwright` or `~/.cache/ms-playwright`), `google-chrome` or `chromium` on PATH, and last the Playwright headless shell, which can run `check` and `stills` but not `export` (it writes full-range video). `ffprobe` is optional: when present, `export` verifies the MP4. `ffmpeg` is needed only for `stills --from-mp4`. All commands run as `bun <skill-dir>/cli/index.ts <command>`; `--help` lists them.
+Nothing to install. Needs Bun and a Chrome or Chromium. The search order is: `EXPLAIN_CHROME=<binary>` (an error when it does not exist), system Chrome, the newest Playwright browser (Chrome for Testing or Chromium under `PLAYWRIGHT_BROWSERS_PATH`, `~/Library/Caches/ms-playwright` or `~/.cache/ms-playwright`), `google-chrome` or `chromium` on PATH, and last the Playwright headless shell, which can run `check`, `stills` and `sheet` but not `export` (it writes full-range video). `ffprobe` is optional: when present, `export` verifies the MP4. `ffmpeg` is needed only for `--from-mp4`. All commands run as `bun <skill-dir>/cli/index.ts <command>`; `--help` lists them.
 
 ## Loop
 
 1. **Understand and source the topic.** Read the material the video must be true to: the docs page, the document, or for a PR its diff (`gh pr diff`) and description. Note the exact source of every fact.
-2. **Storyboard 5 to 9 scenes**, one idea each, 6 to 12 s per scene (45 to 90 s in total). Per scene write: the one thing to show, the hero element, the piece that fits it, the source. Pick a style: `hologram` for technical and dark, `sketch` for friendly and explanatory ([references/styles.md](references/styles.md)).
-3. **`new <slug> --style <style>`** creates `scene.js` from a template and prints its path.
-4. **Write `scene.js`.** Compose pieces ([references/pieces.md](references/pieces.md)); use `s.raw(fn)` only when no piece fits. File shape, layout, camera and transitions: [references/scene-api.md](references/scene-api.md). Composition rules: [references/direction.md](references/direction.md); read it before the first scene.
-5. **`build <dir>`, then `check <dir>`** until it exits 0 with no errors. Each error names the scene, the element id and the time; fix the scene, not the gate. Warnings (an empty half of the frame, small or off-center content) do not block the export, because balance is a heuristic and a deliberate composition can trip it. They are still real findings: resolve every one by rebalancing, or keep it and justify it in the delivery message, scene by scene.
-6. **`stills <dir>`** writes PNGs to `<dir>/stills/` (2 per scene, or `--at 1,5.5,9` in global seconds), replacing the ones from the previous run. Look at every still. QA cannot see a wrong arrow, a hidden hero or an unreadable scene; you can. Fix and re-run steps 5 and 6.
-7. **`export <dir>`** runs the gate again, writes `<dir>/<slug>.mp4` and prints its path, duration and size. The default bitrate is 2 Mbps (H.264, 1080p30): about 15 MB per minute in `hologram` (its glow and grid are costly to encode) and about 5 MB per minute in `sketch`. 2 Mbps measured SSIM 0.994 against 5 Mbps on hologram with no visible damage. For a smaller file pass `--bitrate <Mbps>` (for example `--bitrate 1`) and look at the result. After the export, `stills <dir> --from-mp4` cuts the same frames from the MP4 with ffmpeg into `<dir>/stills/mp4/`, so encoder damage can be reviewed too.
-8. **Deliver** the MP4 path and the `index.html` path (the preview has a play, scrub and export UI in the video's language), plus one line per `composition-balance` warning you kept and why. Offer to publish the HTML as a claude.ai Artifact: it is self-contained and works offline.
+2. **Storyboard 5 to 9 scenes**, one idea each, 6 to 12 s per scene (45 to 90 s in total). Per scene write: the one thing to show, the hero, the piece that fits it, the source. Pick a preset ([references/presets.md](references/presets.md)): `sketch` friendly and explanatory (light paper), `hologram` technical (dark), `poster` bold violet for broad audiences, or a user preset from `preset list`.
+3. **`new <slug> --preset <name>`** creates `scene.js` from a template and prints its path.
+4. **Write `scene.js`** from the arsenal below. File shape, layouts, camera, transitions, raw escape hatch, QA types: [references/scene-api.md](references/scene-api.md). Composition rules: [references/direction.md](references/direction.md); read it before the first scene.
+5. **`build <dir>`, then `check <dir>`** until it exits 0 with no errors. Each error names the scene, the element id and the time; fix the scene, not the gate. Warnings (`composition-balance`, `widow`) do not block the export; resolve each by rebalancing, or keep it and justify it in the delivery message, scene by scene.
+6. **`stills <dir>`** writes PNGs named `NN-<scene>@<seconds>.png` to `<dir>/stills/` (2 per scene; `--scene <name>` gives 4 of one scene). Aim at a moment with `--at scene:t`, for example `--at ci:3.5,git:5.2` (scene-local seconds; plain numbers are global). Then **`sheet <dir>`** writes one contact sheet `<dir>/sheet.png` without ffmpeg. Look at every still and the sheet: QA cannot see a wrong arrow, a hidden hero or an unreadable scene. Fix and re-run steps 5 and 6.
+7. **`export <dir>`** runs the gate again and writes `<dir>/<slug>.mp4`. Bitrate: `--bitrate <Mbps>`, else the preset's (`sketch` 4 Mbps, the others 2), else 2. `stills <dir> --from-mp4` reviews the encoded frames.
+8. **Deliver** the MP4 path and the `index.html` path (the preview has play, scrub and export in the video's language), plus one line per warning you kept and why. Offer to publish the HTML as a claude.ai Artifact: it is self-contained and works offline.
 
-`preview <dir>` opens the page in the browser; `build` rebuilds the page and `check`, `stills`, `export` rebuild it when the scene, the style or the engine changed (the page carries a content hash). A target is an explainer folder or a scene file; a scene file not named `scene.js` (such as `examples/pr.scene.js`) builds into its own folder `~/explainers/<yyyy-mm-dd>-<name>/`, and nothing is ever written inside the skill folder. The style comes from `--style`, else `explain.json`, else `export const style = 'sketch'` in the scene file, else `hologram`.
+`preview <dir>` opens the page. `build`, `check`, `stills`, `sheet` and `export` rebuild it when the scene, the preset or the engine changed. A target is an explainer folder or a scene file; a scene file not named `scene.js` builds into `~/explainers/<yyyy-mm-dd>-<name>/`. Nothing is written inside the skill folder. `--preset` (alias `--style`) on any command is a one-off build in `<dir>/presets/<name>/`; only `new` and `preset use` write `explain.json`.
+
+## Arsenal
+
+63 pieces, one table by family; options, defaults and a runnable call for each are in [references/pieces.md](references/pieces.md). A piece may be hosted inside another with `in: '<id>.body'`; many expose `end` and `marks`.
+
+| Family | Pieces |
+|---|---|
+| Base, layout | `node`, `edge`, `label`, `group`, `code`; `s.row`, `s.stack`, `s.grid`, `s.radial`, `s.tree` |
+| Diagrams | `flow`, `architecture`, `sequence`, `stateMachine`, `mindMap`, `timeline`, `table`, `folderTree`, `codeBlock`, `anatomy` |
+| Titles, HUD | `titleCard`, `heading`, `caption`, `sectionTag`, `sourceFooter`, `journeyRail` |
+| Icons | `icon` (22 kinds) |
+| Screens | `editor`, `terminal`, `diffView` |
+| Devices | `browser`, `phone`, `appScreen`, `prPage`, `cursor` |
+| Numbers | `counter`, `progress`, `gauge`, `chart`, `dotGrid` |
+| Annotate | `kineticText`, `callout`, `stamp`, `bubble`, `chip`, `scribble` |
+| Movement | `packets`, `particles`, `burst`, `parallax`, `spotlight`, `splitScreen` |
+| Systems | `pipeline`, `gitGraph`, `machine`, `fleet`, `layers` |
+| Wrappers | `animate`, `enter`, `exit`, `reveal` |
+| Motion | `pulse`, `shake`, `highlight`, `travelDot`, `morph`, `expand`, `squeeze`; `s.camera` |
+
+## Presets
+
+`preset list`, `preset new <name> [--from sketch|hologram|poster]`, `preset check <name>`, `preset use <dir> <name>`, `preset promote <name>` (maintainers). A preset changes only the look. Contract, renderers and workflow: [references/presets.md](references/presets.md).
 
 ## Hard rules
 
 - `render(t)` is pure. Every value derives from the scene-local time `t`; the engine replaces `Date.now`, `performance.now` and `Math.random` with frame-driven versions, and `check` renders frames twice to prove it.
 - On-screen text never starts with the Spanish opening marks (the characters that open a question or an exclamation). Close with `?` or `!` only. `check` fails on them.
-- Text is written in the language of the user's request (Spanish request, Spanish video). The `sourceFooter` prefix follows the scene's language ("Fuente: " for Spanish, "Source: " otherwise); set `lang` on the video spec to force it ([references/pieces.md](references/pieces.md), `sourceFooter`).
-- Every scene that states a fact carries `s.sourceFooter` naming the document it came from.
-- Colors are style tokens (`ink`, `dim`, `accent`, `accent2`, `good`, `warn`, `bad`), never hex values, so one scene file works in both styles.
-- Use `s.heading({ text })` for the scene heading and leave `area` out: pieces default to the content area between the heading and the caption (`s.area`, 1760x636), and layout pieces center in it and grow to about 80 % of it. The heading, section tag, caption and footer are screen-space HUD: the camera never moves them.
+- Colors are palette tokens (`ink`, `dim`, `accent`, `accent2`, `good`, `warn`, `bad`, `panel`, `onPanel`, `onAccent`, syntax tokens), never hex values, so one scene file works in every preset.
+- Never branch on the preset name. Size text from `s.style.defaults`, never a fixed small pixel count.
+- Text is written in the language of the user's request. Every scene that states a fact carries `s.sourceFooter` naming the document it came from.
+- Use `s.heading({ text })` and leave `area` out: pieces default to the content area `s.area` (1760x636), and layouts grow to fill it. HUD items (heading, tag, caption, footer, rail) are never moved by the camera.
+- A camera `focus` fits the target into the content area: do not zoom past it, and keep the target clear of the HUD.
 
 ## References
 
-- [references/pieces.md](references/pieces.md): every piece and helper, options and defaults.
-- [references/scene-api.md](references/scene-api.md): scene file, kit, transitions, camera, layout and text helpers, raw escape hatch, QA report.
+- [references/pieces.md](references/pieces.md): every piece, options, defaults, a runnable call.
+- [references/scene-api.md](references/scene-api.md): scene file, kit, transitions, camera, layout, raw, QA report.
+- [references/presets.md](references/presets.md): the three presets, the contract, the user workflow.
 - [references/direction.md](references/direction.md): the visual rules, with numbers.
-- [references/styles.md](references/styles.md): the two styles, tokens and fonts.
-- `examples/smoke.scene.js` and `examples/pieces/*.scene.js`: one runnable scene per piece family; copy from them.
+- `examples/gallery.scene.js` (every family in 7 scenes) and `examples/pieces/*.scene.js` (one runnable scene per family): copy from them.
 
 ## With nobody at the keyboard
 
-Do not ask about style or length: choose by the topic (technical or process content takes `hologram`, a concept for newcomers takes `sketch`, 45 to 75 s), say which you chose in the report, and deliver.
+Do not ask about preset or length: choose by the topic (technical or process content `hologram`, a concept for newcomers `sketch`, a broad product audience `poster`, 45 to 75 s), say which you chose in the report, and deliver.

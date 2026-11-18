@@ -1,162 +1,270 @@
-// Reference example (sketch, ~58 s, 8 scenes): how a change travels through a GitHub pull request.
-// Shows the usual recipe: titleCard opening, one idea per scene with a sectionTag, folderTree + codeBlock side by side,
-// a flow for CI checks, a table for the merge options, a short recap. Facts are generic and carry a sourceFooter.
+// Reference example (any preset, ~68 s, 8 scenes): how a change travels through a GitHub pull request.
+// Shows motion-graphics storytelling: kinetic opening, an editor typing the change, a terminal with packets to the cloud,
+// a pull request page with a clicking pointer, a CI pipeline, a review conversation, a git graph for the merge and a
+// journeyRail that tracks the story. Facts are generic and carry a sourceFooter.
 export const title = 'Cómo viaja un cambio en un pull request';
-export const style = 'sketch'; // used when neither --style nor explain.json picks one
+export const preset = 'sketch';
 
 const SRC = 'docs.github.com';
-const TOTAL = 8;
+const STEPS = ['Rama', 'Diff', 'PR', 'Checks', 'Revisión', 'Merge'];
+
+/** Frame furniture of the story scenes: drifting doodles, section tag, journey rail, heading and the source. */
+function frame(s, i, heading) {
+  s.parallax({ seed: i + 3 });
+  s.sectionTag({ index: i + 2, total: 8, name: STEPS[i], at: 0.1 });
+  s.journeyRail({ steps: STEPS, active: i, at: 0.25 });
+  s.heading({ text: heading, at: 0.3 });
+  s.sourceFooter({ text: SRC, at: 1 });
+}
 
 export default ({ scene }) => ({
   title,
+  lang: 'es',
   scenes: [
+    // 1. Opening: kinetic title, laptop and cloud with documents already travelling between them.
     scene({
       name: 'portada',
-      dur: 5.5,
+      dur: 6.5,
       transition: { type: 'light-sweep', dur: 0.6 },
       build(s) {
-        s.sectionTag({ index: 1, total: TOTAL, name: 'Introducción', at: 0.1 });
-        s.titleCard({ id: 'hero', title: 'Cómo viaja un cambio en un pull request', subtitle: 'De la rama al merge, paso a paso', at: 0.4, h: 460 });
+        s.parallax({ seed: 1 });
+        s.particles({ mode: 'ambient', count: 22, colors: ['warn', 'accent2'] });
+        s.sectionTag({ index: 1, total: 8, name: 'Introducción', at: 0.1 });
+        s.kineticText({ rect: { x: 160, y: 130, w: 1600, h: 400 }, lines: ['Cómo viaja un cambio', 'en un *pull request*'], at: 0.3, step: 0.14, mode: 'rise', underline: ['request'] });
+        s.icon({ id: 'lap', kind: 'laptop', x: 280, y: 560, size: 200, at: 1.4, label: 'tu rama', idle: 'float' });
+        s.icon({ id: 'rem', kind: 'cloud', x: 1410, y: 560, size: 200, at: 1.8, color: 'accent2', label: 'main', idle: 'float' });
+        s.packets({ path: ['lap', 'rem'], curve: 'arc', bend: -120, at: 2.4, until: 5.8, every: 0.55, dur: 1.9, shape: 'doc', size: 54, color: 'accent', track: true });
+        s.label({ text: 'De la rama al merge, paso a paso', rect: { x: 460, y: 900, w: 1000, h: 90 }, at: 3.2, type: true, color: 'dim' });
+        s.camera.zoom(1.05, 0.2, 6, { ease: 'linear' });
       },
     }),
+
+    // 2. Branch and commits: terminal on the left, the branch growing on the right, commits flying to the remote.
     scene({
       name: 'rama',
-      dur: 8,
+      dur: 9.5,
+      transition: { type: 'slide', dur: 0.6 },
       build(s) {
-        s.sectionTag({ index: 2, total: TOTAL, name: 'Rama y commits', at: 0.1 });
-        s.heading({ text: 'Todo empieza en una rama' });
-        s.row([{ id: 'main', w: 440, h: 380 }, { id: 'branch', w: 440, h: 380 }, { id: 'commits', w: 440, h: 380 }], { gap: 160 });
-        s.node({ id: 'main', text: 'Rama main', at: 0.8, color: 'dim' });
-        s.node({ id: 'branch', text: 'Rama nueva del cambio', at: 1.6, color: 'accent' });
-        s.node({ id: 'commits', text: 'Commits con mensaje', at: 2.4, color: 'accent2' });
-        s.edge({ from: 'main', to: 'branch', at: 1.2, color: 'ink' });
-        s.edge({ from: 'branch', to: 'commits', at: 2.0, color: 'ink' });
-        s.travelDot({ path: ['main', 'branch', 'commits'], at: 3.2, dur: 2.0 });
-        s.label({ id: 'cap', text: 'La rama aísla el trabajo; cada commit guarda un paso.', place: { to: 'branch', side: 'bottom', gap: 110 }, w: 1500, h: 90, type: true, typeAt: 3.4, color: 'dim' });
-        s.sourceFooter({ text: SRC, at: 1 });
+        frame(s, 0, 'Todo empieza en una rama');
+        s.terminal({
+          id: 'term',
+          rect: { x: 80, y: 256, w: 900, h: 480 },
+          title: 'terminal',
+          at: 0.3,
+          steps: [
+            { cmd: 'git checkout -b clave-8', at: 0.9, out: ['Switched to a new branch \'clave-8\''] },
+            { cmd: 'git commit -am "Valida clave"', at: 2.8, out: ['[clave-8 3f2a1c9] Valida clave', ' 1 file changed'] },
+            { cmd: 'git push origin clave-8', at: 5.2, out: [{ text: ' * [new branch] clave-8', color: 'good' }] },
+          ],
+        });
+        s.gitGraph({
+          id: 'g',
+          rect: { x: 1040, y: 256, w: 800, h: 250 },
+          at: 0.5,
+          lanes: [{ name: 'main', color: 'dim' }, { name: 'clave-8', color: 'accent' }],
+          commits: [
+            { id: 'a', lane: 'main', col: 0, at: 0.7 },
+            { id: 'b', lane: 'main', col: 1, at: 0.9, parents: ['a'] },
+            { id: 'c', lane: 'main', col: 2, at: 1.1, parents: ['b'] },
+            { id: 'd', lane: 'clave-8', col: 3, at: 3.2, parents: ['c'] },
+          ],
+        });
+        s.icon({ id: 'loc', kind: 'laptop', x: 1090, y: 560, size: 170, at: 0.8, label: 'local', idle: 'float' });
+        s.icon({ id: 'cld', kind: 'cloud', x: 1600, y: 560, size: 170, at: 1.1, color: 'accent2', label: 'origin/clave-8', labelPx: 34, idle: 'float' });
+        s.packets({ path: ['loc', 'cld'], curve: 'arc', bend: -90, at: 6.0, count: 4, every: 0.3, dur: 1.2, shape: 'box', size: 32, color: 'accent', track: true });
+        s.burst({ target: 'cld', at: 7.3, colors: ['accent2', 'good'] });
+        s.caption({ text: 'La rama aísla el trabajo; cada commit guarda un paso.', at: 3.4 });
+        s.camera.focus('g', 3.0, 0.8, { zoom: 1.15 });
+        s.camera.reset(4.6, 0.8);
       },
     }),
+
+    // 3. Files and diff: the editor types the change with marks, the diff view lists what changed.
     scene({
       name: 'diff',
-      dur: 9.5,
+      dur: 10,
+      transition: { type: 'slide', dur: 0.6 },
       build(s) {
-        s.sectionTag({ index: 3, total: TOTAL, name: 'Qué cambió', at: 0.1 });
-        s.heading({ text: 'Los archivos y el diff' });
-        s.folderTree({
-          id: 'files',
-          area: { x: 80, y: 244, w: 700, h: 636 },
-          root: 'mi-app',
-          data: { 'src': { auth: { 'clave.ts': null, 'sesion.ts': null } }, 'tests': { 'clave.test.ts': null }, 'README.md': null },
-          at: 0.7,
-          step: 0.3,
-          highlight: ['mi-app/src/auth/clave.ts', 'mi-app/tests/clave.test.ts'],
-          hlAt: 3.6,
-          hlStep: 1.8,
-        });
-        s.codeBlock({
-          id: 'diff',
-          title: 'clave.ts',
-          area: { x: 820, y: 244, w: 1020, h: 636 },
+        frame(s, 1, 'Los archivos y el diff');
+        s.editor({
+          id: 'ed',
+          rect: { x: 80, y: 256, w: 960, h: 600 },
+          title: 'mi-app',
+          file: 'clave.ts',
+          sidebar: ['src', '  clave.ts', 'tests', '  test.ts'],
+          at: 0.3,
+          typeAt: 1.0,
+          cps: 34,
           lines: [
-            '  function validar(clave) {',
-            '-   if (clave.length < 6) {',
-            '+   if (clave.length < 8) {',
-            '      return "muy corta";',
-            '    }',
+            'function validar(clave) {',
+            { text: '  if (clave.length < 6) {', mark: '-' },
+            { text: '  if (clave.length < 8) {', mark: '+', at: 2.4 },
+            '    return "muy corta";',
             '  }',
+            '}',
           ],
-          at: 1.2,
-          typeDur: 2.2,
-          highlights: [{ lines: [2, 3], at: 4.2 }],
+          highlights: [{ line: 3, at: 4.2, until: 9 }],
         });
-        s.caption({ text: 'El diff marca líneas quitadas y líneas agregadas.', at: 5.6, until: 9.2 });
-        s.sourceFooter({ text: SRC, at: 1 });
+        s.diffView({
+          id: 'df',
+          rect: { x: 1090, y: 256, w: 750, h: 330 },
+          file: 'src/auth/clave.ts',
+          stat: '+1 -1',
+          at: 4.0,
+          step: 0.4,
+          lines: [
+            { op: ' ', text: 'function validar(clave) {' },
+            { op: '-', text: '  if (clave.length < 6) {' },
+            { op: '+', text: '  if (clave.length < 8) {' },
+            { op: ' ', text: '    return "muy corta";' },
+          ],
+        });
+        s.chip({ cx: 1450, cy: 650, text: 'src/auth/clave.ts', mono: true, color: 'accent', icon: 'doc', px: 34, at: 5.8 });
+        s.chip({ cx: 1450, cy: 760, text: 'tests/clave.test.ts', mono: true, color: 'accent2', icon: 'doc', px: 34, at: 6.3 });
+        s.scribble({ target: 'df', kind: 'box', at: 7.0, dur: 0.8, color: 'warn' });
+        s.caption({ text: 'El diff marca líneas quitadas y líneas agregadas.', at: 4.8 });
+        s.camera.focus('ed', 1.0, 0.9, { zoom: 1.2 });
+        s.camera.reset(3.9, 0.8);
       },
     }),
+
+    // 4. Open the PR: a browser page, a pointer that clicks the button, title, reason and reviewers.
     scene({
       name: 'abrir-pr',
-      dur: 8,
-      build(s) {
-        s.sectionTag({ index: 4, total: TOTAL, name: 'El pull request', at: 0.1 });
-        s.heading({ text: 'Se abre el pull request' });
-        s.row([{ id: 'title', w: 440, h: 380 }, { id: 'desc', w: 440, h: 380 }, { id: 'rev', w: 440, h: 380 }], { gap: 130 });
-        s.group({ id: 'pr', children: ['title', 'desc', 'rev'], title: 'Pull request', at: 0.6, pad: 44 });
-        s.node({ id: 'title', text: 'Título claro', at: 1.2, color: 'accent' });
-        s.node({ id: 'desc', text: 'Por qué del cambio', at: 1.9, color: 'accent2' });
-        s.node({ id: 'rev', text: 'Revisores asignados', at: 2.6, color: 'good' });
-        s.pulse({ target: 'desc', at: 4.2, times: 2, dur: 1.2 });
-        s.label({ id: 'cap', text: 'Aquí el cambio queda listo para discutirse.', place: { to: 'pr', side: 'bottom', gap: 80 }, w: 1500, h: 90, type: true, typeAt: 3.6, color: 'dim' });
-        s.sourceFooter({ text: SRC, at: 1 });
-      },
-    }),
-    scene({
-      name: 'checks',
-      dur: 9,
-      build(s) {
-        s.sectionTag({ index: 5, total: TOTAL, name: 'Checks de CI', at: 0.1 });
-        s.heading({ text: 'Los checks corren solos' });
-        s.flow({
-          id: 'ci',
-          steps: [{ text: 'Build', color: 'accent' }, { text: 'Pruebas', color: 'accent2' }, { text: 'Lint', color: 'warn' }, { text: 'Todo en verde', color: 'good' }],
-          at: 0.6,
-          per: 0.9,
-          px: 62,
-          dwell: 0.35,
-        });
-        s.caption({ text: 'Un check requerido en rojo bloquea el merge.', at: 5.8, until: 8.6 });
-        s.sourceFooter({ text: SRC, at: 1 });
-      },
-    }),
-    scene({
-      name: 'revision',
-      dur: 8,
-      build(s) {
-        s.sectionTag({ index: 6, total: TOTAL, name: 'Revisión', at: 0.1 });
-        s.heading({ text: 'Alguien más lo revisa' });
-        s.row([{ id: 'comment', w: 440, h: 380 }, { id: 'fix', w: 440, h: 380 }, { id: 'approve', w: 440, h: 380 }], { gap: 160 });
-        s.node({ id: 'comment', text: 'El revisor comenta', at: 0.8, color: 'accent2' });
-        s.node({ id: 'fix', text: 'El autor ajusta', at: 1.6, color: 'accent' });
-        s.node({ id: 'approve', text: 'Aprobación', at: 2.4, color: 'good' });
-        s.edge({ from: 'comment', to: 'fix', at: 1.2, color: 'ink' });
-        s.edge({ from: 'fix', to: 'approve', at: 2.0, color: 'ink' });
-        s.highlight({ target: 'approve', style: 'underline', at: 4.4, until: 6.6 });
-        s.label({ id: 'cap', text: 'Se repite hasta que el revisor aprueba.', place: { to: 'fix', side: 'bottom', gap: 110 }, w: 1400, h: 90, type: true, typeAt: 3.2, color: 'dim' });
-        s.sourceFooter({ text: SRC, at: 1 });
-      },
-    }),
-    scene({
-      name: 'merge',
-      dur: 9,
+      dur: 10,
       transition: { type: 'light-sweep', dur: 0.6 },
       build(s) {
-        s.sectionTag({ index: 7, total: TOTAL, name: 'Merge', at: 0.1 });
-        s.heading({ text: 'El merge trae el cambio a main' });
+        frame(s, 2, 'Se abre el pull request');
+        s.prPage({
+          id: 'pr',
+          rect: { x: 80, y: 256, w: 1180, h: 620 },
+          at: 0.3,
+          title: 'Valida claves de 8 o más caracteres',
+          number: 128,
+          from: 'clave-8',
+          to: 'main',
+          author: 'por Ana',
+          stats: { add: 1, del: 1 },
+          reviewers: [{ name: 'Leo', initials: 'LE' }],
+          checks: [{ name: 'Build', start: 5.4, end: 7.0, ok: true }, { name: 'Pruebas', start: 5.8, end: 8.2, ok: true }],
+          button: 'Abrir pull request',
+          openAt: 4.2,
+        });
+        s.cursor({ path: [[2.4, 520, 420], [4.0, 'pr.button']], clicks: [4.2], until: 6 });
+        [['doc', 'Título claro', 5.2, 'accent'], ['bolt', 'Por qué del cambio', 5.8, 'accent2'], ['user', 'Revisores asignados', 6.4, 'good']].forEach(([kind, label, at, color], i) => {
+          s.icon({ id: `k${i}`, kind, x: 1380, y: 262 + i * 200, size: 120, at, color, label, labelSide: 'right', labelPx: 44, labelW: 400, idle: 'float' });
+        });
+        s.caption({ text: 'Aquí el cambio queda listo para discutirse.', at: 5.0 });
+        s.camera.focus('pr', 0.8, 0.8, { zoom: 1.12 });
+        s.camera.reset(5.4, 0.8);
+      },
+    }),
+
+    // 5. CI checks: the pipeline runs, a counter climbs, the stamp lands.
+    scene({
+      name: 'checks',
+      dur: 10,
+      transition: { type: 'slide', dur: 0.6 },
+      build(s) {
+        frame(s, 3, 'Los checks corren solos');
+        s.pipeline({
+          id: 'ci',
+          rect: { x: 80, y: 256, w: 1180, h: 560 },
+          title: 'checks #128',
+          at: 0.3,
+          runAt: 1.0,
+          stages: [
+            { name: 'Build', jobs: [{ name: 'Compilar', dur: 1.5 }] },
+            { name: 'Pruebas', jobs: [{ name: 'Unitarias', dur: 2 }, { name: 'Integración', dur: 2.4 }] },
+            { name: 'Lint', jobs: [{ name: 'Estilo', dur: 1.2 }] },
+          ],
+        });
+        s.counter({ rect: { x: 1330, y: 250, w: 500, h: 190 }, keys: [[1.0, 0], [2.6, 1], [5.4, 2], [6.8, 3]], suffix: ' / 3', label: 'checks en verde', color: 'good', at: 1.0 });
+        s.dotGrid({ rect: { x: 1330, y: 470, w: 500, h: 140 }, rows: 4, cols: 10, at: 2.6, dur: 3.8 });
+        s.stamp({ cx: 1580, cy: 720, text: 'Todo en verde', at: 7.4, color: 'good' });
+        s.particles({ mode: 'confetti', origin: [1580, 720], at: 7.5, count: 60, dur: 2 });
+        s.caption({ text: 'Un check requerido en rojo bloquea el merge.', at: 3.5 });
+      },
+    }),
+
+    // 6. Review loop: comment, adjust, approval.
+    scene({
+      name: 'revision',
+      dur: 10,
+      transition: { type: 'slide', dur: 0.6 },
+      build(s) {
+        frame(s, 4, 'Alguien más lo revisa');
+        s.icon({ id: 'ana', kind: 'user', x: 100, y: 262, size: 170, at: 0.4, color: 'accent', label: 'Ana, autora', labelPx: 40, idle: 'sway' });
+        s.icon({ id: 'leo', kind: 'user', x: 1630, y: 262, size: 170, at: 0.7, color: 'accent2', label: 'Leo, revisor', labelPx: 40, idle: 'sway' });
+        s.bubble({ rect: { x: 1000, y: 262, w: 600, h: 120 }, text: 'Y si la clave está vacía?', tail: 'right', at: 1.3, color: 'accent2' });
+        s.bubble({ rect: { x: 330, y: 420, w: 600, h: 120 }, text: 'Buen punto, lo ajusto', tail: 'left', at: 3.0, color: 'accent' });
+        s.editor({ id: 'fix', rect: { x: 960, y: 560, w: 680, h: 140 }, title: 'clave.ts', lineNumbers: false, lines: ['if (!clave) return;'], at: 3.8, typeAt: 4.2, cps: 30 });
+        s.packets({ path: ['leo', 'ana'], curve: 'arc', bend: -80, at: 1.8, until: 5.2, every: 1.2, dur: 1.4, shape: 'doc', size: 40, color: 'accent2' });
+        s.bubble({ rect: { x: 1000, y: 735, w: 600, h: 110 }, text: 'Ahora sí', tail: 'right', at: 5.6, color: 'accent2' });
+        s.stamp({ cx: 560, cy: 740, text: 'Aprobado', at: 6.4, color: 'good' });
+        s.chip({ cx: 560, cy: 590, text: 'Cambios pedidos', color: 'warn', at: 1.4, states: [{ at: 4.8, text: 'Ajustado', color: 'accent' }] });
+        s.burst({ target: 'leo', at: 6.5, colors: ['good'] });
+        s.caption({ text: 'Se repite hasta que el revisor aprueba.', at: 5.6 });
+      },
+    }),
+
+    // 7. Merge: the three options on the left, the branch joining main on the right.
+    scene({
+      name: 'merge',
+      dur: 10,
+      transition: { type: 'light-sweep', dur: 0.6 },
+      build(s) {
+        frame(s, 5, 'El merge trae el cambio a main');
         s.table({
           id: 'opts',
+          rect: { x: 80, y: 256, w: 940, h: 440 },
           columns: ['Opción', 'Qué hace'],
           rows: [
             ['Merge commit', 'Conserva todos los commits'],
             ['Squash and merge', 'Junta todo en un solo commit'],
             ['Rebase and merge', 'Reaplica los commits sobre main'],
           ],
-          at: 0.6,
+          at: 0.5,
           step: 0.7,
-          highlight: { row: 1, at: 5.2 },
+          highlight: { row: 1, at: 4.6 },
         });
-        s.caption({ text: 'El equipo elige cuál usar en cada repositorio.', at: 6.0, until: 8.6 });
-        s.sourceFooter({ text: SRC, at: 1 });
+        s.gitGraph({
+          id: 'mg',
+          rect: { x: 1060, y: 256, w: 780, h: 300 },
+          at: 0.6,
+          lanes: [{ name: 'main', color: 'dim' }, { name: 'clave-8', color: 'accent' }],
+          commits: [
+            { id: 'a', lane: 'main', col: 0, at: 0.8 },
+            { id: 'b', lane: 'main', col: 1, at: 1.0, parents: ['a'] },
+            { id: 'c', lane: 'clave-8', col: 2, at: 1.4, parents: ['b'] },
+            { id: 'd', lane: 'clave-8', col: 3, at: 2.0, parents: ['c'] },
+            { id: 'm', lane: 'main', col: 4, at: 6.0, parents: ['b', 'd'] },
+          ],
+        });
+        s.burst({ target: 'mg.m', at: 6.1 });
+        s.chip({ cx: 1450, cy: 640, text: 'Abierto', color: 'good', icon: 'dot', at: 1.0, states: [{ at: 6.2, text: 'Fusionado', color: 'accent2', icon: 'check', solid: true }] });
+        s.icon({ id: 'trg', kind: 'rocket', x: 1580, y: 690, size: 130, at: 6.4, color: 'accent', idle: 'bob' });
+        s.scribble({ target: 'opts', kind: 'box', at: 4.6, dur: 0.8, color: 'accent' });
+        s.caption({ text: 'El equipo elige cuál usar en cada repositorio.', at: 2.6 });
       },
     }),
+
+    // 8. Recap: three points, a packet hopping icon to icon, kinetic closing line.
     scene({
       name: 'cierre',
-      dur: 6.5,
+      dur: 8,
       build(s) {
-        s.sectionTag({ index: 8, total: TOTAL, name: 'Resumen', at: 0.1 });
-        s.heading({ text: 'En resumen' });
-        s.stack([{ id: 'r1', w: 1400, h: 170 }, { id: 'r2', w: 1400, h: 170 }, { id: 'r3', w: 1400, h: 170 }], { gap: 50 });
-        s.node({ id: 'r1', text: '1. Rama y commits', at: 0.6, color: 'accent', px: 64 });
-        s.node({ id: 'r2', text: '2. PR con checks y revisión', at: 1.4, color: 'accent2', px: 64 });
-        s.node({ id: 'r3', text: '3. Merge a main', at: 2.2, color: 'good', px: 64 });
+        s.parallax({ seed: 9 });
+        s.sectionTag({ index: 8, total: 8, name: 'Resumen', at: 0.1 });
+        s.kineticText({ rect: { x: 160, y: 130, w: 1600, h: 220 }, text: 'En resumen: del cambio al *merge*', at: 0.3, step: 0.12, mode: 'slam' });
+        const items = [['branch', '1. Rama y commits', 'accent'], ['check', '2. PR con checks y revisión', 'accent2'], ['rocket', '3. Merge a main', 'good']];
+        items.forEach(([kind, label, color], i) => {
+          s.icon({ id: `r${i}`, kind, x: 100 + i * 580 + 190, y: 540, size: 200, at: 1.0 + i * 0.6, color, idle: 'float' });
+          s.label({ text: label, rect: { x: 100 + i * 580, y: 780, w: 580, h: 90 }, at: 1.3 + i * 0.6, type: true, color });
+        });
+        s.packets({ path: ['r0', 'r1', 'r2'], curve: 'arc', bend: -90, at: 3.2, until: 6.8, every: 0.8, dur: 2.2, shape: 'box', size: 36, color: 'accent', track: true });
+        s.burst({ target: 'r2', at: 5.6, colors: ['good', 'accent'] });
+        s.particles({ mode: 'confetti', origin: [960, 400], at: 5.8, count: 70, dur: 2 });
       },
     }),
   ],

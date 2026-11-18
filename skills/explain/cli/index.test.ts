@@ -178,6 +178,12 @@ describe('builds per scene file (fresh by content hash)', () => {
     expect(existsSync(join(SKILL_DIR, 'examples/not-there'))).toBe(false);
   });
 
+  test('a target that is neither a folder nor a .js scene is a usage error', () => {
+    const d = temp('explain-mp4-');
+    writeFileSync(join(d, 'video.mp4'), '');
+    expect(() => resolveTarget(join(d, 'video.mp4'))).toThrow('not a scene file');
+  });
+
   test('a relative --out lands in the explainer folder, never the cwd', () => {
     const t = { dir: '/home/u/explainers/2026-11-17-demo', scene: '/x/scene.js' };
     expect(resolveOut('video.mp4', t)).toBe('/home/u/explainers/2026-11-17-demo/video.mp4');

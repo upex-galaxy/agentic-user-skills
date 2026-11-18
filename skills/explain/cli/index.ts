@@ -220,6 +220,7 @@ export function resolveTarget(arg: string | undefined): Target {
     t = { dir: p, scene };
   }
   else if (basename(p) === 'scene.js') { t = { dir: dirname(p), scene: p }; }
+  else if (!/\.[cm]?js$/.test(p)) { throw new UsageError(`${p} is not a scene file or an explainer folder (to cut a sheet or stills from the MP4, pass the folder or scene with --from-mp4)`); }
   else { t = { dir: explainerDir(basename(p).replace(/(?:\.scene)?\.[cm]?js$/, '')), scene: p }; }
   if (insideSkillDir(t.dir)) { throw new UsageError(`${t.dir} is inside the skill folder; pass a scene file (it builds under ${explainersRoot()}) or copy it to an explainer folder`); }
   return t;

@@ -20,15 +20,22 @@ Rules for scenes that read well on first view. Each rule has a number to hit and
 
 - **Use the whole frame, vertically too.** Every scene has three bands: the heading (`s.heading`, `y` 124 to 228), the content area (`s.area`, `y` 244 to 880) and the caption and footer below it. Leave `area` out: pieces center in the content area and the layout ones (`flow`, `stateMachine`, `architecture`, `timeline`, `row`, `grid`...) grow to fill about 80 % of it, so nothing hugs the top. Diagram on one side and explanation on the other, or one centered composition spanning the width.
 - `check` warns (`composition-balance`) when a half holds under 12 % of the content, the content covers under 28 % of the frame or spans under 30 % of its height, or its center of mass sits high or low. Treat any warning as a layout error; the usual fix is to delete a hand-placed `area` or make the nodes bigger (a row of 3 nodes wants `h` 300 to 400, not 140).
-- The heading, section tag, caption and footer are HUD: they stay put when the camera zooms, and the heading fades while zoomed.
+- The heading, section tag, caption, footer and `journeyRail` are HUD: they stay put when the camera zooms, and the heading and rail fade while zoomed.
 - Keep 24 px or more from every edge; target 80 px for anything that matters.
 - Do: three 480 x 300 nodes with 200 px gaps, no `area`. Don't: three 200 x 100 nodes in a corner, or an `area` that leaves the lower half empty.
+
+## Make everything move
+
+- **Every scene moves**, and each movement has a reason: an object that draws or enters, a mockup that types or clicks, packets that travel between icons, kinetic text, a camera move. A frozen scene is a slide; cut it or add the motion that explains it.
+- **One hero per scene.** One piece owns the eye (the editor, the counter, the pipeline); everything else supports it and enters after it.
+- **Row-shaped diagrams use the auto layouts.** For a row of nodes, a chain of steps or a grid, call `s.row`, `s.grid`, `flow` or `architecture` without `area`, so the group is centered and grows to the content area. Do not hand-place three small boxes in a corner.
+- **Pick the piece that moves for you.** `packets` instead of a static arrow, `pipeline` instead of boxes with check marks, `terminal` and `editor` instead of a code screenshot, `counter` instead of a typed number.
 
 ## Motion explains
 
 - **Reveal in reading order**: left to right, top to bottom, cause before effect. Space reveals by 0.3 to 0.6 s.
 - **Draw the connection after the things it connects**: an `edge` starts at least 0.3 s after both nodes are on screen.
-- **Move the camera to what is being said, then pull back**: `focus` 0.8 to 1 s, hold on the target, `reset` 0.6 to 0.8 s. Zoom between 1.4 and 2.2 (the automatic fit stops at 2.5; an explicit `zoom` is not capped, so keep it low). One camera move per scene is enough.
+- **Move the camera to what is being said, then pull back**: `focus` 0.8 to 1 s, hold on the target, `reset` 0.6 to 0.8 s. `focus` fits the target into the content area, so the zoom is capped and the caption never covers it; `zoom` is only a wish. Aim for 1.4 to 2.2. One camera move per scene is enough.
 - Use `pulse`, `highlight` and `travelDot` to point at the thing named in the caption at the moment it is named. Do: `pulse` the `db` node as the caption says "the database". Don't: pulse every node.
 - No motion without a reason: a decorative loop makes viewers look at the wrong thing.
 
@@ -37,7 +44,7 @@ Rules for scenes that read well on first view. Each rule has a number to hit and
 - **Labels 2 to 5 words. Captions under 12 words. No paragraphs.** One sentence per caption.
 - **No widows**: do not let the last line of a label be a single short word; rewrite the text or widen the rect. Do: "Claude loads the skill on demand". Don't: "Claude loads the skill on" / "demand".
 - Never an opening inverted question or exclamation mark; close questions and exclamations with `?` or `!` only. Do: "Cuando se carga la skill?". Don't: the same sentence opened with the inverted mark.
-- **Minimum readable size is 26 px in `sketch` and 18 px in `hologram`**; the engine will not shrink below it. If text gets that small, cut words or enlarge the shape instead of accepting it.
+- **Text is never tiny.** Rely on the preset's sizes (`s.style.defaults`): the engine fits text from them and will not shrink below the preset's `minPx` (30 in `sketch`, 20 in `poster`, 18 in `hologram`). If text gets that small, cut words or enlarge the shape instead of accepting it. Never set a fixed small `px`.
 - Write in the language of the request. Same language in headings, labels, captions and the footer prefix.
 - Section tag at the top-left of every scene (`01 / 07 Topic`), so a viewer who joins late knows where they are.
 
