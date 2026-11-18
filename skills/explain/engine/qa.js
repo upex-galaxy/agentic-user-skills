@@ -1,10 +1,16 @@
 // QA gate: runs over a set of sample times and reports problems as JSON.
-// Errors (fail the gate): out-of-bounds, overlap, text-overflow, opening-punctuation (¿ ¡ on screen), nondeterminism.
+// Errors (fail the gate): out-of-bounds, overlap, text-overflow, text-collision, parts-overlap, hud-overlap,
+// opening-punctuation (¿ ¡ on screen), nondeterminism.
 // Warnings: composition-balance (lopsided, tiny, flat or high/low content once a scene has settled; HUD furniture excluded), widow (a lone short word on a text block's last line).
 // Element rects are scene (world) coordinates; the camera transform at each sample time is applied before any check,
 // so bounds, overlaps and coverage are measured in frame (screen) pixels. HUD items (section tag, heading, caption,
 // footer) skip the camera: they are screen coordinates. While the camera is zoomed in (z > 1.05) or any move is running only its
-// focus target must stay in frame; everything else may be cropped on purpose.
+// focus target must stay in frame and clear of the HUD; everything else may be cropped or run under the HUD on purpose.
+//
+// Record (what an item's qa(api, t) returns): { rect, alpha, container?, contains?, host?, texts?: [{ text, rect,
+// overflow, px }], parts?: [{ id, rect, solid? }], overlap? (legacy blanket exemption), overlapWith? }. A container
+// owns what lies fully inside it; a record that only partly overlaps one is an error unless the container lists it
+// in `contains` or the record is hosted by it (`host` is the container id or `<id>.<sub>`).
 
 const OPENING = /[¿¡]/;
 const CELL = 40; // px, grid cell of the content-coverage measure
@@ -30,12 +36,40 @@ const inter = (a, b) => {
 const contains = (outer, inner, tol = 1) => inner.x >= outer.x - tol && inner.y >= outer.y - tol
   && inner.x + inner.w <= outer.x + outer.w + tol && inner.y + inner.h <= outer.y + outer.h + tol;
 
+const area = r => r.w * r.h;
+/** HUD record that fades out as the zoom comes in. The heading counts even when the sample does not carry the flag. */
+const zoomFades = r => r.zoomFade === true || r.kind === 'heading';
+/** The same string in the same box: an item reported twice draws over itself, which no viewer sees as a collision. */
+const sameText = (a, b) => a.text === b.text && ['x', 'y', 'w', 'h'].every(k => Math.abs(a.screen[k] - b.screen[k]) < 0.5);
+/** a was placed with `in:` into b (or into one of b's registered sub-rects such as `b.body`). */
+const hostedBy = (a, b) => typeof a.host === 'string' && (a.host === b.id || a.host.startsWith(`${b.id}.`));
+
 function exempt(a, b) {
   if (a.overlap === true || b.overlap === true) { return true; }
   if (a.overlapWith?.includes(b.id) || b.overlapWith?.includes(a.id)) { return true; }
-  if (a.container && (a.contains?.includes(b.id) || contains(a.rect, b.rect))) { return true; }
-  if (b.container && (b.contains?.includes(a.id) || contains(b.rect, a.rect))) { return true; }
+  if (a.contains?.includes(b.id) || b.contains?.includes(a.id)) { return true; }
+  if ((a.container && contains(a.rect, b.rect)) || (b.container && contains(b.rect, a.rect))) { return true; }
+  // The smaller of the two may sit partly over its host (a badge on a device edge, a pane over a window frame).
+  if (hostedBy(a, b) && area(a.rect) <= area(b.rect)) { return true; }
+  if (hostedBy(b, a) && area(b.rect) <= area(a.rect)) { return true; }
   return false;
+}
+
+/**
+ * Screen rects of the camera focus target: its record and its texts, or the solid/any part of a parent record whose
+ * id is a prefix of the target (`phone.screen` is part `screen` of `phone`) with the parent texts inside that part,
+ * or `cam.targetRect` (world) when the engine provides it. Empty when the target is not visible.
+ */
+function focusRects(recs, cam, view) {
+  const id = cam.target;
+  const own = recs.find(r => !r.hud && r.id === id);
+  if (own) { return own.texts.map(tx => tx.screen).concat([own.rect]).filter(Boolean); }
+  for (const r of recs) {
+    if (r.hud || !id.startsWith(`${r.id}.`)) { continue; }
+    const part = (r.parts ?? []).find(p => p.rect && (p.id === id || `${r.id}.${p.id}` === id));
+    if (part) { return [view(part.rect), ...r.texts.filter(tx => tx.rect && contains(part.rect, tx.rect, 1.5)).map(tx => tx.screen)]; }
+  }
+  return cam.targetRect ? [view(cam.targetRect)] : [];
 }
 
 /** Map a world rect to frame pixels through the camera state { x, y, z } (null camera = identity). */
@@ -116,18 +150,63 @@ export function runQA(engine, times, opts = {}) {
   let elements = 0;
   for (const t of samples) {
     for (const layer of engine.sample(t)) {
-      const recs = layer.records.filter(r => r.alpha > visible).map(r => ({ ...r, world: r.rect, rect: r.hud ? r.rect : toScreen(r.rect, layer.cam, W, H) }));
+      const cam = layer.cam;
+      const camBusy = Boolean(cam) && (cam.z > 1.05 || cam.moving);
+      const view = rect => toScreen(rect, cam, W, H);
+      const recs = layer.records.filter(r => r.alpha > visible).map((r) => {
+        const place = rect => (r.hud ? rect : view(rect));
+        // `screen` is the frame rect of each text (null when a piece reports a text without a box).
+        const texts = (r.texts ?? []).map(tx => ({ ...tx, screen: tx.rect ? place(tx.rect) : null }));
+        return { ...r, world: r.rect, rect: place(r.rect), texts };
+      });
       elements += recs.length;
       for (const r of recs) {
         const b = r.rect;
         // While the camera is off its home view or moving, it may crop everything except its focus target. HUD items
         // are screen space: they always have to stay inside the frame.
-        const zoomCrops = !r.hud && layer.cam && (layer.cam.z > 1.05 || layer.cam.moving) && r.id !== layer.cam.target;
-        if (!zoomCrops && (b.x < margin - 0.5 || b.y < margin - 0.5 || b.x + b.w > W - margin + 0.5 || b.y + b.h > H - margin + 0.5)) { flag('out-of-bounds', layer.name, r.id, t, `rect ${fmt(b)} leaves the ${margin}px safe area of ${W}x${H}${layer.cam && layer.cam.z !== 1 ? ' (after the camera)' : ''}`); }
-        for (const tx of r.texts ?? []) {
+        const zoomCrops = !r.hud && camBusy && r.id !== cam.target;
+        if (!zoomCrops && (b.x < margin - 0.5 || b.y < margin - 0.5 || b.x + b.w > W - margin + 0.5 || b.y + b.h > H - margin + 0.5)) { flag('out-of-bounds', layer.name, r.id, t, `rect ${fmt(b)} leaves the ${margin}px safe area of ${W}x${H}${cam && cam.z !== 1 ? ' (after the camera)' : ''}`); }
+        for (const tx of r.texts) {
+          if (OPENING.test(tx.text ?? '')) { flag('opening-punctuation', layer.name, r.id, t, `text contains an opening ¿ or ¡: "${tx.text}"`); }
           if (tx.overflow) { flag('text-overflow', layer.name, r.id, t, `text does not fit at the minimum size: "${tx.text}"`); }
           else if (!contains(r.world, tx.rect, 1.5)) { flag('text-overflow', layer.name, r.id, t, `text box ${fmt(tx.rect)} leaves its shape ${fmt(r.world)}`); }
           if (tx.rect?.widow) { widows.set(`${layer.name}|${r.id}|${tx.text}`, { scene: layer.name, id: r.id, text: tx.text }); }
+        }
+        // Two solid sub-elements of one composite (a phone's keyboard and its screen) must not overlap.
+        const solid = (r.parts ?? []).filter(p => p.solid === true && p.rect);
+        for (let i = 0; i < solid.length; i++) {
+          for (let j = i + 1; j < solid.length; j++) {
+            const pa = r.hud ? solid[i].rect : view(solid[i].rect);
+            const pb = r.hud ? solid[j].rect : view(solid[j].rect);
+            const x = inter(pa, pb);
+            if (x && x.w > minOverlapPx && x.h > minOverlapPx) { flag('parts-overlap', layer.name, r.id, t, `parts ${solid[i].id} ${fmt(pa)} and ${solid[j].id} ${fmt(pb)} overlap`); }
+          }
+        }
+      }
+      // Text collision: any two visible text boxes of the layer, the same record included and also when the records
+      // are allowed to overlap (a container and what sits inside it). HUD texts only meet HUD texts.
+      const pool = recs.flatMap(r => r.texts.filter(tx => tx.screen && tx.text).map(tx => ({ r, tx })));
+      for (let i = 0; i < pool.length; i++) {
+        for (let j = i + 1; j < pool.length; j++) {
+          const a = pool[i];
+          const b = pool[j];
+          if (a.r.hud !== b.r.hud || sameText(a.tx, b.tx)) { continue; }
+          const x = inter(a.tx.screen, b.tx.screen);
+          if (!x || x.w <= minOverlapPx || x.h <= minOverlapPx) { continue; }
+          const id = a.r.id === b.r.id ? a.r.id : [a.r.id, b.r.id].sort().join(' + ');
+          flag('text-collision', layer.name, id, t, `"${a.tx.text}" ${fmt(a.tx.screen)} collides with "${b.tx.text}" ${fmt(b.tx.screen)}`);
+        }
+      }
+      // HUD over the focus: while the camera is zoomed or moving, the target and its texts must stay clear of every
+      // visible HUD record except zoomFade ones (the heading fades out as the zoom comes in).
+      if (camBusy && cam.target) {
+        const focus = focusRects(recs, cam, view);
+        for (const h of recs.filter(r => r.hud && !zoomFades(r))) {
+          const hit = focus.find((f) => {
+            const x = inter(f, h.rect);
+            return x && x.w > minOverlapPx && x.h > minOverlapPx;
+          });
+          if (hit) { flag('hud-overlap', layer.name, `${cam.target} + ${h.id}`, t, `the camera target ${cam.target} ${fmt(hit)} sits under the HUD ${h.kind ?? 'item'} ${h.id} ${fmt(h.rect)} (zoom ${Math.round(cam.z * 100) / 100})`); }
         }
       }
       for (let i = 0; i < recs.length; i++) {
@@ -136,8 +215,9 @@ export function runQA(engine, times, opts = {}) {
           const b = recs[j];
           const x = inter(a.rect, b.rect);
           if (!x || x.w <= minOverlapPx || x.h <= minOverlapPx || exempt(a, b)) { continue; }
-          // HUD text drawn over a camera-moved scene is deliberate: the HUD is a layer above the view.
-          if (layer.cam && (layer.cam.z > 1.05 || layer.cam.moving) && a.hud !== b.hud) { continue; }
+          // The HUD over a camera-moved scene is a layer above the view: the camera may run world content under it.
+          // Only the focus target is checked against the HUD, by hud-overlap above.
+          if (camBusy && a.hud !== b.hud) { continue; }
           const small = Math.min(a.rect.w * a.rect.h, b.rect.w * b.rect.h);
           if (small > 0 && x.area / small > overlapRatio) { flag('overlap', layer.name, [a.id, b.id].sort().join(' + '), t, `${a.id} ${fmt(a.rect)} overlaps ${b.id} ${fmt(b.rect)} (${Math.round((x.area / small) * 100)}% of the smaller)`); }
         }

@@ -7,8 +7,7 @@ import { createEngine as createCore } from './core.js';
 import { createEngine, kit } from './index.js';
 import { clamp, ease, kf, prog, stagger, tween, val } from './math.js';
 import { installRoughStub, makeStubCtx } from './stub-ctx.ts';
-import hologram from './styles/hologram.js';
-import sketch from './styles/sketch.js';
+import { hologram, sketch } from './test-presets.ts';
 
 const build = (style: any, spec: any = (smoke)(kit)) => {
   const stub = makeStubCtx(0.55);

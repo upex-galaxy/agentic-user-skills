@@ -11,14 +11,14 @@
  * Exit codes: 0 ok | 1 runtime failure or QA errors | 2 usage error.
  * Bun and node: built-ins only, no install step.
  */
-import type { StyleName } from './build.ts';
 import type { PageInfo } from './headless.ts';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
-import { buildHash, buildPage, insideSkillDir, readBuildHash, sceneStyle, STYLES } from './build.ts';
+import { buildHash, buildPage, insideSkillDir, readBuildHash, scenePreset, SKILL_DIR } from './build.ts';
 import { exportVideo, stills, stillsFromMp4 } from './export.ts';
 import { inspectPage } from './headless.ts';
+import { findPreset, listPresets, loadPreset, newPreset, presetNames, promotePreset } from './presets.ts';
 import { summarizeReport } from './qa.ts';
 
 // ---------------------------------------------------------------------------
@@ -32,7 +32,7 @@ export interface ParsedArgs {
   flags: Record<string, string | true>
 }
 
-const VALUE_FLAGS = new Set(['style', 'title', 'at', 'out', 'bitrate']);
+const VALUE_FLAGS = new Set(['style', 'preset', 'title', 'at', 'out', 'bitrate', 'from', 'scene', 'cols', 'rows']);
 
 export function parseArgs(args: string[]): ParsedArgs {
   const positional: string[] = [];
@@ -79,10 +79,13 @@ export function explainerDir(slug: string, d = new Date()): string {
   return join(explainersRoot(), `${dateStamp(d)}-${clean}`);
 }
 
-export function parseStyle(value: string | true | undefined): StyleName | undefined {
+/** The --preset value (--style is an alias), validated against the discovered presets. */
+export function parsePreset(flags: Record<string, string | true>): string | undefined {
+  const value = flags.preset ?? flags.style;
   if (value === undefined) { return undefined; }
-  if (typeof value !== 'string' || !(STYLES as readonly string[]).includes(value)) { throw new UsageError(`--style must be one of: ${STYLES.join(', ')}`); }
-  return value as StyleName;
+  const names = presetNames();
+  if (typeof value !== 'string' || !names.includes(value)) { throw new UsageError(`--preset must be one of: ${names.join(', ')}`); }
+  return value;
 }
 
 /** Parse --bitrate in Mbps ("2.5") into bits per second; undefined keeps the engine default. */
@@ -179,17 +182,34 @@ export function resolveTarget(arg: string | undefined): Target {
   return t;
 }
 
-/** `--out`: an absolute path stays; a relative one is inside the explainer folder, never the cwd. */
-export function resolveOut(out: string | true | undefined, t: Target): string {
-  if (typeof out === 'string') { return isAbsolute(out) ? out : join(t.dir, out); }
-  return join(t.dir, `${slugify(basename(t.dir).replace(/^\d{4}-\d{2}-\d{2}-/, '')) || 'video'}.mp4`);
+/** `--out`: an absolute path stays; a relative one is inside the build folder (a one-off preset has its own), never the cwd. */
+export function resolveOut(out: string | true | undefined, t: Target, b?: { dir: string }): string {
+  const dir = b?.dir ?? t.dir;
+  if (typeof out === 'string') { return isAbsolute(out) ? out : join(dir, out); }
+  return join(dir, `${slugify(basename(t.dir).replace(/^\d{4}-\d{2}-\d{2}-/, '')) || 'video'}.mp4`);
 }
 
 const configFile = (dir: string) => join(dir, 'explain.json');
 
-function readConfig(dir: string): { style?: StyleName, title?: string } {
-  try { return JSON.parse(readFileSync(configFile(dir), 'utf8')) as { style?: StyleName, title?: string }; }
+interface Config { preset?: string, style?: string, title?: string }
+
+function readConfig(dir: string): Config {
+  try { return JSON.parse(readFileSync(configFile(dir), 'utf8')) as Config; }
   catch { return {}; }
+}
+
+/** One build of a target: the folder its page, stills and MP4 go to, and the preset it uses. */
+export interface Build {
+  dir: string
+  scene: string
+  preset: string
+  index: string
+}
+
+/** The preset a target uses when no flag is given: explain.json, then the scene file, then hologram. */
+export async function configuredPreset(t: Target): Promise<string> {
+  const cfg = readConfig(t.dir);
+  return cfg.preset ?? cfg.style ?? await scenePreset(t.scene) ?? 'hologram';
 }
 
 const log = (msg: string) => console.error(msg);
@@ -198,64 +218,68 @@ const log = (msg: string) => console.error(msg);
 // Commands
 // ---------------------------------------------------------------------------
 
-/** Style precedence: --style, explain.json, `export const style` in the scene, hologram. */
-export async function ensureBuilt(t: Target, style: StyleName | undefined, force = false): Promise<string> {
-  const index = join(t.dir, 'index.html');
-  const cfg = readConfig(t.dir);
-  const chosen = style ?? cfg.style ?? await sceneStyle(t.scene) ?? 'hologram';
-  if (!force && existsSync(index) && readBuildHash(index) === buildHash(t.scene, chosen)) { return index; }
-  const r = await buildPage({ scenePath: t.scene, style: chosen, outDir: t.dir });
-  if (style && style !== cfg.style) { writeFileSync(configFile(t.dir), `${JSON.stringify({ ...cfg, style }, null, 2)}\n`); }
-  log(`built ${r.indexHtml} (${(r.bytes / 1024 / 1024).toFixed(1)} MB, style ${chosen})`);
-  return r.indexHtml;
+/**
+ * Preset precedence: --preset, explain.json, `export const preset` in the scene, hologram. A --preset other than the
+ * configured one is a one-off: it builds into <dir>/presets/<name>/ and never rewrites explain.json (only `new` and
+ * `preset use` write it).
+ */
+export async function ensureBuilt(t: Target, preset: string | undefined, force = false): Promise<Build> {
+  const configured = await configuredPreset(t);
+  const chosen = preset ?? configured;
+  const dir = chosen === configured ? t.dir : join(t.dir, 'presets', chosen);
+  const index = join(dir, 'index.html');
+  if (!force && existsSync(index) && readBuildHash(index) === buildHash(t.scene, chosen)) { return { dir, scene: t.scene, preset: chosen, index }; }
+  const r = await buildPage({ scenePath: t.scene, preset: chosen, outDir: dir });
+  log(`built ${r.indexHtml} (${(r.bytes / 1024 / 1024).toFixed(1)} MB, preset ${chosen})`);
+  return { dir, scene: t.scene, preset: chosen, index: r.indexHtml };
 }
 
 function cmdNew(p: ParsedArgs): number {
   const slug = p.positional[0];
   if (!slug) { throw new UsageError('missing <slug>'); }
-  const style = parseStyle(p.flags.style) ?? 'hologram';
+  const preset = parsePreset(p.flags) ?? 'hologram';
   const title = typeof p.flags.title === 'string' ? p.flags.title : slug.replace(/[-_]+/g, ' ');
   const dir = explainerDir(slug);
   if (existsSync(join(dir, 'scene.js'))) { throw new UsageError(`already exists: ${join(dir, 'scene.js')}`); }
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'scene.js'), sceneTemplate(title));
-  writeFileSync(configFile(dir), `${JSON.stringify({ style, title }, null, 2)}\n`);
+  writeFileSync(configFile(dir), `${JSON.stringify({ preset, title }, null, 2)}\n`);
   console.log(join(dir, 'scene.js'));
   return 0;
 }
 
 async function cmdBuild(p: ParsedArgs): Promise<number> {
   const t = resolveTarget(p.positional[0]);
-  const index = await ensureBuilt(t, parseStyle(p.flags.style), true);
-  console.log(index);
+  const b = await ensureBuilt(t, parsePreset(p.flags), true);
+  console.log(b.index);
   return 0;
 }
 
-async function runCheck(t: Target, style: StyleName | undefined): Promise<{ info: PageInfo, index: string }> {
-  const index = await ensureBuilt(t, style);
-  const info = await inspectPage(readFileSync(index, 'utf8'));
+async function runCheck(t: Target, preset: string | undefined): Promise<{ info: PageInfo, build: Build }> {
+  const build = await ensureBuilt(t, preset);
+  const info = await inspectPage(readFileSync(build.index, 'utf8'));
   log(summarizeReport(info.qa));
-  return { info, index };
+  return { info, build };
 }
 
 async function cmdCheck(p: ParsedArgs): Promise<number> {
-  const { info } = await runCheck(resolveTarget(p.positional[0]), parseStyle(p.flags.style));
+  const { info } = await runCheck(resolveTarget(p.positional[0]), parsePreset(p.flags));
   console.log(JSON.stringify(info.qa, null, 2));
   return info.qa.errors.length > 0 || !info.qa.ok ? 1 : 0;
 }
 
 async function cmdStills(p: ParsedArgs): Promise<number> {
   const t = resolveTarget(p.positional[0]);
-  const index = await ensureBuilt(t, parseStyle(p.flags.style));
-  const html = readFileSync(index, 'utf8');
+  const b = await ensureBuilt(t, parsePreset(p.flags));
+  const html = readFileSync(b.index, 'utf8');
   const times = typeof p.flags.at === 'string' ? parseTimes(p.flags.at) : defaultStillTimes((await inspectPage(html)).scenes);
   let res: { files: string[], seconds: number };
   if (p.flags['from-mp4'] === true) {
-    const mp4 = resolveOut(p.flags.out, t);
+    const mp4 = resolveOut(p.flags.out, t, b);
     if (!existsSync(mp4)) { throw new UsageError(`no MP4 at ${mp4}: run export first (or pass its --out)`); }
-    res = await stillsFromMp4({ mp4, outDir: join(t.dir, 'stills', 'mp4'), times });
+    res = await stillsFromMp4({ mp4, outDir: join(b.dir, 'stills', 'mp4'), times });
   }
-  else { res = await stills({ html, outDir: join(t.dir, 'stills'), times }); }
+  else { res = await stills({ html, outDir: join(b.dir, 'stills'), times }); }
   for (const f of res.files.sort()) { console.log(f); }
   log(`${res.files.length} stills in ${res.seconds.toFixed(1)} s`);
   return res.files.length === times.length ? 0 : 1;
@@ -278,8 +302,9 @@ export async function verifyVideo(file: string): Promise<{ line: string, ok: boo
 
 async function cmdExport(p: ParsedArgs): Promise<number> {
   const t = resolveTarget(p.positional[0]);
-  const bitrate = parseBitrate(p.flags.bitrate);
-  const { info, index } = await runCheck(t, parseStyle(p.flags.style));
+  const { info, build } = await runCheck(t, parsePreset(p.flags));
+  // Bitrate precedence: --bitrate, the preset's export.bitrate, the engine default (2 Mbps).
+  const bitrate = parseBitrate(p.flags.bitrate) ?? (await loadPreset(findPreset(build.preset))).export.bitrate;
   if ((info.qa.errors.length > 0 || !info.qa.ok) && p.flags.force !== true) {
     log('Refusing to export: QA has errors. Fix them or pass --force.');
     return 1;
@@ -288,8 +313,8 @@ async function cmdExport(p: ParsedArgs): Promise<number> {
     log(`Refusing to export: the exporter writes 1920x1080 at 30 fps, and the spec asks for ${info.width}x${info.height} at ${info.fps} fps. Remove width, height and fps from the spec.`);
     return 1;
   }
-  const out = resolveOut(p.flags.out, t);
-  const res = await exportVideo({ html: readFileSync(index, 'utf8'), out, duration: info.duration, fps: info.fps, bitrate });
+  const out = resolveOut(p.flags.out, t, build);
+  const res = await exportVideo({ html: readFileSync(build.index, 'utf8'), out, duration: info.duration, fps: info.fps, bitrate });
   console.log(res.file);
   console.log(`duration ${info.duration.toFixed(1)} s, size ${(res.bytes / 1024 / 1024).toFixed(2)} MB, took ${res.seconds.toFixed(1)} s`);
   const v = await verifyVideo(res.file);
@@ -299,11 +324,68 @@ async function cmdExport(p: ParsedArgs): Promise<number> {
 
 async function cmdPreview(p: ParsedArgs): Promise<number> {
   const t = resolveTarget(p.positional[0]);
-  const index = await ensureBuilt(t, parseStyle(p.flags.style));
+  const { index } = await ensureBuilt(t, parsePreset(p.flags));
   const cmd = process.platform === 'darwin' ? ['open', index] : process.platform === 'win32' ? ['cmd', '/c', 'start', '', index] : ['xdg-open', index];
   Bun.spawn(cmd, { stdout: 'ignore', stderr: 'ignore' });
   console.log(index);
   return 0;
+}
+
+/** Run the preset check: validate, build the gallery scene in it, QA must pass. Returns the build. */
+export async function checkPreset(name: string): Promise<{ ok: boolean, build: Build, warnings: string[] }> {
+  const info = findPreset(name);
+  const resolved = await loadPreset(info);
+  const gallery = join(SKILL_DIR, 'examples', 'gallery.scene.js');
+  const scene = existsSync(gallery) ? gallery : join(SKILL_DIR, 'examples', 'smoke.scene.js');
+  const dir = join(explainersRoot(), 'preset-check', name);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(configFile(dir), `${JSON.stringify({ preset: name, title: `preset ${name}` }, null, 2)}\n`);
+  const t: Target = { dir, scene };
+  const { info: page, build } = await runCheck(t, undefined);
+  for (const w of resolved.warnings) { log(`preset ${name}: ${w}`); }
+  return { ok: page.qa.errors.length === 0 && page.qa.ok, build, warnings: resolved.warnings };
+}
+
+async function cmdPreset(p: ParsedArgs): Promise<number> {
+  const [sub, a, b] = p.positional;
+  switch (sub) {
+    case 'list': {
+      for (const x of listPresets()) {
+        const r = await loadPreset(x);
+        console.log(`${x.name.padEnd(14)} ${x.builtin ? 'built-in' : 'user    '}  ${r.description || ''}  ${x.dir}`);
+      }
+      return 0;
+    }
+    case 'new': {
+      if (!a) { throw new UsageError('missing <name>'); }
+      const from = typeof p.flags.from === 'string' ? p.flags.from : 'hologram';
+      console.log(newPreset(a, from));
+      return 0;
+    }
+    case 'check': {
+      if (!a) { throw new UsageError('missing <name>'); }
+      const r = await checkPreset(a);
+      console.log(r.build.index);
+      log(r.ok ? `preset ${a}: check passed` : `preset ${a}: QA errors (see above)`);
+      return r.ok ? 0 : 1;
+    }
+    case 'use': {
+      if (!a || !b) { throw new UsageError('usage: preset use <dir> <name>'); }
+      const t = resolveTarget(a);
+      findPreset(b);
+      writeFileSync(configFile(t.dir), `${JSON.stringify({ ...readConfig(t.dir), preset: b, style: undefined }, null, 2)}\n`);
+      console.log(configFile(t.dir));
+      return 0;
+    }
+    case 'promote': {
+      if (!a) { throw new UsageError('missing <name>'); }
+      const r = await checkPreset(a);
+      if (!r.ok) { log(`preset ${a}: not promoted, its check fails`); return 1; }
+      console.log(promotePreset(a));
+      return 0;
+    }
+    default: throw new UsageError('preset needs a subcommand: list | new | check | use | promote');
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -311,12 +393,13 @@ async function cmdPreview(p: ParsedArgs): Promise<number> {
 // ---------------------------------------------------------------------------
 
 const HELP: Record<string, string> = {
-  new: 'new <slug> [--style sketch|hologram] [--title "..."]\n  Create ~/explainers/<yyyy-mm-dd>-<slug>/scene.js from a 2-scene template; prints its path.',
-  build: 'build <dir|scene.js> [--style sketch|hologram]\n  Build the self-contained index.html into the explainer folder (a scene file other than scene.js builds into ~/explainers/<date>-<name>/); prints its path.',
-  check: 'check <dir|scene.js> [--style ...]\n  Build if needed, run the QA gate headless; QA JSON on stdout. Exit 1 on errors, 0 on warnings only.',
+  new: 'new <slug> [--preset <name>] [--title "..."]\n  Create ~/explainers/<yyyy-mm-dd>-<slug>/scene.js from a 2-scene template and explain.json with the preset; prints its path.',
+  build: 'build <dir|scene.js> [--preset <name>]\n  Build the self-contained index.html into the explainer folder (a scene file other than scene.js builds into ~/explainers/<date>-<name>/); prints its path. A --preset other than the configured one (explain.json, else the scene, else hologram) is a one-off build in <dir>/presets/<name>/; explain.json is never rewritten. --style is an alias of --preset.',
+  check: 'check <dir|scene.js> [--preset <name>]\n  Build if needed, run the QA gate headless; QA JSON on stdout. Exit 1 on errors, 0 on warnings only.',
   stills: 'stills <dir|scene.js> [--at 1,5,9] [--from-mp4 [--out video.mp4]]\n  PNGs to <dir>/stills/ (old ones replaced). Default: 2 per scene, at 40 % and 85 % of each scene. --from-mp4 cuts them from the exported MP4 with ffmpeg into <dir>/stills/mp4/.',
   export: 'export <dir|scene.js> [--out video.mp4] [--bitrate 2] [--force]\n  Run check (refuses on errors unless --force), export <dir>/<slug>.mp4 (a relative --out is inside <dir>), print path, duration, size, time; ffprobe verifies when available.',
-  preview: 'preview <dir>\n  Open index.html in the default browser.',
+  preview: 'preview <dir> [--preset <name>]\n  Open index.html in the default browser.',
+  preset: 'preset list | new <name> [--from sketch|hologram|poster] | check <name> | use <dir> <name> | promote <name>\n  Presets are the look of a video. list: built-in and user presets (~/.explain/presets, or EXPLAIN_PRESETS). new: copy one into the user folder with a README checklist. check: validate it, build the gallery scene in it, QA must pass. use: save it in the folder\'s explain.json. promote: copy a checked user preset into the skill (maintainers).',
 };
 
 const USAGE = `explain: scene.js -> index.html -> MP4
@@ -340,6 +423,7 @@ export async function main(argv: string[]): Promise<number> {
       case 'check': return await cmdCheck(p);
       case 'stills': return await cmdStills(p);
       case 'export': return await cmdExport(p);
+      case 'preset': return await cmdPreset(p);
       default: return await cmdPreview(p);
     }
   }

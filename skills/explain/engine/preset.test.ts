@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { contrast, definePreset, parseColor } from './preset.js';
-import hologram from './styles/hologram.js';
+import { hologram } from './test-presets.ts';
 
 const minimal = () => ({
   name: 'mini',
@@ -39,9 +39,14 @@ describe('definePreset', () => {
     expect(contrast('#000000', '#ffffff')).toBeCloseTo(21, 1);
   });
 
-  test('a legacy style object resolves and keeps its sweep as the transition hook', () => {
-    const p = definePreset(hologram);
+  test('a built-in preset resolves once and keeps its sweep hook', () => {
+    expect(definePreset(hologram)).toBe(hologram);
+    expect(typeof hologram.transitions.sweep).toBe('function');
+    expect(hologram.name).toBe('hologram');
+  });
+  test('a legacy object with a top-level sweep doubles it as the transition hook', () => {
+    const sweep = () => {};
+    const p = definePreset({ ...minimal(), sweep });
     expect(typeof p.transitions.sweep).toBe('function');
-    expect(p.name).toBe('hologram');
   });
 });

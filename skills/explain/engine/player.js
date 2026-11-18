@@ -11,6 +11,7 @@
 //   window.__ready                     -> true once fonts are loaded and the first frame is drawn
 import { createEngine, kit } from './index.js';
 import { detectLang } from './pieces/titles.js';
+import { definePreset } from './preset.js';
 import { runQA } from './qa.js';
 
 const LABELS = {
@@ -31,8 +32,9 @@ const mmss = (s) => {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 };
 
-export async function boot({ makeScene, style, loadExport }) {
+export async function boot({ makeScene, preset, loadExport }) {
   const $ = id => document.getElementById(id);
+  const style = definePreset(preset);
   const params = new URLSearchParams(location.search);
   const canvas = $('c');
   await loadFonts(style);

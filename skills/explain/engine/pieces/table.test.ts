@@ -3,8 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { createEngine } from '../core.js';
 import { runQA } from '../qa.js';
 import { installRoughStub, makeStubCtx } from '../stub-ctx.ts';
-import hologram from '../styles/hologram.js';
-import sketch from '../styles/sketch.js';
+import { hologram, sketch } from '../test-presets.ts';
 import { basePieces } from './base.js';
 
 import { columnWidths, pieces } from './table.js';

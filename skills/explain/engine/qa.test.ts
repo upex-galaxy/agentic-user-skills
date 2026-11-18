@@ -5,7 +5,7 @@ import smoke from '../examples/smoke.scene.js';
 import { createEngine, kit } from './index.js';
 import { countChanged, defaultTimes, probeDeterminism, probeTimes, runQA } from './qa.js';
 import { makeStubCtx } from './stub-ctx.ts';
-import hologram from './styles/hologram.js';
+import { hologram } from './test-presets.ts';
 
 const run = (build: (s: any) => void, dur = 4) => {
   const stub = makeStubCtx(0.55);
@@ -209,5 +209,179 @@ describe('raw items and QA', () => {
     expect(types(r)).toContain('opening-punctuation');
     expect(types(r)).toContain('out-of-bounds');
     expect(types(r)).not.toContain('overlap');
+  });
+});
+
+// ---- QA record contract: pure records through a fake engine (no canvas, no pieces) ----------------------------------
+
+interface Rect { x: number, y: number, w: number, h: number }
+const R = (x: number, y: number, w: number, h: number): Rect => ({ x, y, w, h });
+const rec = (id: string, rect: Rect, extra: any = {}) => ({ id, kind: 'node', hud: false, alpha: 1, rect, texts: [], ...extra });
+const txt = (text: string, rect: Rect) => ({ text, rect, overflow: false, px: 24 });
+const HOME = { x: 960, y: 540, z: 1, target: null, moving: false };
+const fakeEngine = (records: any[], cam: any = HOME, texts: any[] = []): any => ({
+  W: 1920,
+  H: 1080,
+  duration: 2,
+  scenes: [{ name: 's', start: 0, dur: 2, end: 2 }],
+  ctx: {},
+  sample: (t: number) => [{ index: 0, name: 's', lt: t, sa: 1, cam, records }],
+  texts: () => texts,
+});
+const gate = (records: any[], cam?: any, texts?: any[]) => runQA(fakeEngine(records, cam, texts), [1], { determinism: false });
+const ofType = (r: any, type: string) => r.errors.filter((e: any) => e.type === type);
+const phone = (extra: any = {}) => rec('phone', R(600, 200, 500, 700), { kind: 'phone', container: true, ...extra });
+
+describe('qa record: text-collision', () => {
+  test('two texts of one container that overlap are flagged, with both strings in the detail', () => {
+    const r = gate([phone({ texts: [txt('Hola', R(700, 300, 200, 40)), txt('Mundo', R(750, 310, 200, 40))] })]);
+    const hits = ofType(r, 'text-collision');
+    expect(hits.length).toBe(1);
+    expect(hits[0].id).toBe('phone');
+    expect(hits[0].detail).toContain('"Hola"');
+    expect(hits[0].detail).toContain('"Mundo"');
+    expect(r.ok).toBe(false);
+  });
+
+  test('texts of a record fully inside a container still count against the container texts', () => {
+    const r = gate([
+      phone({ texts: [txt('Título', R(650, 250, 300, 40))] }),
+      rec('row', R(640, 240, 400, 100), { texts: [txt('Fila', R(660, 255, 200, 40))] }),
+    ]);
+    expect(types(r)).not.toContain('overlap');
+    expect(ofType(r, 'text-collision').map((e: any) => e.id)).toEqual(['phone + row']);
+  });
+
+  test('texts that only touch, or overlap by minOverlapPx or less, pass', () => {
+    const touching = gate([phone({ texts: [txt('a', R(700, 300, 200, 40)), txt('b', R(700, 340, 200, 40))] })]);
+    expect(ofType(touching, 'text-collision')).toEqual([]);
+    const sliver = gate([phone({ texts: [txt('a', R(700, 300, 200, 40)), txt('b', R(700, 336, 200, 40))] })]);
+    expect(ofType(sliver, 'text-collision')).toEqual([]);
+  });
+
+  test('an item reported twice (same string, same box) is not a collision with itself', () => {
+    const twin = () => rec('n', R(700, 300, 300, 100), { texts: [txt('Igual', R(720, 320, 200, 40))] });
+    expect(ofType(gate([{ ...twin(), overlap: true }, { ...twin(), overlap: true }]), 'text-collision')).toEqual([]);
+  });
+
+  test('HUD texts only meet HUD texts', () => {
+    const world = rec('w', R(700, 900, 400, 100), { overlap: true, texts: [txt('mundo', R(720, 920, 300, 40))] });
+    const caption = rec('caption', R(600, 900, 700, 100), { kind: 'caption', hud: true, overlap: true, texts: [txt('subtítulo', R(700, 910, 400, 40))] });
+    expect(ofType(gate([world, caption]), 'text-collision')).toEqual([]);
+    const tag = rec('tag', R(600, 900, 700, 100), { kind: 'tag', hud: true, overlap: true, texts: [txt('etiqueta', R(800, 915, 300, 40))] });
+    expect(ofType(gate([caption, tag]), 'text-collision').map((e: any) => e.id)).toEqual(['caption + tag']);
+  });
+
+  test('every reported text goes through the opening-mark check', () => {
+    const r = gate([rec('n', R(700, 300, 400, 100), { texts: [txt('¡Listo!', R(720, 320, 200, 40))] })]);
+    expect(ofType(r, 'opening-punctuation').map((e: any) => e.id)).toEqual(['n']);
+  });
+});
+
+describe('qa record: containers, contains and hosts', () => {
+  test('a plain record partly overlapping a container is an overlap error', () => {
+    const r = gate([phone(), rec('badge', R(1050, 400, 150, 100))]);
+    expect(ofType(r, 'overlap').map((e: any) => e.id)).toEqual(['badge + phone']);
+  });
+
+  test('two containers that partly overlap are an error too', () => {
+    const r = gate([phone(), rec('laptop', R(1000, 300, 600, 400), { container: true })]);
+    expect(ofType(r, 'overlap').map((e: any) => e.id)).toEqual(['laptop + phone']);
+  });
+
+  test('a record hosted by the container (in: phone.screen or in: phone) may overlap it partly', () => {
+    for (const host of ['phone.screen', 'phone']) {
+      expect(ofType(gate([phone(), rec('badge', R(1050, 400, 150, 100), { host })]), 'overlap')).toEqual([]);
+    }
+    // A host id is matched whole: "phonebook" is not hosted by "phone".
+    expect(ofType(gate([phone(), rec('badge', R(1050, 400, 150, 100), { host: 'phonebook' })]), 'overlap').length).toBe(1);
+  });
+
+  test('a hosted record still may not partly overlap another container', () => {
+    const r = gate([phone(), rec('laptop', R(1200, 300, 600, 400), { container: true }), rec('badge', R(1050, 400, 200, 100), { host: 'phone.screen' })]);
+    expect(ofType(r, 'overlap').map((e: any) => e.id)).toEqual(['badge + laptop']);
+  });
+
+  test('a record fully inside a container passes, and so does one the container lists in contains', () => {
+    expect(ofType(gate([phone(), rec('row', R(650, 300, 400, 100))]), 'overlap')).toEqual([]);
+    expect(ofType(gate([phone({ contains: ['badge'] }), rec('badge', R(1050, 400, 150, 100))]), 'overlap')).toEqual([]);
+  });
+
+  test('legacy overlap: true still exempts every overlap check', () => {
+    expect(ofType(gate([phone(), rec('badge', R(1050, 400, 150, 100), { overlap: true })]), 'overlap')).toEqual([]);
+  });
+});
+
+describe('qa record: parts-overlap', () => {
+  test('two solid parts of one record that intersect are flagged; non-solid parts may overlap', () => {
+    const parts = [
+      { id: 'screen', rect: R(620, 220, 460, 500), solid: true },
+      { id: 'keyboard', rect: R(620, 700, 460, 180), solid: true },
+      { id: 'glare', rect: R(620, 220, 200, 600) },
+    ];
+    const hits = ofType(gate([phone({ parts })]), 'parts-overlap');
+    expect(hits.length).toBe(1);
+    expect(hits[0].id).toBe('phone');
+    expect(hits[0].detail).toContain('screen');
+    expect(hits[0].detail).toContain('keyboard');
+    const apart = [{ ...parts[0] }, { ...parts[1], rect: R(620, 730, 460, 150) }, parts[2]];
+    expect(ofType(gate([phone({ parts: apart })]), 'parts-overlap')).toEqual([]);
+  });
+});
+
+describe('qa record: hud-overlap', () => {
+  // Zoom 2 around the frame center: world card [860,540 200x200] lands on screen [760,540 400x400], bottom at 940.
+  const zoomed = { x: 960, y: 540, z: 2, target: 'card', moving: false };
+  const card = () => rec('card', R(860, 540, 200, 200), { texts: [txt('Tarjeta', R(880, 560, 160, 40))] });
+  const caption = (extra: any = {}) => rec('caption', R(200, 900, 1520, 80), { kind: 'caption', hud: true, ...extra });
+
+  test('the zoomed camera target under a caption is flagged', () => {
+    const hits = ofType(gate([card(), caption()], zoomed), 'hud-overlap');
+    expect(hits.map((e: any) => e.id)).toEqual(['card + caption']);
+    expect(hits[0].detail).toContain('zoom 2');
+  });
+
+  test('at rest the plain overlap check owns world vs HUD; a moving camera raises hud-overlap', () => {
+    const r = gate([card(), rec('tag', R(780, 560, 300, 60), { kind: 'tag', hud: true })], { ...zoomed, z: 1 }, []);
+    expect(ofType(r, 'hud-overlap')).toEqual([]); // camera at rest: the plain overlap check owns this case
+    expect(ofType(r, 'overlap').length).toBe(1);
+    const moving = gate([card(), caption()], { ...zoomed, moving: true });
+    expect(ofType(moving, 'hud-overlap').length).toBe(1);
+  });
+
+  test('a zoomFade heading over the target is not flagged', () => {
+    const heading = rec('heading', R(200, 600, 1520, 120), { kind: 'heading', hud: true, zoomFade: true });
+    expect(ofType(gate([card(), heading], zoomed), 'hud-overlap')).toEqual([]);
+    expect(ofType(gate([card(), { ...heading, kind: 'label', zoomFade: false }], zoomed), 'hud-overlap').length).toBe(1);
+  });
+
+  test('other world records under the HUD while zoomed stay allowed (the camera may crop them)', () => {
+    const side = rec('side', R(500, 760, 120, 60)); // screen [40,980 240x120]: cropped and under the caption
+    const r = gate([card(), side, caption({ rect: R(30, 960, 300, 80) })], zoomed);
+    expect(r.errors).toEqual([]);
+  });
+
+  test('an invisible caption or target is never flagged', () => {
+    expect(ofType(gate([card(), caption({ alpha: 0.01 })], zoomed), 'hud-overlap')).toEqual([]);
+    expect(ofType(gate([{ ...card(), alpha: 0 }, caption()], zoomed), 'hud-overlap')).toEqual([]);
+  });
+
+  test('a sub-id target (phone.screen) is resolved through the parent parts', () => {
+    // Zoom 2 around [850,550]: part screen [800,500 100x150] lands on [860,440 200x300], bottom at 740.
+    const cam = { x: 850, y: 550, z: 2, target: 'phone.screen', moving: false };
+    const dev = rec('phone', R(780, 300, 140, 500), { container: true, parts: [{ id: 'screen', rect: R(800, 500, 100, 150), solid: true }] });
+    expect(ofType(gate([dev, caption({ rect: R(200, 700, 1520, 80) })], cam), 'hud-overlap').map((e: any) => e.id)).toEqual(['phone.screen + caption']);
+    expect(ofType(gate([dev, caption({ rect: R(200, 900, 1520, 80) })], cam), 'hud-overlap')).toEqual([]);
+  });
+});
+
+describe('qa record: hud-overlap on a real engine', () => {
+  test('the heading of a real scene is never flagged under a zoomed target', () => {
+    const r = run((s) => {
+      s.heading({ text: 'Un título' });
+      s.node({ id: 'n', text: 'x', rect: { x: 760, y: 300, w: 400, h: 400 } });
+      s.camera.focus('n', 0.5, 0.5, { frame: 'full', zoom: 2, crop: true });
+    });
+    expect(types(r)).not.toContain('hud-overlap');
   });
 });

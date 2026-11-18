@@ -1,22 +1,22 @@
 // Bundle the engine and a scene into ONE self-contained index.html (works from file://, no network):
 // JS inlined, Rough.js inlined, fonts inlined as base64 @font-face, preview UI, export button.
-//   bun cli/build.ts <scene.js> --style sketch|hologram --out <dir>
+//   bun cli/build.ts <scene.js> --preset <name> --out <dir>
+import type { PresetInfo } from './presets.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { SKILL_DIR } from './paths.ts';
+import { faceFile, findPreset, loadPreset, presetFiles, presetNames } from './presets.ts';
 
-export const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+export { SKILL_DIR };
 const ENGINE_DIR = join(SKILL_DIR, 'engine');
 const VENDOR_DIR = join(SKILL_DIR, 'vendor');
 
-export const STYLES = ['sketch', 'hologram'] as const;
-export type StyleName = typeof STYLES[number];
-
 export interface BuildOptions {
   scenePath: string
-  style: StyleName
+  preset: string
   outDir: string
 }
 
@@ -29,9 +29,9 @@ export interface BuildResult {
 
 interface FontFace { family: string, file: string, weight: string }
 
-function fontCss(faces: FontFace[]): string {
+function fontCss(p: PresetInfo, faces: FontFace[]): string {
   return faces.map((f) => {
-    const b64 = readFileSync(join(VENDOR_DIR, f.file)).toString('base64');
+    const b64 = readFileSync(faceFile(p, f.file)).toString('base64');
     return `@font-face{font-family:"${f.family}";src:url(data:font/woff2;base64,${b64}) format("woff2");font-weight:${f.weight};font-style:normal}`;
   }).join('\n');
 }
@@ -64,14 +64,14 @@ function filesUnder(dir: string): string[] {
 }
 
 /**
- * Freshness key of a build: the scene's path and content, the style, and every engine, vendor and build file. A page
- * whose embedded key differs is rebuilt, whatever the mtimes say.
+ * Freshness key of a build: the scene's path and content, the preset name and every file of its folder, and every
+ * engine, vendor and build file. A page whose embedded key differs is rebuilt, whatever the mtimes say.
  */
-export function buildHash(scenePath: string, style: StyleName): string {
+export function buildHash(scenePath: string, preset: string): string {
   const h = createHash('sha256');
   const scene = resolve(scenePath);
-  h.update(`${scene}\0${style}\0`);
-  for (const f of [scene, fileURLToPath(import.meta.url), ...filesUnder(ENGINE_DIR), ...filesUnder(VENDOR_DIR)]) {
+  h.update(`${scene}\0${preset}\0`);
+  for (const f of [scene, fileURLToPath(import.meta.url), ...presetFiles(findPreset(preset)), ...filesUnder(ENGINE_DIR), ...filesUnder(VENDOR_DIR)]) {
     h.update(f);
     h.update('\0');
     h.update(readFileSync(f));
@@ -85,12 +85,14 @@ export function readBuildHash(indexHtml: string): string | null {
   catch { return null; }
 }
 
-/** `export const style = 'sketch'` in a scene file, or undefined. */
-export async function sceneStyle(scenePath: string): Promise<StyleName | undefined> {
-  const mod = await import(pathToFileURL(resolve(scenePath)).href) as { style?: string };
-  if (mod.style === undefined) { return undefined; }
-  if (!(STYLES as readonly string[]).includes(mod.style)) { throw new Error(`${scenePath}: export const style must be one of ${STYLES.join(', ')}, got "${mod.style}"`); }
-  return mod.style as StyleName;
+/** `export const preset = 'sketch'` (or the older `style`) in a scene file, or undefined. */
+export async function scenePreset(scenePath: string): Promise<string | undefined> {
+  const mod = await import(pathToFileURL(resolve(scenePath)).href) as { preset?: string, style?: string };
+  const name = mod.preset ?? mod.style;
+  if (name === undefined) { return undefined; }
+  const names = presetNames();
+  if (!names.includes(name)) { throw new Error(`${scenePath}: export const preset must be one of ${names.join(', ')}, got "${name}"`); }
+  return name;
 }
 
 function pageHtml(title: string, hash: string, css: string, rough: string, bundle: string): string {
@@ -119,15 +121,14 @@ body.still #bar{display:none}
 `;
 }
 
-/** Build the single-file page for `scenePath` in the given style and write outDir/index.html. */
-export async function buildPage({ scenePath, style, outDir }: BuildOptions): Promise<BuildResult> {
-  if (!STYLES.includes(style)) { throw new Error(`Unknown style "${style}" (use ${STYLES.join(' or ')})`); }
+/** Build the single-file page for `scenePath` in the given preset and write outDir/index.html. */
+export async function buildPage({ scenePath, preset, outDir }: BuildOptions): Promise<BuildResult> {
+  const info = findPreset(preset);
+  const resolved = await loadPreset(info);
   const scene = resolve(scenePath);
   if (!existsSync(scene)) { throw new Error(`Scene file not found: ${scene}`); }
   if (insideSkillDir(outDir)) { throw new Error(`Refusing to write build output inside the skill folder: ${resolve(outDir)}`); }
 
-  const styleFile = join(ENGINE_DIR, 'styles', `${style}.js`);
-  const styleMod = (await import(pathToFileURL(styleFile).href) as { default: { faces: FontFace[] } }).default;
   const sceneMod = await import(pathToFileURL(scene).href) as { title?: string };
   const title = sceneMod.title ?? basename(scene).replace(/\.scene\.js$|\.js$/, '');
 
@@ -142,15 +143,15 @@ export async function buildPage({ scenePath, style, outDir }: BuildOptions): Pro
     `import ${JSON.stringify(join(ENGINE_DIR, 'clock-boot.js'))};`,
     `import { boot } from ${JSON.stringify(join(ENGINE_DIR, 'player.js'))};`,
     `import makeScene from ${JSON.stringify(scene)};`,
-    `import style from ${JSON.stringify(styleFile)};`,
-    `boot({ makeScene, style, loadExport: ${loadExport} });`,
+    `import preset from ${JSON.stringify(info.file)};`,
+    `boot({ makeScene, preset, loadExport: ${loadExport} });`,
   ].join('\n');
 
   const built = await Bun.build({ entrypoints: [entry], files: { [entry]: source }, target: 'browser', format: 'esm', minify: false });
   if (!built.success) { throw new Error(`Bundle failed:\n${built.logs.map(l => String(l)).join('\n')}`); }
   const bundle = await built.outputs[0].text();
 
-  const html = pageHtml(title, buildHash(scene, style), fontCss(styleMod.faces), ROUGH_NOTICE + readFileSync(join(VENDOR_DIR, 'rough.min.js'), 'utf8'), bundle);
+  const html = pageHtml(title, buildHash(scene, preset), fontCss(info, resolved.faces), ROUGH_NOTICE + readFileSync(join(VENDOR_DIR, 'rough.min.js'), 'utf8'), bundle);
   mkdirSync(outDir, { recursive: true });
   const indexHtml = join(resolve(outDir), 'index.html');
   writeFileSync(indexHtml, html);
@@ -163,17 +164,17 @@ if (import.meta.main) {
     const i = args.indexOf(name);
     return i >= 0 ? args[i + 1] : undefined;
   };
-  const scenePath = args.find(a => !a.startsWith('--') && a !== flag('--style') && a !== flag('--out'));
-  const style = (flag('--style') ?? 'hologram') as StyleName;
+  const scenePath = args.find(a => !a.startsWith('--') && a !== flag('--preset') && a !== flag('--out'));
+  const preset = flag('--preset') ?? 'hologram';
   const outDir = flag('--out');
   if (!scenePath || !outDir) {
-    console.error('usage: bun cli/build.ts <scene.js> --style sketch|hologram --out <dir under your home>');
+    console.error('usage: bun cli/build.ts <scene.js> --preset <name> --out <dir under your home>');
     process.exit(2);
   }
   if (!resolve(outDir).startsWith(homedir())) {
     console.error(`Refusing to write outside your home directory: ${resolve(outDir)}`);
     process.exit(2);
   }
-  const r = await buildPage({ scenePath, style, outDir });
+  const r = await buildPage({ scenePath, preset, outDir });
   console.log(JSON.stringify({ indexHtml: r.indexHtml, bytes: r.bytes, title: r.title, hasExport: r.hasExport }));
 }

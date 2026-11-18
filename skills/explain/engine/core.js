@@ -97,7 +97,7 @@ function createBuilder({ ctx, style, W, H, pieces, name, lang, title }) {
       if (qa) {
         it.qa = (api, t) => {
           const rec = qa(api, t);
-          return rec ? { ...rec, rect: map(rec.rect), texts: (rec.texts ?? []).map(x => ({ ...x, rect: map(x.rect) })) } : rec;
+          return rec ? { ...rec, rect: map(rec.rect), texts: (rec.texts ?? []).map(x => ({ ...x, rect: map(x.rect) })), ...(rec.parts ? { parts: rec.parts.map(x => ({ ...x, rect: map(x.rect) })) } : {}) } : rec;
         };
       }
     }
@@ -107,7 +107,9 @@ function createBuilder({ ctx, style, W, H, pieces, name, lang, title }) {
     s[key] = (o = {}) => {
       const first = items.length;
       const known = new Set(reg.ids());
-      const item = s.add(fn(s, o));
+      // A piece may add its own item (older motion pieces do): add it once.
+      const made = fn(s, o);
+      const item = items.includes(made) ? made : s.add(made);
       if (FILL_PIECES.has(key) && o.fill !== false && !o.area && !o.rect) { fillItems(first, known); }
       return item;
     };
@@ -200,12 +202,12 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style: pre
       if (entering) {
         const prev = scenes[sc.index - 1];
         const p = lt / sc.trIn;
-        look = { ...look, ...transitionLook(prev.trOut, 'in', p, W, H) };
+        look = { ...look, ...transitionLook(prev.trOut, 'in', p, W, H), originFrom: prev.index };
         for (const name of transitionFx(prev.trOut)) { fx.push({ name, type: prev.trOut.type, p, spec: prev.trOut, from: prev.index }); }
       }
       if (leaving) {
         const p = (lt - (sc.dur - sc.tr)) / sc.tr;
-        look = { ...look, ...transitionLook(sc.trOut, 'out', p, W, H) };
+        look = { ...look, ...transitionLook(sc.trOut, 'out', p, W, H), originFrom: sc.index };
       }
       layers.push({ index: sc.index, name: sc.name, lt, ...look });
     }
@@ -226,7 +228,9 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style: pre
   function drawLayer(layer) {
     const sc = scenes[layer.index];
     const api = makeApi(layer.lt, layer.sa);
-    const [ox, oy] = originOf(sc, layer.origin, layer.lt);
+    // An id origin belongs to the LEAVING scene (where the zoom dives in), also for the entering layer.
+    const os = scenes[layer.originFrom ?? layer.index];
+    const [ox, oy] = originOf(os, layer.origin, os === sc ? layer.lt : os.dur);
     ctx.save();
     // Clips apply to the whole layer, HUD included.
     if (layer.wipe !== undefined) {
@@ -293,9 +297,11 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style: pre
       const records = [];
       for (const it of [...sc.items, ...sc.hud]) {
         const rec = it.qa?.(api, layer.lt);
-        if (rec) { records.push({ id: it.id, kind: it.kind, hud: it.hud === true, ...rec, alpha: rec.alpha * layer.sa }); }
+        if (rec) { records.push({ id: it.id, kind: it.kind, hud: it.hud === true, zoomFade: it.zoomFade === true, ...rec, alpha: rec.alpha * layer.sa }); }
       }
-      return { index: layer.index, name: layer.name, lt: layer.lt, sa: layer.sa, cam: { ...sc.camera.at(layer.lt), target: sc.camera.targetAt(layer.lt), moving: sc.camera.movingAt(layer.lt) }, records };
+      const target = sc.camera.targetAt(layer.lt);
+      const targetRect = target && sc.reg.has(target) ? sc.reg.get(target) : null;
+      return { index: layer.index, name: layer.name, lt: layer.lt, sa: layer.sa, cam: { ...sc.camera.at(layer.lt), target, targetRect, moving: sc.camera.movingAt(layer.lt) }, records };
     });
   }
 

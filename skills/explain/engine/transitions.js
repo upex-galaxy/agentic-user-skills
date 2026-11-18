@@ -9,6 +9,16 @@ import { clamp, ease, hexA, lerp } from './math.js';
 
 export const DEFAULT_TR = 0.6;
 
+/** Shift along `dir` as a fraction of the frame: v is the travel (-1 = one frame towards `dir`). */
+function shift(dir, v) {
+  switch (dir) {
+    case 'right': return { dx: -v };
+    case 'up': return { dy: v };
+    case 'down': return { dy: -v };
+    default: return { dx: v };
+  }
+}
+
 /** Built-in transitions. `out(p, spec, W, H)` / `in(p, spec, W, H)` return a look; `fx` names effects for the hooks. */
 export const TRANSITIONS = {
   'crossfade': {
@@ -28,6 +38,34 @@ export const TRANSITIONS = {
     out: () => ({ sa: 1 }),
     in: p => ({ sa: 1, wipe: ease.inOut(p) }),
     fx: ['edge'],
+  },
+  /** Dive into `origin` (an id of the leaving scene or [x, y]); the next scene grows out of the frame center. */
+  'zoom-through': {
+    out: (p, sp) => ({ sa: 1 - ease.in(clamp(p * 1.25)), scale: lerp(1, sp.zoom ?? 6, ease.in(p)), origin: sp.origin }),
+    in: (p, sp) => ({ sa: ease.out(clamp((p - 0.3) / 0.7)), scale: lerp(0.6, 1, ease.out(clamp((p - 0.2) / 0.8))), origin: sp.origin }),
+    fx: ['flash'],
+  },
+  /** Both scenes travel together like a film strip. `dir`: left (default) | right | up | down. */
+  'slide': {
+    out: (p, sp) => ({ sa: 1, ...shift(sp.dir, -ease.inOut(p)) }),
+    in: (p, sp) => ({ sa: 1, ...shift(sp.dir, 1 - ease.inOut(p)) }),
+  },
+  /** The next scene opens through a growing circle around `origin` (default the frame center). */
+  'iris': {
+    out: (_p, sp) => ({ sa: 1, origin: sp.origin }),
+    in: (p, sp) => ({ sa: 1, iris: ease.inOut(p), origin: sp.origin }),
+    fx: ['ring'],
+  },
+  /** The old scene drops away like a sheet off the desk; the new one rises with a small overshoot. */
+  'drop': {
+    out: p => ({ sa: 1 - ease.in(p), dy: ease.in(p) * 0.5, rot: ease.in(p) * 0.06 }),
+    in: p => ({ sa: ease.out(p), dy: -(1 - ease.back(p)) * 0.12 }),
+  },
+  /** A hard cut at the middle, torn by the preset's `glitch` hook; without one it is a plain cut. */
+  'glitch': {
+    out: p => ({ sa: p < 0.5 ? 1 : 0 }),
+    in: p => ({ sa: p < 0.5 ? 0 : 1 }),
+    fx: ['glitch'],
   },
 };
 

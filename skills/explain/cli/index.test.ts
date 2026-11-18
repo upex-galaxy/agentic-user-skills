@@ -1,10 +1,11 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, test } from 'bun:test';
 import { buildHash, buildPage, insideSkillDir, readBuildHash, SKILL_DIR } from './build.ts';
 import { findChrome } from './chrome.ts';
-import { dateStamp, defaultStillTimes, ensureBuilt, explainerDir, parseArgs, parseBitrate, parseStyle, parseTimes, resolveOut, resolveTarget, sceneTemplate, slugify, UsageError } from './index.ts';
+import { dateStamp, defaultStillTimes, ensureBuilt, explainerDir, parseArgs, parseBitrate, parsePreset, parseTimes, resolveOut, resolveTarget, sceneTemplate, slugify, UsageError } from './index.ts';
+import { listPresets, newPreset } from './presets.ts';
 
 const temps: string[] = [];
 /** A temp dir removed after the file's tests. */
@@ -45,10 +46,11 @@ describe('argument parsing', () => {
   test('missing value is a usage error', () => {
     expect(() => parseArgs(['--style'])).toThrow(UsageError);
   });
-  test('style and times validation', () => {
-    expect(parseStyle('hologram')).toBe('hologram');
-    expect(parseStyle(undefined)).toBeUndefined();
-    expect(() => parseStyle('neon')).toThrow(UsageError);
+  test('preset and times validation', () => {
+    expect(parsePreset({ preset: 'hologram' })).toBe('hologram');
+    expect(parsePreset({ style: 'sketch' })).toBe('sketch');
+    expect(parsePreset({})).toBeUndefined();
+    expect(() => parsePreset({ preset: 'neon' })).toThrow(UsageError);
     expect(parseTimes('1,5.5,9')).toEqual([1, 5.5, 9]);
     expect(() => parseTimes('a,2')).toThrow(UsageError);
   });
@@ -97,7 +99,7 @@ describe('template', () => {
     expect(path.startsWith(home)).toBe(true);
     expect(path.endsWith(`${dateStamp()}-demo-uno/scene.js`)).toBe(true);
     expect(readFileSync(path, 'utf8')).toContain('"Demo"');
-    expect(JSON.parse(readFileSync(join(path, '../explain.json'), 'utf8')).style).toBe('sketch');
+    expect(JSON.parse(readFileSync(join(path, '../explain.json'), 'utf8')).preset).toBe('sketch');
     expect((await run(['new', 'Demo Uno'], home)).code).toBe(2);
   });
   test('usage errors exit 2, help exits 0', async () => {
@@ -124,8 +126,8 @@ describe('builds per scene file (fresh by content hash)', () => {
       const b = resolveTarget(join(src, 'beta.scene.js'));
       expect(a.dir).toBe(join(home, `${dateStamp()}-alpha`));
       expect(b.dir).toBe(join(home, `${dateStamp()}-beta`));
-      const ia = readFileSync(await ensureBuilt(a, undefined), 'utf8');
-      const ib = readFileSync(await ensureBuilt(b, undefined), 'utf8');
+      const ia = readFileSync((await ensureBuilt(a, undefined)).index, 'utf8');
+      const ib = readFileSync((await ensureBuilt(b, undefined)).index, 'utf8');
       expect(ia).toContain('alpha-scene');
       expect(ia).not.toContain('beta-scene');
       expect(ib).toContain('beta-scene');
@@ -139,7 +141,7 @@ describe('builds per scene file (fresh by content hash)', () => {
     const scene = join(dir, 'scene.js');
     writeFileSync(scene, sceneSrc('one'));
     const t = resolveTarget(dir);
-    const index = await ensureBuilt(t, undefined);
+    const { index } = await ensureBuilt(t, undefined);
     utimesSync(index, new Date(2000, 0, 1), new Date(2000, 0, 1));
     const old = statSync(index).mtimeMs;
     utimesSync(scene, new Date(), new Date());
@@ -152,14 +154,14 @@ describe('builds per scene file (fresh by content hash)', () => {
     // A fresh path: the scene module is imported once per process.
     const styled = temp('explain-style-');
     writeFileSync(join(styled, 'scene.js'), sceneSrc('three', 'export const style = \'sketch\';\n'));
-    const si = await ensureBuilt(resolveTarget(styled), undefined);
+    const si = (await ensureBuilt(resolveTarget(styled), undefined)).index;
     expect(readBuildHash(si)).toBe(buildHash(join(styled, 'scene.js'), 'sketch'));
   });
 
   test('nothing is ever written inside the skill folder', async () => {
     expect(insideSkillDir(join(SKILL_DIR, 'examples', 'not-there'))).toBe(true);
     expect(insideSkillDir(temp('explain-out-'))).toBe(false);
-    const err = await buildPage({ scenePath: join(SKILL_DIR, 'examples/smoke.scene.js'), style: 'hologram', outDir: join(SKILL_DIR, 'examples/not-there') }).then(() => null, (e: Error) => e);
+    const err = await buildPage({ scenePath: join(SKILL_DIR, 'examples/smoke.scene.js'), preset: 'hologram', outDir: join(SKILL_DIR, 'examples/not-there') }).then(() => null, (e: Error) => e);
     expect(err?.message).toContain('skill folder');
     expect(existsSync(join(SKILL_DIR, 'examples/not-there'))).toBe(false);
   });
@@ -169,6 +171,58 @@ describe('builds per scene file (fresh by content hash)', () => {
     expect(resolveOut('video.mp4', t)).toBe('/home/u/explainers/2026-11-17-demo/video.mp4');
     expect(resolveOut('/tmp/v.mp4', t)).toBe('/tmp/v.mp4');
     expect(resolveOut(undefined, t)).toBe('/home/u/explainers/2026-11-17-demo/demo.mp4');
+  });
+});
+
+describe('presets (one-off builds, user presets)', () => {
+  test('a --preset other than the configured one builds in <dir>/presets/<name>/ and leaves explain.json byte-identical', async () => {
+    const dir = temp('explain-oneoff-');
+    writeFileSync(join(dir, 'scene.js'), sceneSrc('oneoff'));
+    const cfg = '{\n  "preset": "hologram",\n  "title": "x"\n}\n';
+    writeFileSync(join(dir, 'explain.json'), cfg);
+    const t = resolveTarget(dir);
+    const main = await ensureBuilt(t, undefined);
+    expect(main.dir).toBe(dir);
+    const one = await ensureBuilt(t, 'sketch');
+    expect(one.dir).toBe(join(dir, 'presets', 'sketch'));
+    expect(existsSync(one.index)).toBe(true);
+    expect(readFileSync(join(dir, 'explain.json'), 'utf8')).toBe(cfg);
+    expect((await ensureBuilt(t, 'hologram')).dir).toBe(dir);
+  });
+
+  test('preset new copies a built-in, list shows it, an edited accent rebuilds', async () => {
+    const presets = temp('explain-presets-');
+    process.env.EXPLAIN_PRESETS = presets;
+    try {
+      const dir = newPreset('foo', 'hologram');
+      expect(dir).toBe(join(presets, 'foo'));
+      expect(existsSync(join(dir, 'README.md'))).toBe(true);
+      expect(listPresets().map(p => p.name)).toEqual(expect.arrayContaining(['sketch', 'hologram', 'foo']));
+      expect(() => newPreset('foo', 'hologram')).toThrow('already exists');
+      const work = temp('explain-foo-');
+      writeFileSync(join(work, 'scene.js'), sceneSrc('foo'));
+      const t = resolveTarget(work);
+      const first = await ensureBuilt(t, 'foo');
+      const h1 = readBuildHash(first.index);
+      const file = join(dir, 'preset.js');
+      writeFileSync(file, readFileSync(file, 'utf8').replace(/accent: '#[0-9a-f]{6}'/i, 'accent: \'#ff8800\''));
+      const second = await ensureBuilt(t, 'foo');
+      expect(readBuildHash(second.index)).not.toBe(h1);
+      expect(readFileSync(second.index, 'utf8')).toContain('#ff8800');
+      expect(() => parsePreset({ preset: 'foo' })).not.toThrow();
+    }
+    finally { delete process.env.EXPLAIN_PRESETS; }
+  });
+
+  test('a user preset may not reuse a built-in name', () => {
+    const presets = temp('explain-clash-');
+    process.env.EXPLAIN_PRESETS = presets;
+    try {
+      mkdirSync(join(presets, 'sketch'));
+      writeFileSync(join(presets, 'sketch', 'preset.js'), 'export default () => ({});\n');
+      expect(() => listPresets()).toThrow('built-in name');
+    }
+    finally { delete process.env.EXPLAIN_PRESETS; }
   });
 });
 

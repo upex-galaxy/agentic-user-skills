@@ -4,8 +4,7 @@ import { createEngine } from '../core.js';
 import { kit } from '../index.js';
 import { defaultTimes, runQA } from '../qa.js';
 import { installRoughStub, makeStubCtx } from '../stub-ctx.ts';
-import hologram from '../styles/hologram.js';
-import sketch from '../styles/sketch.js';
+import { hologram, sketch } from '../test-presets.ts';
 import { basePieces } from './base.js';
 
 export const STYLES = [['hologram', hologram], ['sketch', sketch]] as const;

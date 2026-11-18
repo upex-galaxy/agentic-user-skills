@@ -7,8 +7,7 @@ import { placeTransitionLabels } from './pieces/state.js';
 import { detectLang } from './pieces/titles.js';
 import { runQA } from './qa.js';
 import { makeStubCtx } from './stub-ctx.ts';
-import hologram from './styles/hologram.js';
-import sketch from './styles/sketch.js';
+import { hologram, sketch } from './test-presets.ts';
 
 const make = (build: (s: any) => void, spec: any = {}, dur = 6) => {
   const stub = makeStubCtx(0.55);
