@@ -450,6 +450,7 @@ export function prPage(s, o) {
     vis,
     end,
     marks: { ...(hasButton && { open: openAt }), ...(ready < Infinity && { ready }), ...(mergeAt < Infinity && { merge: mergeAt }) },
+    cues: mergeAt < Infinity ? [{ t: mergeAt, kind: 'success' }] : undefined,
     parts: t => [
       { id: 'badge', rect: badge, solid: true },
       { id: 'status', rect: badge },

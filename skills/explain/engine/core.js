@@ -3,9 +3,12 @@
 // No wall-clock is read anywhere in this file.
 import { bands, fillScale } from './bands.js';
 import { createCamera } from './camera.js';
+import { checkSound } from './kit.js';
 import { createRegistry, grid, radial, rectCenter, row, stack, tree, union } from './layout.js';
 import { clamp } from './math.js';
+import { cueId, fitDur, layoutCues, sayOf } from './narration.js';
 import { definePreset } from './preset.js';
+import { SOUND_KINDS, transitionSound } from './sound-kinds.js';
 import { drawFx, parseTransition, transitionFx, transitionLook, TRANSITIONS } from './transitions.js';
 
 export * from './math.js';
@@ -23,9 +26,10 @@ export function scene(def) {
   return def;
 }
 
-function createBuilder({ ctx, style, W, H, pieces, name, lang, title }) {
+function createBuilder({ ctx, style, W, H, pieces, name, lang, title, voice }) {
   const reg = createRegistry();
   const items = [];
+  const sfxList = [];
   const counters = {};
   const area = bands(W, H).area;
   const s = {
@@ -39,6 +43,9 @@ function createBuilder({ ctx, style, W, H, pieces, name, lang, title }) {
     area,
     lang,
     title,
+    sfxList,
+    /** The scene's narration windows in scene-local seconds: [{ at, end, text }] (estimated lengths when voice is off). */
+    voice,
     camera: createCamera({ W, H, resolve: id => reg.get(id), area }),
     uid(prefix) {
       counters[prefix] = (counters[prefix] ?? 0) + 1;
@@ -64,6 +71,11 @@ function createBuilder({ ctx, style, W, H, pieces, name, lang, title }) {
         texts: () => texts,
         ...(rect ? { rect, qa: () => ({ rect, alpha: 1, overlap: true }) } : {}),
       });
+    },
+    /** Explicit sound effect: { kind, at = 0, gain = 1, pan = 0 }. `kind` is one of SOUND_KINDS. */
+    sfx(o = {}) {
+      if (!SOUND_KINDS.includes(o.kind)) { throw new Error(`sfx: unknown kind "${o.kind}". Use one of: ${SOUND_KINDS.join(', ')}`); }
+      sfxList.push({ kind: o.kind, at: o.at ?? 0, gain: o.gain ?? 1, pan: o.pan ?? 0 });
     },
     /** Connect two registered ids: { pts, from, to, length }. */
     connect: (from, to, opts) => reg.connect(from, to, opts),
@@ -112,6 +124,9 @@ function createBuilder({ ctx, style, W, H, pieces, name, lang, title }) {
       // A piece may add its own item (older motion pieces do): add it once.
       const made = fn(s, o);
       const item = items.includes(made) ? made : s.add(made);
+      // Items built without piece() still carry their `at` and `sound` option for engine.events().
+      if (item.at === undefined) { item.at = o.at ?? 0; }
+      if (item.sound === undefined && o.sound !== undefined) { item.sound = checkSound(o.sound, `${key} "${item.id}"`); }
       if (FILL_PIECES.has(key) && o.fill !== false && !o.area && !o.rect) { fillItems(first, known); }
       return item;
     };
@@ -123,9 +138,10 @@ function createBuilder({ ctx, style, W, H, pieces, name, lang, title }) {
  * Build the engine from a scene spec: { width?, height?, fps?, scenes: [{ name, dur, transition?, build(s) }] }.
  * `transition` is the transition INTO the next scene: a type name (engine/transitions.js) or { type, dur, ...params }.
  * `style` is a preset factory or a resolved preset (engine/preset.js). Call it after fonts are loaded: text is fitted
- * at build time.
+ * at build time. `narration` is undefined (voice off) or { cues: [{ id, seconds }] } (voice on): a scene with `say` then
+ * stretches to fit its clips (unless `fit: false`) and its builder reads the cue windows as `s.voice`.
  */
-export function createEngine({ canvas, ctx = canvas.getContext('2d'), style: preset, spec, pieces = {} }) {
+export function createEngine({ canvas, ctx = canvas.getContext('2d'), style: preset, spec, pieces = {}, narration }) {
   const style = definePreset(preset);
   const W = spec.width ?? 1920;
   const H = spec.height ?? 1080;
@@ -136,16 +152,22 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style: pre
   }
   if (!spec.scenes?.length) { throw new Error('Scene spec has no scenes'); }
 
+  const clipSeconds = new Map((narration?.cues ?? []).map(c => [c.id, c.seconds]));
   const scenes = spec.scenes.map((def, i) => {
     if (!(def.dur > 0)) { throw new Error(`Scene ${i} needs a positive dur`); }
     const name = def.name ?? `scene-${i + 1}`;
-    const s = createBuilder({ ctx, style, W, H, pieces, name, lang: spec.lang, title: spec.title });
+    // Narration windows come first: they set the scene's effective duration and reach the builder as s.voice.
+    const trIn = i > 0 ? parseTransition(spec.scenes[i - 1].transition).dur : 0;
+    const layout = layoutCues(sayOf(def, name).map((c, n) => ({ ...c, id: cueId(i, n) })), { trIn, seconds: id => clipSeconds.get(id) });
+    const trOutNominal = i < spec.scenes.length - 1 ? parseTransition(def.transition).dur : 0;
+    const dur = narration && def.fit !== false ? fitDur(def.dur, layout, trOutNominal) : def.dur;
+    const s = createBuilder({ ctx, style, W, H, pieces, name, lang: spec.lang, title: spec.title, voice: layout.map(c => ({ at: c.at, end: c.end, text: c.text })) });
     try { def.build(s); }
     catch (e) { throw new Error(`Scene "${name}": ${e instanceof Error ? e.message : e}`, { cause: e }); }
     const sorted = s.items.map((it, n) => ({ it, n })).sort((a, b) => (a.it.z ?? 0) - (b.it.z ?? 0) || a.n - b.n).map(x => x.it);
     const items = sorted.filter(it => !it.hud);
     const hud = sorted.filter(it => it.hud);
-    return { index: i, name, dur: def.dur, items, hud, camera: s.camera, reg: s.reg, trOut: parseTransition(def.transition), start: 0, trIn: 0 };
+    return { index: i, name, dur, items, hud, camera: s.camera, reg: s.reg, trOut: parseTransition(def.transition), start: 0, trIn: 0, sfx: s.sfxList, layout };
   });
 
   // Timeline: scene i+1 starts when scene i enters its outgoing window.
@@ -318,6 +340,29 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style: pre
     });
   }
 
+  /**
+   * Every sound event of the built scene graph, sorted by time then id: [{ t, scene, sceneIndex, id, kind, gain, pan }]
+   * with t in global seconds. Pure: the same scene spec gives the same list. Coalescing and density caps are the mixer's job.
+   */
+  function events() {
+    const out = [];
+    const panOf = it => (it.rect ? (rectCenter(it.rect)[0] / W) * 0.6 - 0.3 : 0);
+    for (const sc of scenes) {
+      const add = (id, local, kind, gain, pan) => {
+        if (local < 0 || local > sc.dur) { return; }
+        out.push({ t: sc.start + local, scene: sc.name, sceneIndex: sc.index, id, kind, gain, pan });
+      };
+      if (sc.index < scenes.length - 1 && sc.tr > 0) { out.push({ t: sc.start + sc.dur - sc.tr, scene: sc.name, sceneIndex: sc.index, id: `transition:${sc.name}`, kind: transitionSound(sc.trOut.type), gain: 0.7, pan: 0 }); }
+      for (const it of [...sc.items, ...sc.hud]) {
+        if (it.sound === false) { continue; }
+        (it.cues ?? []).forEach((c, n) => add(`${sc.name}:${it.id}:cue${n}`, c.t, c.kind, c.gain ?? 1, panOf(it)));
+        if (it.sound === true || typeof it.sound === 'string') { add(`${sc.name}:${it.id}:sound`, it.at ?? 0, it.sound === true ? 'pop' : it.sound, 1, panOf(it)); }
+      }
+      sc.sfx.forEach((e, n) => add(`${sc.name}:sfx${n}`, e.at, e.kind, e.gain, e.pan));
+    }
+    return out.sort((a, b) => a.t - b.t || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  }
+
   /** Every text string of every element, regardless of time (for static checks such as the ¿ ¡ rule). */
   function texts() {
     const out = [];
@@ -342,5 +387,8 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style: pre
     state,
     sample,
     texts,
+    events,
+    narrated: Boolean(narration),
+    voice: scenes.flatMap(sc => sc.layout.map(c => ({ id: c.id, scene: sc.name, sceneIndex: sc.index, t: sc.start + c.at, at: c.at, end: c.end, seconds: c.seconds, text: c.text, estimated: c.estimated }))),
   };
 }

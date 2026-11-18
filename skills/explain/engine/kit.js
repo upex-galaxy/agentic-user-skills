@@ -2,6 +2,7 @@
 // piece() item factory. Everything draws through the active style (shape, line, poly, text, fill, dot) or through
 // color tokens, so a piece written with this kit renders in any preset.
 import { clamp, ease, lerp, prog } from './math.js';
+import { SOUND_KINDS } from './sound-kinds.js';
 import { measure } from './text.js';
 
 export const TAU = Math.PI * 2;
@@ -264,12 +265,21 @@ export function drawT(api, sp, o = {}) {
   api.style.text(api, str, (typing ? sp.rect.x : sp.x) + (o.dx ?? 0), sp.y + (o.dy ?? 0), { px: sp.px, role: sp.role, weight: sp.weight, color: o.color ?? sp.color, align: typing ? 'left' : sp.align, alpha: o.alpha ?? 1, glow: o.glow });
 }
 
+// ---- sound options ------------------------------------------------------------------------------------------------
+
+/** Validate a `sound` option (true | false | a kind string, or undefined); returns it. Throws naming the kinds. */
+export function checkSound(v, what = 'sound') {
+  if (v === undefined || typeof v === 'boolean' || SOUND_KINDS.includes(v)) { return v; }
+  throw new Error(`${what}: unknown sound "${v}". Use true, false or one of: ${SOUND_KINDS.join(', ')}`);
+}
+
 // ---- piece factory ------------------------------------------------------------------------------------------------
 
 /**
  * Wrap a piece definition into an engine item. def: kind, rect, draw(api, t), tk, texts, vis(t), z, hud, zoomFade, end,
- * marks, parts(t), contains, container (default true), qa (false | fn), extra. Registers rect under the id unless a
- * layout did; default vis is 0 before o.at, 1 after, fading out over 0.35 s from o.until.
+ * marks, parts(t), contains, container (default true), qa (false | fn), extra, cues ([{ t, kind, gain? }]: sound cues in
+ * scene-local seconds). Registers rect under the id unless a layout did; default vis is 0 before o.at, 1 after, fading
+ * out over 0.35 s from o.until. The item keeps o.at, o.sound (true | false | a sound kind) and the cues for engine.events().
  */
 export function piece(s, o, def) {
   const id = o.id ?? s.uid(def.kind);
@@ -290,6 +300,9 @@ export function piece(s, o, def) {
     },
     texts: () => [...(tk ? tk.strings() : []), ...extraTexts],
   };
+  item.at = at;
+  if (o.sound !== undefined) { item.sound = checkSound(o.sound, `${def.kind} "${id}"`); }
+  if (def.cues) { item.cues = def.cues; }
   const zoomFade = o.zoomFade ?? def.zoomFade;
   if (zoomFade !== undefined) { item.zoomFade = zoomFade; }
   if (def.end !== undefined) { item.end = def.end; }

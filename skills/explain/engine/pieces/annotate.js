@@ -99,6 +99,7 @@ export function kineticText(s, o) {
     texts: source.map(l => l.map(w => w.text).join(' ')),
     vis,
     end,
+    cues: mode === 'slam' || mode === 'drop' ? words.map(w => ({ t: w.start, kind: 'hit' })) : undefined,
     extra: { px, words: words.map(w => ({ text: w.text, emph: w.emph, color: w.color, x: w.x, cy: w.cy, w: w.w, start: w.start })) },
     draw(api, t) {
       words.forEach((wd, i) => {
@@ -261,6 +262,7 @@ export function stamp(s, o) {
     rect,
     tk,
     end: at + 0.6,
+    cues: [{ t: at + 0.22, kind: 'stamp' }],
     draw(api, t) {
       const k = prog(t, at, 0.22);
       if (k <= 0) { return; }

@@ -101,6 +101,7 @@ export function pipeline(s, o) {
     texts: stages.flatMap(st => st.jobs.map(j => clock(j.secs))),
     end: endAll,
     marks: { stageEnd: Object.fromEntries(stages.map(st => [st.name, st.end])) },
+    cues: stages.flatMap(st => st.jobs.filter(j => !j.ok).map(j => ({ t: j.end, kind: 'fail' }))),
     parts,
     qa: (_api, t) => record(rect, o, t < at ? 0 : 1, [
       ...tk.qa(t),

@@ -38,8 +38,8 @@ export const allPieces = families.reduce((acc, fam) => {
   return acc;
 }, {});
 
-export function createEngine({ canvas, ctx, style, spec }) {
-  return create({ canvas, ctx, style, spec, pieces: allPieces });
+export function createEngine({ canvas, ctx, style, spec, narration }) {
+  return create({ canvas, ctx, style, spec, pieces: allPieces, narration });
 }
 
 export { basePieces };

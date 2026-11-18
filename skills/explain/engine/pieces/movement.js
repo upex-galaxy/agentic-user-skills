@@ -91,6 +91,7 @@ export function packets(s, o) {
     qa: false,
     vis: () => 1,
     end: last + (pingOn ? pingDur : 0),
+    cues: o.ping === true ? Array.from({ length: count }, (_, n) => ({ t: at + n * every + dur, kind: 'blip' })) : undefined,
     extra: { pts, arriveAt: at + dur, positions },
     draw(api, t) {
       const out = o.fadeAt === undefined ? 1 : 1 - prog(t, o.fadeAt, 0.4);
@@ -189,6 +190,7 @@ export function particles(s, o = {}) {
     qa: false,
     vis: () => 1,
     end: mode === 'ambient' ? (o.until ?? at) : at + dur + (mode === 'confetti' ? dur * 0.4 : 0.12),
+    cues: mode === 'burst' || mode === 'confetti' ? [{ t: at, kind: 'sparkle' }] : undefined,
     extra: { sample },
     draw(api, t) {
       const { ctx } = api;
@@ -235,6 +237,7 @@ export function burst(s, o) {
     qa: false,
     vis: () => 1,
     end: at + dur + 0.15,
+    cues: [{ t: at, kind: 'sparkle' }],
     draw(api, t) {
       for (const p of parts) {
         const k = prog(t, at + p.d, dur);

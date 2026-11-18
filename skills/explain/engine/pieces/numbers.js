@@ -14,6 +14,14 @@ export function formatNumber(v, { decimals = 0, prefix = '', suffix = '', sep = 
   return `${prefix}${neg}${grouped}${dec ? `${sep === '.' ? ',' : '.'}${dec}` : ''}${suffix}`;
 }
 
+/** Sound cues of a counter: a tick at most 10 per second over the count, then a ding when it lands. */
+function counterCues(from, to) {
+  const n = Math.max(1, Math.min(Math.floor((to - from) * 10), 40));
+  const cues = Array.from({ length: n }, (_, i) => ({ t: from + ((to - from) * i) / n, kind: 'tick' }));
+  cues.push({ t: to, kind: 'ding' });
+  return cues;
+}
+
 // ---- counter ------------------------------------------------------------------------------------------------------
 
 /**
@@ -57,6 +65,7 @@ export function counter(s, o) {
     texts: [fmt(samples[0]), fmt(final), widest],
     vis,
     end: endT,
+    cues: counterCues(startT, endT),
     draw(api, t) {
       const k = 1 + 0.08 * Math.sin(Math.PI * prog(t, endT, 0.4));
       around(api, cx, cy, k, () => text(api, cur(t), cx, cy, { px, role, weight: 700, color: o.color ?? 'accent', align: 'center', glow: 14 }));

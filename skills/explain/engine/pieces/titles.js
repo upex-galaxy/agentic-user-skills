@@ -54,6 +54,7 @@ export function titleCard(s, o) {
     id,
     z: o.z ?? 1,
     rect,
+    cues: [{ t: at, kind: 'swell' }],
     texts: () => (sub ? [title, sub] : [title]),
     draw(api, t) {
       const tp = prog(t, titleAt, titleDur);
