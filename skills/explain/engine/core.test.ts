@@ -225,3 +225,18 @@ describe('layer contract (presets merge U0a)', () => {
     expect(st.fx[0].spec.origin).toEqual([400, 300]);
   });
 });
+
+describe('settled time per scene (contact sheets)', () => {
+  test('a scene settles 0.3 s after its last caption finishes typing, before its outgoing transition', () => {
+    const { engine } = build(hologram, {
+      scenes: [
+        { name: 'a', dur: 10, transition: { type: 'crossfade', dur: 0.6 }, build: (s: any) => s.caption({ text: 'Una frase que tarda en escribirse', at: 6, typeDur: 2 }) },
+        { name: 'b', dur: 10, build: (s: any) => s.label({ text: 'b', rect: { x: 100, y: 300, w: 400, h: 100 }, at: 0 }) },
+      ],
+    });
+    // caption: bar 0.35 s, then 2 s of typing from 6.35 -> 8.35, + 0.3
+    expect(engine.scenes[0].settle).toBeCloseTo(8.65, 2);
+    // nothing late: at least half the scene
+    expect(engine.scenes[1].settle).toBe(5);
+  });
+});

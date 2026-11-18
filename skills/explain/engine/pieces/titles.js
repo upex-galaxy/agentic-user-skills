@@ -96,6 +96,7 @@ export function caption(s, o) {
     hud: true,
     z: o.z ?? 5,
     rect,
+    end: typeAt + td,
     texts: () => [text],
     draw(api, t) {
       const a = out(t);

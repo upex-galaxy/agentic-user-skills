@@ -12,7 +12,7 @@
  * Bun and node: built-ins only, no install step.
  */
 import type { PageInfo } from './headless.ts';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statfsSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { buildHash, buildPage, insideSkillDir, readBuildHash, scenePreset, SKILL_DIR } from './build.ts';
@@ -354,8 +354,31 @@ export async function verifyVideo(file: string): Promise<{ line: string, ok: boo
   return { line: `ffprobe: ${s.codec_name} ${s.pix_fmt} ${s.width}x${s.height} ${fps.toFixed(2)} fps ${ok ? 'OK' : 'MISMATCH (expected h264 yuv420p 1920x1080 30 fps)'}`, ok };
 }
 
+/** Least free space an export needs (the MP4, Chrome's profile and caches): about 1 GB. */
+export const MIN_FREE_BYTES = 1024 ** 3;
+
+/** Free bytes on the volume of `dir` (its nearest existing ancestor). */
+export function freeBytes(dir: string): number {
+  let cur = resolve(dir);
+  while (!existsSync(cur) && dirname(cur) !== cur) { cur = dirname(cur); }
+  const st = statfsSync(cur);
+  return Number(st.bavail) * Number(st.bsize);
+}
+
+/** A clear message when `free` bytes are under `need`, else null. */
+export function diskSpaceProblem(dir: string, free: number, need = MIN_FREE_BYTES): string | null {
+  if (free >= need) { return null; }
+  const gb = (n: number) => (n / 1024 ** 3).toFixed(2);
+  return `Refusing to export: only ${gb(free)} GB free on the disk of ${dir}; an export needs about ${gb(need)} GB (the MP4 plus Chrome's working files). Free some space and run export again.`;
+}
+
 async function cmdExport(p: ParsedArgs): Promise<number> {
   const t = resolveTarget(p.positional[0]);
+  const space = diskSpaceProblem(t.dir, freeBytes(t.dir));
+  if (space) {
+    log(space);
+    return 1;
+  }
   const { info, build } = await runCheck(t, parsePreset(p.flags));
   // Bitrate precedence: --bitrate, the preset's export.bitrate, the engine default (2 Mbps).
   const bitrate = parseBitrate(p.flags.bitrate) ?? (await loadPreset(findPreset(build.preset))).export.bitrate;
@@ -386,14 +409,15 @@ async function cmdPreview(p: ParsedArgs): Promise<number> {
 }
 
 /**
- * Default contact-sheet frames: n scenes spread over the video (first and last included), each at 70 % of its own
- * time, so a frame shows a settled scene instead of a transition.
+ * Default contact-sheet frames: n scenes spread over the video (first and last included), each at its settled time
+ * (after its last caption or typing finishes, see settleOf in engine/core.js; 70 % of the scene without one), so a
+ * frame shows a finished scene instead of a transition or a caption mid-typing.
  */
-export function sheetTimes(scenes: { start: number, dur: number }[], n: number): number[] {
+export function sheetTimes(scenes: { start: number, dur: number, settle?: number }[], n: number): number[] {
   if (!scenes.length) { return []; }
   return Array.from({ length: n }, (_, i) => {
     const sc = scenes[n === 1 ? scenes.length - 1 : Math.round((i * (scenes.length - 1)) / (n - 1))];
-    return Math.round((sc.start + sc.dur * 0.7) * 100) / 100;
+    return Math.round((sc.start + (sc.settle ?? sc.dur * 0.7)) * 100) / 100;
   });
 }
 
@@ -490,7 +514,7 @@ const HELP: Record<string, string> = {
   build: 'build <dir|scene.js> [--preset <name>]\n  Build the self-contained index.html into the explainer folder (a scene file other than scene.js builds into ~/explainers/<date>-<name>/); prints its path. A --preset other than the configured one (explain.json, else the scene, else hologram) is a one-off build in <dir>/presets/<name>/; explain.json is never rewritten. --style is an alias of --preset.',
   check: 'check <dir|scene.js> [--preset <name>]\n  Build if needed, run the QA gate headless; QA JSON on stdout. Exit 1 on errors, 0 on warnings only.',
   stills: 'stills <dir|scene.js> [--preset <name>] [--at ci:3.5,git:5.2,12.4] [--scene <name>] [--from-mp4 [--out video.mp4]]\n  PNGs named NN-<scene>@<local seconds>.png to <dir>/stills/ (old ones replaced). --at takes <scene>:<seconds of that scene> or global seconds. Default: 2 per scene at 40 % and 85 % of it; --scene <name> gives 4 of that scene. --from-mp4 cuts them from the exported MP4 with ffmpeg into <dir>/stills/mp4/.',
-  sheet: 'sheet <dir|scene.js> [--preset <name>] [--cols 3] [--rows 2] [--at ...] [--from-mp4]\n  One contact-sheet PNG (cols x rows frames at 960x540; 3x2 = 2880x1080) to <dir>/sheet.png, rendered in the page without ffmpeg; frames at 70 % of scenes spread over the video unless --at names them. --from-mp4 cuts it from the exported MP4 with ffmpeg.',
+  sheet: 'sheet <dir|scene.js> [--preset <name>] [--cols 3] [--rows 2] [--at ...] [--from-mp4]\n  One contact-sheet PNG (cols x rows frames at 960x540; 3x2 = 2880x1080) to <dir>/sheet.png, rendered in the page without ffmpeg; frames at the settled time of scenes spread over the video (after the last caption or typing finishes) unless --at names them. --from-mp4 cuts it from the exported MP4 with ffmpeg.',
   export: 'export <dir|scene.js> [--out video.mp4] [--bitrate 2] [--force]\n  Run check (refuses on errors unless --force), export <dir>/<slug>.mp4 (a relative --out is inside <dir>), print path, duration, size, time; ffprobe verifies when available.',
   preview: 'preview <dir> [--preset <name>]\n  Open index.html in the default browser.',
   preset: 'preset list | new <name> [--from sketch|hologram|poster] | check <name> | use <dir> <name> | promote <name>\n  Presets are the look of a video. list: built-in and user presets (~/.explain/presets, or EXPLAIN_PRESETS). new: copy one into the user folder with a README checklist. check: validate it, build the gallery scene in it, QA must pass. use: save it in the folder\'s explain.json. promote: copy a checked user preset into the skill (maintainers).',

@@ -184,14 +184,14 @@ All take `rect | in`, `at`, `until`.
 | `progress` | (label and percent fit the rect height) `dur` (2), `from` (0), `to` (1), `label`, `pct` (true), `segments`, `color`, `doneColor` (`good`), `linear` |
 | `gauge` | `to` (1), `dur` (1.5), `label`, `suffix` (` %`), `scale` (100), `color` |
 | `chart` | `type` (`line`, `area`, `bars`), `data` (numbers, or arrays for several lines), `labels`, `colors`, `title`, `yMax`, `yMin` (min of the data and 0; negative values draw below the zero line), `dur` (2), `step` (bars one by one), `mark` (`{ i, text, color }` on a line or area point; the text sits inside the plot, clear of the lines). Every chart text stays inside the rect: end labels slide in, bars keep headroom for their value |
-| `dotGrid` | `rows`, `cols`, `dur` (2), `fail` (indices that turn bad), `color` (`good`) |
+| `dotGrid` | `rows`, `cols`, `dur` (2), `fail` (indices that turn bad), `color` (`good`), `label` (a line under the dots, inside the rect), `labelPx`. Registers its id, so `edge`, `packets` and `callout` can target the whole grid |
 
 ```js
 s.counter({ rect: { x: 100, y: 260, w: 560, h: 260 }, to: 12480, label: 'active users', at: 0.6 });
 s.progress({ rect: { x: 100, y: 640, w: 560, h: 110 }, label: 'Migration', segments: 20 });
 s.gauge({ rect: { x: 760, y: 260, w: 500, h: 360 }, to: 0.87, label: 'coverage', color: 'good' });
 s.chart({ rect: { x: 1300, y: 250, w: 540, h: 620 }, type: 'bars', data: [18, 31, 24], labels: ['A', 'B', 'C'], step: 0.5 });
-s.dotGrid({ rect: { x: 760, y: 680, w: 500, h: 200 }, rows: 3, cols: 10, fail: [7] });
+s.dotGrid({ id: 'tests', rect: { x: 760, y: 680, w: 500, h: 200 }, rows: 3, cols: 10, fail: [7], label: 'tests' });
 ```
 
 ## Annotate
@@ -287,7 +287,7 @@ s.reveal({ targets: 'trend', at: 1, shape: 'wipe', dir: 'left' });
 
 ## Motion helpers
 
-Call after the target exists. `target` is an item or a registered id.
+Call after the target exists. `target` is an item id, or a registered sub-id of a composite whose items are named `<id>.<part>`: a flow step `'pasos-2'` (drawn by the item `pasos-2.step`) works. An id with no item behind it (a bare layout rect) throws and lists the item ids it knows.
 
 | Helper | Options (defaults) |
 |---|---|

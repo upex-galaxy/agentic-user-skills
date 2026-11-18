@@ -166,6 +166,21 @@ describe('dotGrid', () => {
     });
   }
 
+  test('a label sits under the dots inside the rect, and the id is registered for edges and packets', () => {
+    let reg: any;
+    const { engine } = build(hologram, (s: any) => {
+      s.dotGrid({ id: 'd', rect: { x: 200, y: 200, w: 800, h: 300 }, rows: 2, cols: 8, at: 0, dur: 1, label: 'pruebas en verde' });
+      reg = s.reg;
+    });
+    const rec = recs(engine, 2).d;
+    expect(rec.texts.map((x: any) => x.text)).toEqual(['pruebas en verde']);
+    const tx = rec.texts[0].rect;
+    expect(tx.y + tx.h).toBeLessThanOrEqual(500 + 1);
+    expect(reg.get('d')).toEqual({ x: 200, y: 200, w: 800, h: 300 });
+    expect(engine.texts().map((x: any) => x.text)).toContain('pruebas en verde');
+    expect(runQA(engine, [0.5, 2], { determinism: false }).ok).toBe(true);
+  });
+
   test('fail cells use the bad token', () => {
     const { engine, log } = build(hologram, (s: any) => s.dotGrid({ id: 'd', rect: { x: 200, y: 200, w: 400, h: 200 }, rows: 1, cols: 4, fail: [1], at: 0, dur: 1 }));
     log.length = 0;

@@ -2,6 +2,7 @@
 import { describe, expect, test } from 'bun:test';
 import demo2 from '../../examples/pieces/motion2.scene.js';
 import demo from '../../examples/pieces/motion.scene.js';
+import { pieces as flowPieces } from './flow.js';
 import { buildScene, qaOfDemo, records, STYLES } from './harness-b.ts';
 import { pieces, routePoints } from './motion.js';
 
@@ -129,4 +130,24 @@ describe('morph, expand, squeeze', () => {
       expect(qaOfDemo(demo2, pieces, style).errors).toEqual([]);
     });
   }
+});
+
+describe('motion helpers on composite sub-ids', () => {
+  test('pulse and shake accept a registered flow step id ("pasos-2" wraps its item "pasos-2.step")', () => {
+    const { engine, log } = buildScene((s: any) => {
+      s.flow({ id: 'pasos', steps: ['Uno', 'Dos', 'Tres'], at: 0 });
+      s.pulse({ target: 'pasos-2', at: 1, dur: 1, times: 1 });
+      s.shake({ target: 'pasos-3', at: 3 });
+    }, { ...flowPieces, ...pieces });
+    log.length = 0;
+    engine.render(1.5);
+    expect(scales(log).some(k => k > 1.01)).toBe(true);
+  });
+
+  test('an unknown target still fails and names what is accepted', () => {
+    expect(() => buildScene((s: any) => {
+      s.flow({ id: 'pasos', steps: ['Uno', 'Dos'], at: 0 });
+      s.pulse({ target: 'pasos-9', at: 1 });
+    }, { ...flowPieces, ...pieces })).toThrow('registered sub-id');
+  });
 });

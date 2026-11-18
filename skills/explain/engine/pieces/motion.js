@@ -17,8 +17,14 @@ const rectArg = (s, ref, what) => {
   return s.reg.get(ref);
 };
 
+/**
+ * Items an id names: the item with that id, else the items a composite drew for that registered sub-id (a flow step
+ * 'pasos-2' is drawn by the item 'pasos-2.step').
+ */
 function targetsOf(s, id) {
-  return s.items.filter(it => it.id === id && it.kind !== 'fx' && typeof it.draw === 'function');
+  const ok = it => it.kind !== 'fx' && typeof it.draw === 'function';
+  const own = s.items.filter(it => it.id === id && ok(it));
+  return own.length || typeof id !== 'string' ? own : s.items.filter(it => ok(it) && it.id.startsWith(`${id}.`));
 }
 
 /**
@@ -56,7 +62,7 @@ export function wrapItems(s, id, mod) {
 }
 
 const need = (s, id, what) => {
-  if (!targetsOf(s, id).length) { throw new Error(`${what}: no item "${id}" to animate yet. Create it first (known ids: ${s.reg.ids().join(', ') || 'none'})`); }
+  if (!targetsOf(s, id).length) { throw new Error(`${what}: no item "${id}" to animate yet. Create it first; a target is an item id or a registered sub-id whose items are named "<id>.<part>" (known item ids: ${s.items.filter(it => it.kind !== 'fx').map(it => it.id).join(', ') || 'none'})`); }
 };
 
 const fx = (s, o, fn, extra = {}) => {

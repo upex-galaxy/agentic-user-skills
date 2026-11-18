@@ -7,6 +7,8 @@ export interface SceneInfo {
   start: number
   dur: number
   end: number
+  /** Scene-local time the scene has settled (last caption or typing done), for contact sheets. */
+  settle?: number
 }
 
 export interface PageInfo {
