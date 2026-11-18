@@ -58,22 +58,86 @@ describe('render: artifact mode', () => {
   });
 });
 
+describe('app.js: wake hint after Send', () => {
+  const hint = 'If Claude does not answer within a minute, type "listo" in the chat: your answers are saved.';
+
+  it('ships the hint, gated on artifact mode and a notified Send', () => {
+    expect(APP_JS).toContain(hint);
+    expect(APP_JS).toContain('if (mode === \'artifact\' && wakeHint)');
+  });
+
+  it('keeps the hint out of the copy and wait pages markup', () => {
+    expect(markupOnly(render(spec, { mode: 'copy' }))).not.toContain('listo');
+    expect(markupOnly(render(spec, { mode: 'wait', submitToken: 't' }))).not.toContain('listo');
+  });
+});
+
+describe('display options', () => {
+  const page = render(spec, { mode: 'copy' });
+
+  it('renders Hide recommended as a switch, Shuffle as a button, Original order hidden', () => {
+    expect(page).toContain('<input type="checkbox" class="mkd-switch__input" id="mkd-hide-rec" role="switch">');
+    expect(page).toMatch(/<button type="button" class="mkd-view__btn" id="mkd-shuffle"[^>]*>[\s\S]*?Shuffle options<\/button>/);
+    expect(page).toMatch(/id="mkd-unshuffle"[^>]*aria-label="Original order" hidden>[\s\S]*?Original order<\/span><\/button>/);
+    expect(page).not.toMatch(/id="mkd-shuffle" role="switch"/);
+  });
+
+  it('rerolls on every press, labels by screen position, restores the author order on demand', () => {
+    expect(APP_JS).toContain('shuffleBtn.addEventListener(\'click\', reshuffle)');
+    expect(APP_JS).toContain('unshuffleBtn.addEventListener(\'click\', restoreAuthorOrder)');
+    expect(APP_JS).toContain('letter.textContent = on ? positionLetter(position) : key');
+    expect(APP_JS).toContain('(previous && same(out, previous))');
+  });
+
+  it('marks the bolded Recommended lead-in of the recommended option only', () => {
+    expect(page).toContain('<strong class="mkd-rec-word">Recommended</strong> because it is cheap.');
+    expect(page).toContain('<span class="mkd-opt__just">Costs more.</span>');
+  });
+
+  it('keeps Previous / Skip / Next in the sticky bar only, never inside a card', () => {
+    expect(page).toContain('<nav class="mkd-bar__nav" aria-label="Deck navigation">');
+    expect(page).toContain('id="mkd-next">Next &#8594;</button>');
+    expect(page).not.toContain('mkd-card__nav');
+    expect(page).toContain('id="mkd-auto-advance" role="switch">');
+  });
+
+  it('switches a decision with 4+ options to the compact layout', () => {
+    const wide = validateSpec({ ...RAW_SPEC, items: [{ ...RAW_SPEC.items[0], options: ['A', 'B', 'C', 'D', 'E'].map(key => ({ key, label: key, justification: key })) }] });
+    expect(render(wide, { mode: 'copy' })).toContain('<div class="mkd-opts is-dense">');
+    expect(page).toContain('<div class="mkd-opts">');
+  });
+
+  it('omits the display options on a deck without decisions', () => {
+    const noDecisions = validateSpec({ ...RAW_SPEC, items: RAW_SPEC.items.slice(1) });
+    expect(render(noDecisions, { mode: 'copy' })).not.toContain('class="mkd-view"');
+  });
+});
+
 describe('render: copy and wait modes are unchanged', () => {
   // SHA-256 of each page with the inlined app.js body replaced by a
-  // placeholder, captured from `main` at 97d4e80 (before artifact mode).
-  // Every other byte - markup, CSS, embedded spec, globals - must match.
+  // placeholder. Every other byte - markup, CSS, embedded spec, globals -
+  // must match. Re-pinned for the W1 UI redesign: navy/pastel theme tokens,
+  // progress footer (replaces the five counters), send-confirmation dialog,
+  // the Hide recommended and Auto-advance switches, the Shuffle / Original
+  // order buttons, SVG header icons, the sticky action bar (Previous / Skip /
+  // Next moved out of the cards, More overflow on phones), compact 4+ option
+  // decisions, viewport-fit=cover, the media lightbox dialog and media CSS
+  // (carousel, embeds, link cards, diagrams, option thumbnails), and the
+  // artifact-only video-card / missing-image styles (shared CSS; the copy and
+  // wait markup itself is unchanged),
+  // and the color-mix guard on the translucent header.
   // Update these only for an intentional change to the copy/wait markup.
   const shellHash = (html: string): string =>
     createHash('sha256').update(html.replace(APP_JS, () => '<app.js>')).digest('hex');
 
   it('copy mode', () => {
     expect(shellHash(render(spec, { mode: 'copy' })))
-      .toBe('48141817f1d55d759f7edd35b29b3a1488a76866f330b79b1ccae678ff87518d');
+      .toBe('729a328519c1a2b1a075613c4a5e22c32f18135eade928e9a3b454bc09c1c1f5');
   });
 
   it('wait mode', () => {
     expect(shellHash(render(spec, { mode: 'wait', submitToken: 'tok-123' })))
-      .toBe('66720e27045d77dad4e0bb5a9af4d7e4aedfa6059154a7bc31cc4208f05bc9af');
+      .toBe('2e1b4d054aafa44ee78e7c64a1a5c40fd468b8c9a83c8ec059b209e04a48835d');
   });
 
   it('never leaks the artifact globals into copy or wait pages', () => {

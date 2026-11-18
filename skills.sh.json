@@ -31,6 +31,11 @@
       "title": "Engineering",
       "description": "Skills for investigating, diagnosing and reviewing work, including unattended runs.",
       "skills": ["research", "diagnosing-bugs", "blast-radius", "show-me-your-work", "retro", "wizard"]
+    },
+    {
+      "title": "Orchestration",
+      "description": "Skills that run and supervise several agent sessions as one fleet.",
+      "skills": ["agent-orchestration"]
     }
   ]
 }

@@ -1,0 +1,61 @@
+{
+  "skill_name": "agent-orchestration",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Orchestrate BK-210, BK-211 and BK-212 in parallel, one session per story, and report back.",
+      "expected_output": "Activates agent-orchestration, plans one worker per story and launches them with briefs.",
+      "should_trigger": true,
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Set up a nightly routine that triages new bugs with nobody at the keyboard.",
+      "expected_output": "Activates agent-orchestration in automation mode and follows references/automations.md.",
+      "should_trigger": true,
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Lanzá un worker por historia del sprint y supervisalos.",
+      "expected_output": "Activates agent-orchestration, one supervised worker per story.",
+      "should_trigger": true,
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Preguntale al worker de BK-123 si ya terminó la ejecución.",
+      "expected_output": "Activates agent-orchestration and messages the worker through the orchestration runtime.",
+      "should_trigger": true,
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "My context is almost full, hand this whole session to a fresh one.",
+      "expected_output": "Does not activate agent-orchestration. This is a session handoff: write a handoff note for the fresh session.",
+      "should_trigger": false,
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "Create a git worktree for my hotfix.",
+      "expected_output": "Does not activate agent-orchestration. Plain git work: create the worktree for one's own work.",
+      "should_trigger": false,
+      "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "Give this task to another agent in its own worktree, I need nothing back.",
+      "expected_output": "Does not activate agent-orchestration. A handoff with nothing expected back belongs to the Orca CLI skill (orca-cli).",
+      "should_trigger": false,
+      "files": []
+    },
+    {
+      "id": 8,
+      "prompt": "This repo has jitso/jitso.yaml: launch two reviewers and report back.",
+      "expected_output": "Activates agent-orchestration in jitso launch mode: two reviewer workers launched through jitso, results reported back.",
+      "should_trigger": true,
+      "files": []
+    }
+  ]
+}

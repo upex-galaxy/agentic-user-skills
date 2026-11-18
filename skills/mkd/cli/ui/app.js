@@ -310,11 +310,23 @@
   const rail = byId('mkd-rail');
   const introCard = byId('mkd-intro');
   const summaryCard = byId('mkd-summary');
-  const statAnswered = byId('mkd-s-answered');
-  const statRec = byId('mkd-s-rec');
-  const statOver = byId('mkd-s-over');
-  const statCustom = byId('mkd-s-custom');
-  const statSkipped = byId('mkd-s-skipped');
+  const appRoot = byId('mkd-app');
+  const progressBar = byId('mkd-progress');
+  const countDone = byId('mkd-count-done');
+  const countPending = byId('mkd-count-pending');
+  const jumpBtn = byId('mkd-jump');
+  const confirmDialog = byId('mkd-confirm');
+  const confirmBody = byId('mkd-confirm-body');
+  const confirmSend = byId('mkd-confirm-send');
+  const hideRecToggle = byId('mkd-hide-rec');
+  const shuffleBtn = byId('mkd-shuffle');
+  const autoAdvanceToggle = byId('mkd-auto-advance');
+  const barEl = byId('mkd-bar');
+  const moreBtn = byId('mkd-more');
+  const prevBtn = byId('mkd-prev');
+  const skipBtn = byId('mkd-skip');
+  const nextBtn = byId('mkd-next');
+  const unshuffleBtn = byId('mkd-unshuffle');
   const jsonToggle = byId('mkd-json-toggle');
   const jsonPanel = byId('mkd-json-panel');
   const jsonOut = byId('mkd-json-out');
@@ -362,6 +374,9 @@
   // --------------------------------------------------------------------------
 
   const THEME_STORAGE_KEY = 'mkd-theme';
+  const ICON_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+  const ICON_MOON = `${ICON_SVG}<path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7Z"/></svg>`;
+  const ICON_SUN = `${ICON_SVG}<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></svg>`;
   let themeMemory = null;
 
   function readStoredTheme() {
@@ -387,28 +402,18 @@
     }
   }
 
-  function systemPrefersDark() {
-    try {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches;
-    }
-    catch {
-      return false;
-    }
-  }
-
-  /** The theme currently in effect: explicit choice, else the system's. */
   function effectiveTheme() {
     const stored = readStoredTheme();
     if (stored === 'light' || stored === 'dark') {
       return stored;
     }
-    return systemPrefersDark() ? 'dark' : 'light';
+    return 'dark';
   }
 
   /**
    * Apply an EXPLICIT theme choice via `data-theme` on <html>. With no stored
-   * choice the attribute is absent and the CSS `prefers-color-scheme` block
-   * decides — so this is only called with a concrete stored/toggled value.
+   * choice the attribute is absent and the dark default tokens apply, so this
+   * is only called with a concrete stored/toggled value.
    */
   function applyTheme(theme) {
     const root = document.documentElement;
@@ -419,6 +424,9 @@
       delete root.dataset.theme;
     }
     syncThemeToggle();
+    if (typeof renderVisibleDiagrams === 'function' && document.querySelector('.mkd-diagram')) {
+      void renderVisibleDiagrams();
+    }
   }
 
   function syncThemeToggle() {
@@ -426,23 +434,702 @@
       return;
     }
     const isLight = effectiveTheme() === 'light';
-    // Show the glyph for the theme you'd switch TO.
-    themeToggle.textContent = isLight ? '\u263E' : '\u2600';
-    themeToggle.setAttribute('aria-pressed', isLight ? 'false' : 'true');
+    // Show the icon for the theme you'd switch TO.
+    themeToggle.innerHTML = isLight ? ICON_MOON : ICON_SUN;
+    themeToggle.setAttribute('aria-label', isLight ? 'Switch to dark theme' : 'Switch to light theme');
   }
 
   function toggleTheme() {
     const next = effectiveTheme() === 'light' ? 'dark' : 'light';
-    applyTheme(next);
     writeStoredTheme(next);
+    applyTheme(next);
+  }
+
+  // --------------------------------------------------------------------------
+  // DISPLAY OPTIONS — hide recommended, shuffle options (display only: the
+  // Result is built from `state` and the spec, never from the DOM order or
+  // what is visible)
+  // --------------------------------------------------------------------------
+
+  const VIEW_HIDE_REC_KEY = 'mkd-view-hide-rec';
+  const SHUFFLE_ORDER_KEY = `mkd-shuffle-${spec.session || 'deck'}`;
+  const SHUFFLE_ACTIVE_KEY = `${SHUFFLE_ORDER_KEY}-on`;
+  const viewMemory = Object.create(null);
+
+  function readFlag(key) {
+    try {
+      const value = window.localStorage.getItem(key);
+      if (value === '1' || value === '0') {
+        return value === '1';
+      }
+    }
+    catch {
+      // localStorage blocked — fall back to the in-memory value.
+    }
+    return viewMemory[key] === true;
+  }
+
+  function writeFlag(key, on) {
+    viewMemory[key] = on;
+    try {
+      window.localStorage.setItem(key, on ? '1' : '0');
+    }
+    catch {
+      // localStorage blocked — the in-memory value still carries the session.
+    }
+  }
+
+  function applyHideRec(on) {
+    if (appRoot) {
+      if (on) {
+        appRoot.setAttribute('data-hide-rec', '');
+      }
+      else {
+        appRoot.removeAttribute('data-hide-rec');
+      }
+    }
+    if (hideRecToggle) {
+      hideRecToggle.checked = on;
+    }
+  }
+
+  function same(a, b) {
+    return a.every((key, i) => key === b[i]);
+  }
+
+  /**
+   * Fisher-Yates, re-rolled until the order differs from the author's AND from
+   * the previous shuffle, so every press visibly acts. Two options have only
+   * one non-author order, so there the previous-order rule cannot apply (it
+   * would loop forever): they stay swapped.
+   */
+  function shuffledKeys(keys, previous) {
+    if (keys.length < 2) {
+      return keys.slice();
+    }
+    if (keys.length === 2) {
+      return [keys[1], keys[0]];
+    }
+    let out = keys.slice();
+    do {
+      out = keys.slice();
+      for (let i = out.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = out[i];
+        out[i] = out[j];
+        out[j] = tmp;
+      }
+    } while (same(out, keys) || (previous && same(out, previous)));
+    return out;
+  }
+
+  /** One permutation per decision while shuffled; null in the author's order. */
+  let shuffleOrder = null;
+
+  /** A saved permutation from an earlier view of this deck, or null when none is valid. */
+  function loadShuffleOrder() {
+    let saved = null;
+    try {
+      saved = JSON.parse(window.localStorage.getItem(SHUFFLE_ORDER_KEY));
+    }
+    catch {
+      saved = null;
+    }
+    if (!saved || typeof saved !== 'object') {
+      return null;
+    }
+    const order = Object.create(null);
+    for (const item of items) {
+      if (item.type !== 'decision') {
+        continue;
+      }
+      const keys = item.options.map(option => option.key);
+      const prior = Array.isArray(saved[item.id]) ? saved[item.id] : null;
+      const valid = prior
+        && prior.length === keys.length
+        && keys.every(key => prior.includes(key));
+      if (!valid) {
+        return null;
+      }
+      order[item.id] = prior.slice();
+    }
+    return order;
+  }
+
+  /** Every press rolls a fresh permutation per decision, kept across reloads. */
+  function reshuffle() {
+    const previous = shuffleOrder || lastShuffle;
+    const order = Object.create(null);
+    for (const item of items) {
+      if (item.type === 'decision') {
+        order[item.id] = shuffledKeys(
+          item.options.map(option => option.key),
+          previous ? previous[item.id] : null,
+        );
+      }
+    }
+    shuffleOrder = order;
+    try {
+      window.localStorage.setItem(SHUFFLE_ORDER_KEY, JSON.stringify(order));
+    }
+    catch {
+      // Storage blocked — the in-memory order still holds for this view.
+    }
+    lastShuffle = order;
+    applyShuffle(true);
+    writeFlag(SHUFFLE_ACTIVE_KEY, true);
+  }
+
+  /** The last shuffle, remembered so the next press never repeats it. */
+  let lastShuffle = null;
+
+  function restoreAuthorOrder() {
+    applyShuffle(false);
+    writeFlag(SHUFFLE_ACTIVE_KEY, false);
+    if (shuffleBtn) {
+      shuffleBtn.focus();
+    }
+  }
+
+  /**
+   * Reorder the option NODES (not CSS `order`) so tab and reading order follow.
+   * On: the shuffled order, and the visible letter follows the POSITION
+   * (A, B, C ...) so it never leaks the original order. Off: the author's
+   * order and keys. `data-opt-key` always keeps the spec key the Result is
+   * built from.
+   */
+  function applyShuffle(on) {
+    if (on && !shuffleOrder) {
+      return;
+    }
+    if (!on) {
+      shuffleOrder = null;
+    }
+    for (const item of items) {
+      if (item.type !== 'decision') {
+        continue;
+      }
+      const section = itemSection(item.id);
+      const list = section ? section.querySelector('.mkd-opts') : null;
+      if (!list) {
+        continue;
+      }
+      const anchor = list.querySelector(`.mkd-opt[data-opt-key="${CUSTOM_KEY}"]`);
+      const keys = on ? shuffleOrder[item.id] : item.options.map(option => option.key);
+      keys.forEach((key, position) => {
+        const btn = list.querySelector(`.mkd-opt[data-opt-key="${cssAttrEscape(key)}"]`);
+        if (btn) {
+          list.insertBefore(btn, anchor);
+          const letter = btn.querySelector('.mkd-opt__key');
+          if (letter) {
+            letter.textContent = on ? positionLetter(position) : key;
+          }
+        }
+      });
+    }
+    if (unshuffleBtn) {
+      unshuffleBtn.hidden = !on;
+    }
+    const view = shuffleBtn ? shuffleBtn.closest('.mkd-view') : null;
+    if (view) {
+      view.classList.toggle('is-shuffled', on);
+    }
+  }
+
+  function positionLetter(position) {
+    return position < 26 ? String.fromCharCode(65 + position) : String(position + 1);
+  }
+
+
+  // --------------------------------------------------------------------------
+  // MEDIA — carousels, lightbox, option media, Mermaid diagrams (display only:
+  // nothing here touches `state` or the Result)
+  // --------------------------------------------------------------------------
+
+  const lightbox = byId('mkd-lightbox');
+  const lightboxBody = byId('mkd-lightbox-body');
+  const lightboxClose = byId('mkd-lightbox-close');
+  const reducedMotion = (() => {
+    try {
+      return window.matchMedia('(prefers-reduced-motion: reduce)');
+    }
+    catch {
+      return { matches: false };
+    }
+  })();
+
+  function isLightboxOpen() {
+    return Boolean(lightbox && lightbox.open);
+  }
+
+  /** Native scroll-snap track + buttons, markers, counter and polite status. */
+  function initCarousel(root) {
+    if (!root || root.dataset.ready === '1') {
+      return;
+    }
+    root.dataset.ready = '1';
+    const track = root.querySelector('.mkd-carousel__track');
+    const slides = track ? [...track.children] : [];
+    const dots = [...root.querySelectorAll('.mkd-carousel__dot')];
+    const prev = root.querySelector('.mkd-carousel__btn--prev');
+    const next = root.querySelector('.mkd-carousel__btn--next');
+    const count = root.querySelector('.mkd-carousel__count');
+    const status = root.querySelector('.mkd-carousel__status');
+    if (!track || slides.length === 0) {
+      return;
+    }
+    let current = 0;
+    let settled = 0;
+    let pending = null;
+
+    function nearest() {
+      const center = track.scrollLeft + track.clientWidth / 2;
+      let best = 0;
+      let bestDistance = Infinity;
+      slides.forEach((slide, i) => {
+        const distance = Math.abs(slide.offsetLeft + slide.offsetWidth / 2 - center);
+        if (distance < bestDistance) {
+          best = i;
+          bestDistance = distance;
+        }
+      });
+      return best;
+    }
+
+    function mark(index) {
+      current = index;
+      dots.forEach((dot, i) => {
+        if (i === index) {
+          dot.setAttribute('aria-current', 'true');
+        }
+        else {
+          dot.removeAttribute('aria-current');
+        }
+      });
+      if (count) {
+        count.textContent = `${index + 1}/${slides.length}`;
+      }
+    }
+
+    function scrollToSlide(index) {
+      const target = Math.max(0, Math.min(index, slides.length - 1));
+      pending = target;
+      mark(target);
+      const slide = slides[target];
+      track.scrollTo({
+        left: slide.offsetLeft - (track.clientWidth - slide.offsetWidth) / 2,
+        behavior: reducedMotion.matches ? 'auto' : 'smooth',
+      });
+    }
+
+    function settle() {
+      pending = null;
+      const index = nearest();
+      mark(index);
+      if (prev) {
+        prev.disabled = index === 0;
+      }
+      if (next) {
+        next.disabled = index === slides.length - 1;
+      }
+      // Keep focus on a live control when the one pressed becomes disabled.
+      if (document.activeElement === prev && prev.disabled && next) {
+        next.focus();
+      }
+      else if (document.activeElement === next && next.disabled && prev) {
+        prev.focus();
+      }
+      if (index !== settled && status) {
+        status.textContent = `Slide ${index + 1} of ${slides.length}`;
+      }
+      settled = index;
+      for (const video of track.querySelectorAll('video')) {
+        if (!slides[index].contains(video)) {
+          video.pause();
+        }
+      }
+      renderVisibleDiagrams();
+    }
+
+    let frame = 0;
+    track.addEventListener('scroll', () => {
+      if (pending !== null || frame) {
+        return;
+      }
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        const index = nearest();
+        if (index !== current) {
+          mark(index);
+        }
+      });
+    }, { passive: true });
+
+    if ('onscrollend' in window) {
+      track.addEventListener('scrollend', settle);
+    }
+    else {
+      let timer = 0;
+      track.addEventListener('scroll', () => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(settle, 120);
+      }, { passive: true });
+    }
+
+    if (prev) {
+      prev.addEventListener('click', () => scrollToSlide((pending ?? current) - 1));
+    }
+    if (next) {
+      next.addEventListener('click', () => scrollToSlide((pending ?? current) + 1));
+    }
+    dots.forEach((dot, i) => dot.addEventListener('click', () => scrollToSlide(i)));
+
+    // Left/right move slides while focus is inside the carousel (never a
+    // nested video's own keys), and never reach deck navigation.
+    root.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+        return;
+      }
+      if (event.target && event.target.closest && event.target.closest('video, iframe')) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      scrollToSlide((pending ?? current) + (event.key === 'ArrowRight' ? 1 : -1));
+    });
+    root.carouselGoTo = (index) => {
+      const slide = slides[index];
+      if (slide) {
+        track.scrollLeft = slide.offsetLeft - (track.clientWidth - slide.offsetWidth) / 2;
+        mark(index);
+        settle();
+      }
+    };
+  }
+
+  /** Build carousel markup in the browser (lightbox), matching render.ts. */
+  function buildCarousel(nodes, label) {
+    const root = el('section', 'mkd-carousel', { 'aria-roledescription': 'carousel', 'aria-label': label });
+    const controls = el('div', 'mkd-carousel__controls');
+    const prev = el('button', 'mkd-carousel__btn mkd-carousel__btn--prev', { 'type': 'button', 'data-dir': '-1', 'aria-label': 'Previous slide' });
+    prev.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>';
+    prev.disabled = true;
+    const next = el('button', 'mkd-carousel__btn mkd-carousel__btn--next', { 'type': 'button', 'data-dir': '1', 'aria-label': 'Next slide' });
+    next.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>';
+    controls.append(prev, next);
+    const count = el('span', 'mkd-carousel__count', { 'aria-hidden': 'true' });
+    count.textContent = `1/${nodes.length}`;
+    const track = el('div', 'mkd-carousel__track', { 'tabindex': '0', 'role': 'group', 'aria-label': 'Slides' });
+    nodes.forEach((node, i) => {
+      const slide = el('div', 'mkd-carousel__slide', { 'role': 'group', 'aria-roledescription': 'slide', 'aria-label': node.dataset.slideLabel || `${i + 1} of ${nodes.length}` });
+      slide.appendChild(node);
+      track.appendChild(slide);
+    });
+    const status = el('p', 'mkd-visually-hidden mkd-carousel__status', { 'role': 'status', 'aria-live': 'polite' });
+    const dots = el('div', 'mkd-carousel__dots', { 'role': 'group', 'aria-label': 'Choose a slide' });
+    nodes.forEach((_n, i) => {
+      const dot = el('button', 'mkd-carousel__dot', { 'type': 'button', 'aria-label': `Go to slide ${i + 1}` });
+      if (i === 0) {
+        dot.setAttribute('aria-current', 'true');
+      }
+      dots.appendChild(dot);
+    });
+    root.append(controls, count, track, status, dots);
+    return root;
+  }
+
+  /** Open the lightbox on clones of `nodes`, starting at `start`. */
+  function openLightbox(nodes, start, label) {
+    if (!lightbox || !lightboxBody || typeof lightbox.showModal !== 'function' || nodes.length === 0) {
+      return;
+    }
+    lightboxBody.textContent = '';
+    lightbox.setAttribute('aria-label', label);
+    if (nodes.length === 1) {
+      lightboxBody.appendChild(nodes[0]);
+    }
+    else {
+      const carousel = buildCarousel(nodes, label);
+      lightboxBody.appendChild(carousel);
+      lightbox.showModal();
+      initCarousel(carousel);
+      carousel.carouselGoTo(start);
+      prepareLightboxContent();
+      return;
+    }
+    lightbox.showModal();
+    prepareLightboxContent();
+  }
+
+  function prepareLightboxContent() {
+    // Inside the viewer an image needs no zoom button: keep the image itself,
+    // drop the other enlarge controls (the diagram one).
+    for (const zoom of lightboxBody.querySelectorAll('[data-lightbox]')) {
+      if (zoom.classList.contains('mkd-media__zoom')) {
+        zoom.replaceWith(...zoom.querySelectorAll('img'));
+      }
+      else {
+        zoom.remove();
+      }
+    }
+    for (const fig of lightboxBody.querySelectorAll('.mkd-diagram')) {
+      delete fig.dataset.renderedTheme;
+    }
+    renderVisibleDiagrams();
+  }
+
+  function closeLightbox() {
+    if (lightbox && lightbox.open) {
+      lightbox.close();
+    }
+  }
+
+  /** A clean copy of a figure for the lightbox (a rendered diagram keeps its SVG). */
+  function cloneFigure(fig) {
+    const copy = fig.cloneNode(true);
+    for (const zoom of copy.querySelectorAll('[data-lightbox]')) {
+      if (zoom.classList.contains('mkd-media__zoom')) {
+        zoom.replaceWith(...zoom.querySelectorAll('img'));
+      }
+    }
+    return copy;
+  }
+
+  /** Option media in screen order, each slide labelled with its screen letter. */
+  function openOptionMedia(button) {
+    const card = button.closest('.mkd-card');
+    if (!card) {
+      return;
+    }
+    const nodes = [];
+    for (const opt of card.querySelectorAll('.mkd-opt[data-opt-key]')) {
+      const template = opt.querySelector('template.mkd-opt__full');
+      if (!template) {
+        continue;
+      }
+      const letter = (opt.querySelector('.mkd-opt__key') || {}).textContent || '';
+      const label = (opt.querySelector('.mkd-opt__label') || {}).textContent || '';
+      const slides = [...template.content.querySelectorAll('.mkd-opt__full-slide')];
+      slides.forEach((slide, i) => {
+        const node = slide.cloneNode(true);
+        const tag = el('p', 'mkd-opt__full-tag');
+        tag.textContent = `${letter} · ${label}${slides.length > 1 ? ` (${i + 1}/${slides.length})` : ''}`;
+        node.insertBefore(tag, node.firstChild);
+        node.dataset.slideLabel = `Option ${letter}${slides.length > 1 ? `, ${i + 1} of ${slides.length}` : ''}`;
+        nodes.push(node);
+      });
+    }
+    openLightbox(nodes, 0, 'Option media');
+  }
+
+  /**
+   * Leaving a card stops its media: videos pause, embeds unload (a hidden
+   * YouTube frame keeps playing sound) and come back when the card returns.
+   */
+  function syncCardMedia() {
+    const currentCard = document.querySelector('.mkd-card.is-current');
+    for (const video of document.querySelectorAll('.mkd-stage video')) {
+      if (!currentCard || !currentCard.contains(video)) {
+        video.pause();
+      }
+    }
+    for (const frame of document.querySelectorAll('.mkd-stage .mkd-embed__frame')) {
+      const inCurrent = currentCard && currentCard.contains(frame);
+      if (!frame.dataset.src) {
+        frame.dataset.src = frame.getAttribute('src') || '';
+      }
+      const want = inCurrent ? frame.dataset.src : 'about:blank';
+      if (frame.getAttribute('src') !== want) {
+        frame.setAttribute('src', want);
+      }
+    }
+    renderVisibleDiagrams();
+  }
+
+  // ---- Mermaid: lazy CDN load, strict security, theme-aware, never breaks ----
+
+  const mermaidConfig = window.__MKD_MERMAID__ && typeof window.__MKD_MERMAID__ === 'object' ? window.__MKD_MERMAID__ : null;
+  let mermaidPromise = null;
+  let mermaidSeq = 0;
+
+  function loadMermaid() {
+    if (mermaidPromise) {
+      return mermaidPromise;
+    }
+    mermaidPromise = new Promise((resolve, reject) => {
+      if (!mermaidConfig) {
+        reject(new Error('no mermaid config'));
+        return;
+      }
+      if (window.mermaid) {
+        resolve(window.mermaid);
+        return;
+      }
+      const script = document.createElement('script');
+      script.crossOrigin = 'anonymous';
+      if (mermaidConfig.integrity) {
+        script.integrity = mermaidConfig.integrity;
+      }
+      const timer = window.setTimeout(() => reject(new Error('timeout')), 15000);
+      script.onload = () => {
+        window.clearTimeout(timer);
+        if (window.mermaid) {
+          resolve(window.mermaid);
+        }
+        else {
+          reject(new Error('mermaid global missing'));
+        }
+      };
+      script.onerror = () => {
+        window.clearTimeout(timer);
+        reject(new Error('load failed'));
+      };
+      script.src = mermaidConfig.src;
+      document.head.appendChild(script);
+    });
+    return mermaidPromise;
+  }
+
+  function diagramFallback(fig, message) {
+    fig.classList.remove('is-rendered');
+    fig.classList.add('is-failed');
+    const notice = fig.querySelector('.mkd-diagram__notice');
+    if (notice) {
+      notice.textContent = message;
+      notice.hidden = false;
+    }
+  }
+
+  function isShown(node) {
+    return node.getClientRects().length > 0;
+  }
+
+  async function renderVisibleDiagrams() {
+    const figs = [...document.querySelectorAll('.mkd-diagram')].filter(isShown);
+    const theme = effectiveTheme();
+    const todo = figs.filter(fig => fig.dataset.renderedTheme !== theme && !fig.classList.contains('is-failed'));
+    if (todo.length === 0) {
+      return;
+    }
+    let mermaid;
+    try {
+      mermaid = await loadMermaid();
+    }
+    catch {
+      for (const fig of todo) {
+        diagramFallback(fig, 'The diagram renderer could not load (offline?). Showing the diagram source instead.');
+      }
+      return;
+    }
+    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: theme === 'dark' ? 'dark' : 'neutral' });
+    for (const fig of todo) {
+      const code = (fig.querySelector('.mkd-diagram__src code') || {}).textContent || '';
+      const canvas = fig.querySelector('.mkd-diagram__canvas');
+      const id = `mkd-mermaid-${mermaidSeq += 1}`;
+      try {
+        const out = await mermaid.render(id, code);
+        canvas.innerHTML = out.svg;
+        fig.dataset.renderedTheme = theme;
+        fig.classList.add('is-rendered');
+      }
+      catch {
+        const stray = document.getElementById(`d${id}`) || document.getElementById(id);
+        if (stray && !fig.contains(stray)) {
+          stray.remove();
+        }
+        diagramFallback(fig, 'This diagram has a syntax error. Showing its source instead.');
+      }
+    }
+  }
+
+  function wireMedia() {
+    for (const carousel of document.querySelectorAll('.mkd-stage .mkd-carousel')) {
+      initCarousel(carousel);
+    }
+    document.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!target || !target.closest) {
+        return;
+      }
+      const zoom = target.closest('[data-lightbox]');
+      if (zoom && !lightbox.contains(zoom)) {
+        const fig = zoom.closest('figure');
+        if (fig) {
+          openLightbox([cloneFigure(fig)], 0, fig.classList.contains('mkd-diagram') ? 'Diagram' : 'Image');
+        }
+        return;
+      }
+      const optMedia = target.closest('[data-opt-media]');
+      if (optMedia) {
+        openOptionMedia(optMedia);
+      }
+    });
+    // A remote image the page cannot reach (offline, or a CSP that blocks it)
+    // disappears instead of leaving a broken icon.
+    document.addEventListener('error', (event) => {
+      const img = event.target;
+      if (img && img.tagName === 'IMG' && img.hasAttribute('data-remote')) {
+        const card = img.closest('.mkd-linkcard');
+        if (card) {
+          card.classList.remove('has-image');
+        }
+        img.remove();
+      }
+    }, true);
+    if (lightbox) {
+      lightbox.addEventListener('close', () => {
+        // Removing the content stops any video or embed playing inside it.
+        lightboxBody.textContent = '';
+      });
+      // Close on a click OUTSIDE the panel: the dialog element is also the
+      // target for its own padding, so test the pointer against its box.
+      lightbox.addEventListener('click', (event) => {
+        if (event.target !== lightbox) {
+          return;
+        }
+        const box = lightbox.getBoundingClientRect();
+        const outside = event.clientX < box.left || event.clientX > box.right
+          || event.clientY < box.top || event.clientY > box.bottom;
+        if (outside) {
+          closeLightbox();
+        }
+      });
+    }
+    if (lightboxClose) {
+      lightboxClose.addEventListener('click', closeLightbox);
+    }
+    try {
+      window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+        if (!readStoredTheme()) {
+          renderVisibleDiagrams();
+        }
+      });
+    }
+    catch {
+      // Old browsers without MediaQueryList events: the toggle still re-renders.
+    }
   }
 
   // --------------------------------------------------------------------------
   // DECK NAVIGATION
   // --------------------------------------------------------------------------
 
-  function go(target) {
+  /**
+   * `fromKeyboard`: keyboard-driven moves skip the card entrance animation
+   * (a keystroke repeated many times must feel instant).
+   */
+  function go(target, fromKeyboard) {
     const clamped = Math.max(-1, Math.min(target, items.length));
+    cancelAutoAdvance();
+    closeMore();
+    if (appRoot) {
+      if (fromKeyboard) {
+        appRoot.setAttribute('data-nav', 'key');
+      }
+      else {
+        appRoot.removeAttribute('data-nav');
+      }
+    }
     idx = clamped;
     closeRowPop();
     hideQuoteButton();
@@ -472,6 +1159,39 @@
     }
     renderRail();
     refreshAll();
+    measureClamps();
+    syncCardMedia();
+  }
+
+  /**
+   * Compact decisions clamp each justification; when any of them actually
+   * overflows on the current card, offer one "Show full justifications" switch
+   * (a button cannot live inside the option button itself).
+   */
+  function measureClamps() {
+    const card = document.querySelector('.mkd-card.is-current');
+    const list = card ? card.querySelector('.mkd-opts.is-dense') : null;
+    if (!list) {
+      return;
+    }
+    let toggle = card.querySelector('.mkd-opts__expand');
+    if (!toggle) {
+      toggle = el('button', 'mkd-opts__expand', { 'type': 'button', 'aria-expanded': 'false' });
+      toggle.textContent = 'Show full justifications';
+      toggle.addEventListener('click', () => {
+        const open = list.classList.toggle('is-expanded');
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        toggle.textContent = open ? 'Shorten justifications' : 'Show full justifications';
+      });
+      list.parentNode.insertBefore(toggle, list);
+    }
+    if (list.classList.contains('is-expanded')) {
+      toggle.hidden = false;
+      return;
+    }
+    const clipped = [...list.querySelectorAll('.mkd-opt__just')]
+      .some(just => just.scrollHeight > just.clientHeight + 1);
+    toggle.hidden = !clipped;
   }
 
   function setCardVisible(card, visible) {
@@ -520,76 +1240,76 @@
     rail.appendChild(end);
   }
 
-  /** Per-card navigation row: Prev / (Skip) / Next. */
-  function buildNav(item, index) {
-    const section = itemSection(item.id);
-    const nav = section ? section.querySelector('.mkd-card__nav') : null;
-    if (!nav) {
+  // --------------------------------------------------------------------------
+  // ACTION BAR — Previous / Skip / Next live in the sticky footer, always in
+  // reach; the per-card duplicates are gone.
+  // --------------------------------------------------------------------------
+
+  function skipCurrent(fromKeyboard) {
+    const item = items[idx];
+    if (!item) {
       return;
     }
-    nav.textContent = '';
-
-    const prev = el('button', 'mkd-btn mkd-btn--ghost', { type: 'button' });
-    prev.textContent = '\u2190 Previous';
-    prev.addEventListener('click', () => go(index - 1));
-    nav.appendChild(prev);
-
-    nav.appendChild(el('span', 'mkd-card__nav-spacer'));
-
-    const skip = el('button', 'mkd-btn', { type: 'button', title: 'Skip for now = decide later, not a rejection' });
-    skip.textContent = 'Skip for now';
-    skip.addEventListener('click', () => {
-      const entry = state[item.id];
-      entry.skipped = true;
-      if (item.type === 'decision') {
-        entry.chosen = null;
-      }
-      go(index + 1);
-    });
-    nav.appendChild(skip);
-
-    const next = el('button', 'mkd-btn mkd-btn--primary', {
-      'type': 'button',
-      'data-nav-next': item.id,
-    });
-    next.textContent = index === items.length - 1 ? 'Finish \u2192' : 'Next \u2192';
-    next.addEventListener('click', () => go(index + 1));
-    nav.appendChild(next);
+    const entry = state[item.id];
+    entry.skipped = true;
+    if (item.type === 'decision') {
+      entry.chosen = null;
+      syncDecisionUI(item);
+    }
+    go(idx + 1, fromKeyboard);
   }
 
-  /** A decision's Next stays disabled until an option (or skip) is picked. */
-  function refreshNavButtons() {
-    for (const item of items) {
-      if (item.type !== 'decision') {
-        continue;
-      }
-      const btn = document.querySelector(
-        `[data-nav-next="${cssAttrEscape(item.id)}"]`,
-      );
-      if (btn) {
-        btn.disabled = state[item.id].chosen === null && !state[item.id].skipped;
-      }
+  /** A decision cannot move on until it has an option (or is skipped). */
+  function nextBlocked() {
+    const item = items[idx];
+    return Boolean(item && item.type === 'decision' && state[item.id].chosen === null && !state[item.id].skipped);
+  }
+
+  function goNext(fromKeyboard) {
+    if (idx === items.length) {
+      requestSend();
+      return;
     }
+    if (nextBlocked()) {
+      return;
+    }
+    go(idx + 1, fromKeyboard);
+  }
+
+  function renderBarNav() {
+    if (!nextBtn || !prevBtn || !skipBtn) {
+      return;
+    }
+    const onIntro = idx === -1;
+    const onSummary = idx === items.length;
+    prevBtn.hidden = onIntro;
+    skipBtn.hidden = onIntro || onSummary;
+    const blocked = nextBlocked();
+    nextBtn.disabled = blocked || (onSummary && submitting);
+    let label = 'Next \u2192';
+    if (onIntro) {
+      label = 'Start \u2192';
+    }
+    else if (onSummary) {
+      label = canSubmit ? spec.submitLabel : 'Copy JSON';
+    }
+    else if (idx === items.length - 1) {
+      label = 'Finish \u2192';
+    }
+    nextBtn.textContent = label;
+    // Idle until the current item has an answer, then the primary call to action.
+    const item = items[idx];
+    const ready = onIntro || onSummary || (item && itemStatus(item) === 'answered');
+    nextBtn.classList.toggle('is-idle', !ready);
   }
 
   function buildIntroNav() {
-    const nav = introCard ? introCard.querySelector('[data-intro-nav]') : null;
-    if (!nav) {
-      return;
-    }
-    nav.classList.add('mkd-card__nav');
-    nav.appendChild(el('span', 'mkd-card__nav-spacer'));
-    const start = el('button', 'mkd-btn mkd-btn--primary', { type: 'button' });
-    start.textContent = 'Start \u2192';
-    start.addEventListener('click', () => go(0));
-    nav.appendChild(start);
-
     // In --wait / artifact mode the intro's closing line should point at the
     // submit button rather than copy-paste.
     if (canSubmit) {
       const finishLine = byId('mkd-legend-finish');
       if (finishLine) {
-        finishLine.textContent = `When you are done, press "${spec.submitLabel}" in the footer to send your answers back.`;
+        finishLine.textContent = `When you are done, press "${spec.submitLabel}" on the last screen to send your answers back.`;
       }
     }
   }
@@ -615,13 +1335,13 @@
 
     const tiles = el('div', 'mkd-tiles');
     const tileData = [
-      { n: stats.recFollowed, label: 'recommendations followed' },
-      { n: stats.overridden, label: 'recommendations changed' },
+      { n: stats.recFollowed, label: 'recommendations followed', rec: true },
+      { n: stats.overridden, label: 'recommendations changed', rec: true },
       { n: stats.custom, label: 'custom decisions' },
       { n: stats.skipped, label: 'skipped' },
     ];
     for (const tile of tileData) {
-      const box = el('div', 'mkd-tile');
+      const box = el('div', tile.rec ? 'mkd-tile mkd-tile--rec' : 'mkd-tile');
       const n = el('div', 'mkd-tile__n');
       n.textContent = String(tile.n);
       const label = el('div', 'mkd-tile__label');
@@ -649,35 +1369,9 @@
 
     const legend = el('p', 'mkd-legend');
     legend.textContent = canSubmit
-      ? `Last step: press "${spec.submitLabel}" in the footer. Skipped items stay as "skipped" — decide later, not a rejection.`
-      : 'Last step: press "Copy JSON" in the footer and paste it into the chat. Skipped items stay as "skipped" — decide later, not a rejection.';
+      ? `Last step: press "${spec.submitLabel}" below. Skipped items stay as "skipped": decide later, not a rejection.`
+      : 'Last step: press "Copy JSON" below and paste it into the chat. Skipped items stay as "skipped": decide later, not a rejection.';
     summaryCard.appendChild(legend);
-
-    const nav = el('div', 'mkd-card__nav');
-    const back = el('button', 'mkd-btn mkd-btn--ghost', { type: 'button' });
-    back.textContent = '\u2190 Back';
-    back.addEventListener('click', () => go(items.length - 1));
-    nav.appendChild(back);
-    nav.appendChild(el('span', 'mkd-card__nav-spacer'));
-    const cta = el('button', 'mkd-btn mkd-btn--primary', { type: 'button' });
-    if (canSubmit) {
-      cta.textContent = spec.submitLabel;
-      cta.addEventListener('click', () => {
-        if (submitBtn) {
-          submitBtn.click();
-        }
-      });
-    }
-    else {
-      cta.textContent = 'Copy JSON';
-      cta.addEventListener('click', () => {
-        if (copyBtn) {
-          copyBtn.click();
-        }
-      });
-    }
-    nav.appendChild(cta);
-    summaryCard.appendChild(nav);
   }
 
   /** The summary chip describing an item's outcome. */
@@ -688,7 +1382,7 @@
 
     if (status === 'skipped') {
       chip.classList.add('mkd-chip--muted');
-      chip.textContent = '\u2014 skipped';
+      chip.textContent = 'skipped';
       return chip;
     }
     if (status === 'pending') {
@@ -704,7 +1398,12 @@
       }
       const option = optionByKey(item, entry.chosen);
       chip.classList.add('mkd-chip--pick');
-      chip.textContent = option ? `${option.label}${option.recommended ? ' \u2605' : ''}` : String(entry.chosen);
+      chip.textContent = option ? option.label : String(entry.chosen);
+      if (option && option.recommended) {
+        const star = el('span', 'mkd-rec-star', { 'aria-label': 'recommended' });
+        star.textContent = ' \u2605';
+        chip.appendChild(star);
+      }
       return chip;
     }
     chip.classList.add('mkd-chip--pick');
@@ -716,7 +1415,7 @@
   // BUILD: per-type interactive parts
   // --------------------------------------------------------------------------
 
-  function buildItem(item, index) {
+  function buildItem(item) {
     const section = itemSection(item.id);
     if (!section) {
       return;
@@ -735,7 +1434,6 @@
     else {
       buildAnswerable(item, host);
     }
-    buildNav(item, index);
   }
 
   // ---- decision ----
@@ -763,6 +1461,7 @@
     );
     if (customInput) {
       customInput.value = entry.customText;
+      customInput.addEventListener('focus', cancelAutoAdvance);
       customInput.addEventListener('input', () => {
         entry.customText = customInput.value;
         refreshAll();
@@ -787,6 +1486,45 @@
     syncDecisionUI(item);
     refreshAll();
     saveState();
+    cancelAutoAdvance();
+    if (autoAdvance && entry.chosen !== null && entry.chosen !== CUSTOM_KEY) {
+      scheduleAutoAdvance();
+    }
+  }
+
+  // ---- auto-advance (optional, off by default) ----
+
+  const AUTO_ADVANCE_KEY = 'mkd-view-auto-advance';
+  const AUTO_ADVANCE_MS = 900;
+  let autoAdvance = false;
+  let autoTimer = null;
+
+  /** The pending move shows as a fill sweeping across Next; any edit cancels it. */
+  function scheduleAutoAdvance() {
+    const from = idx;
+    if (nextBtn) {
+      nextBtn.style.setProperty('--mkd-auto-ms', `${AUTO_ADVANCE_MS}ms`);
+      nextBtn.classList.add('is-advancing');
+    }
+    autoTimer = window.setTimeout(() => {
+      autoTimer = null;
+      if (nextBtn) {
+        nextBtn.classList.remove('is-advancing');
+      }
+      if (idx === from && !nextBlocked()) {
+        go(idx + 1);
+      }
+    }, AUTO_ADVANCE_MS);
+  }
+
+  function cancelAutoAdvance() {
+    if (autoTimer !== null) {
+      window.clearTimeout(autoTimer);
+      autoTimer = null;
+    }
+    if (nextBtn) {
+      nextBtn.classList.remove('is-advancing');
+    }
   }
 
   /** Reflect a decision's chosen state onto its option buttons + custom box. */
@@ -819,7 +1557,9 @@
       rows: '3',
     });
     input.value = entry.note;
+    input.addEventListener('focus', cancelAutoAdvance);
     input.addEventListener('input', () => {
+      cancelAutoAdvance();
       entry.note = input.value;
       refreshAll();
       saveState();
@@ -1682,8 +2422,13 @@
   // EXPAND-TO-WRITE PANEL
   // --------------------------------------------------------------------------
 
+  /** Native auto-grow where supported; the scrollHeight path is the fallback. */
+  const nativeFieldSizing = typeof CSS !== 'undefined'
+    && typeof CSS.supports === 'function'
+    && CSS.supports('field-sizing', 'content');
+
   function autoGrowExpandInput() {
-    if (!expandInput) {
+    if (!expandInput || nativeFieldSizing) {
       return;
     }
     expandInput.style.height = 'auto';
@@ -2002,20 +2747,20 @@
 
   function refreshAll() {
     const stats = computeStats();
-    if (statAnswered) {
-      statAnswered.textContent = String(stats.answered);
+    const done = stats.answered + stats.skipped;
+    const pending = stats.total - done;
+    if (progressBar) {
+      progressBar.value = done;
     }
-    if (statRec) {
-      statRec.textContent = String(stats.recFollowed);
+    if (countDone) {
+      countDone.textContent = String(done);
     }
-    if (statOver) {
-      statOver.textContent = String(stats.overridden);
+    if (countPending) {
+      countPending.textContent = `${pending} pending`;
+      countPending.classList.toggle('is-zero', pending === 0);
     }
-    if (statCustom) {
-      statCustom.textContent = String(stats.custom);
-    }
-    if (statSkipped) {
-      statSkipped.textContent = String(stats.skipped);
+    if (jumpBtn) {
+      jumpBtn.hidden = pending === 0 || firstPendingIndex() === idx;
     }
 
     if (jsonPanel && !jsonPanel.hidden) {
@@ -2033,7 +2778,7 @@
     for (const key of Object.keys(answerButtons)) {
       updateAnswerButton(key);
     }
-    refreshNavButtons();
+    renderBarNav();
     renderRail();
   }
 
@@ -2080,12 +2825,88 @@
       }
     }
     if (copyBtn) {
-      copyBtn.textContent = copied ? 'Copied! Paste it in the chat' : 'Copy failed \u2014 select the JSON below';
+      copyBtn.textContent = copied ? 'Copied! Paste it in the chat' : 'Copy failed: select the JSON below';
       copyBtn.classList.add('is-copied');
       setTimeout(() => {
         copyBtn.textContent = 'Copy JSON';
         copyBtn.classList.remove('is-copied');
       }, 2400);
+    }
+  }
+
+  // ---- pending items + send confirmation ----
+
+  function firstPendingIndex() {
+    return items.findIndex(item => itemStatus(item) === 'pending');
+  }
+
+  function isConfirmOpen() {
+    return Boolean(confirmDialog && confirmDialog.open);
+  }
+
+  /** The real send action: submit (wait/artifact) or copy the JSON (copy mode). */
+  function performSend() {
+    if (canSubmit) {
+      void submit();
+    }
+    else {
+      void copyJson();
+    }
+  }
+
+  /**
+   * Every path to Send (footer button, summary CTA, Cmd/Ctrl+Enter) lands
+   * here: with items still pending, ask first in a modal dialog.
+   */
+  function requestSend() {
+    if (isConfirmOpen() || submitting) {
+      return;
+    }
+    if (canSubmit && items.some(item => !itemSatisfied(item))) {
+      return;
+    }
+    const stats = computeStats();
+    const pending = stats.total - stats.answered - stats.skipped;
+    if (pending === 0) {
+      performSend();
+      return;
+    }
+    const noun = pending === 1 ? 'item has' : 'items have';
+    const action = canSubmit ? `"${spec.submitLabel}"` : '"Copy JSON"';
+    const message = `${pending} of ${stats.total} ${noun} no answer yet. They will go back as "pending". Use ${action} anyway, or review them first?`;
+    if (!confirmDialog || typeof confirmDialog.showModal !== 'function') {
+      if (window.confirm(message)) {
+        performSend();
+      }
+      return;
+    }
+    if (confirmBody) {
+      confirmBody.textContent = message;
+    }
+    confirmDialog.returnValue = '';
+    confirmDialog.showModal();
+  }
+
+  /**
+   * "Send anyway" sends inside the click itself: copy mode writes to the
+   * clipboard, and WebKit only allows that within the user gesture, which a
+   * later `close` event no longer carries.
+   */
+  function onConfirmSend(event) {
+    event.preventDefault();
+    confirmDialog.returnValue = '';
+    confirmDialog.close();
+    performSend();
+  }
+
+  function onConfirmClose() {
+    const choice = confirmDialog.returnValue;
+    confirmDialog.returnValue = '';
+    if (choice === 'review') {
+      const target = firstPendingIndex();
+      if (target >= 0) {
+        go(target);
+      }
     }
   }
 
@@ -2112,7 +2933,7 @@
         const notified = await sendToArtifact(result);
         showDone(notified
           ? 'Sent. Claude has your answers and is picking them up.'
-          : 'Saved, but Claude was not notified. Tell Claude in the chat that the deck is answered.');
+          : 'Saved, but Claude was not notified. Tell Claude in the chat that the deck is answered.', notified);
         return;
       }
       const response = await fetch('/submit', {
@@ -2192,10 +3013,34 @@
     return `Could not save your answers${code ? ` (${code})` : ''}. Try again, or press "Copy JSON" and paste it into the chat.`;
   }
 
-  function showDone(message) {
+  /**
+   * Artifact mode only: the wake-up can be declined unattended, so the page
+   * tells the user the one word that makes Claude read the saved answers.
+   * Inline styles on purpose: the shared CSS is hash-pinned for copy/wait.
+   */
+  function showWakeHint() {
+    if (!doneEl || doneEl.querySelector('.mkd-done__hint')) {
+      return;
+    }
+    const message = doneEl.textContent;
+    doneEl.textContent = '';
+    const line = document.createElement('div');
+    line.textContent = message;
+    const hint = document.createElement('p');
+    hint.className = 'mkd-done__hint';
+    hint.style.cssText = 'margin:0.75rem 0 0;font-size:0.95rem;font-weight:400;opacity:0.8;max-width:34rem';
+    hint.textContent = 'If Claude does not answer within a minute, type "listo" in the chat: your answers are saved.';
+    doneEl.style.flexDirection = 'column';
+    doneEl.append(line, hint);
+  }
+
+  function showDone(message, wakeHint) {
     if (doneEl) {
       if (message) {
         doneEl.textContent = message;
+      }
+      if (mode === 'artifact' && wakeHint) {
+        showWakeHint();
       }
       doneEl.hidden = false;
     }
@@ -2231,13 +3076,50 @@
     };
   }
 
+  function isInteractiveTarget(target) {
+    return Boolean(target && target.closest && target.closest('button, a[href], summary, select, label'));
+  }
+
+  /**
+   * Digits pick the option at that SCREEN position on the current card (the
+   * custom option is the last slot), so they follow a shuffle. Questions map
+   * digits onto their choice inputs the same way.
+   */
+  function pickByPosition(n) {
+    const card = document.querySelector('.mkd-card.is-current');
+    if (!card || idx < 0 || idx >= items.length) {
+      return false;
+    }
+    const item = items[idx];
+    if (item.type === 'decision') {
+      const slot = card.querySelectorAll('.mkd-opt[data-opt-key]')[n - 1];
+      if (!slot) {
+        return false;
+      }
+      selectOption(item, slot.getAttribute('data-opt-key'));
+      return true;
+    }
+    if (item.type === 'question') {
+      const input = card.querySelectorAll('.mkd-controls input[type="radio"], .mkd-controls input[type="checkbox"]')[n - 1];
+      if (!input) {
+        return false;
+      }
+      input.click();
+      return true;
+    }
+    return false;
+  }
+
   /** True when the target is a field where keystrokes must not navigate. */
   function isTypingTarget(target) {
     if (!target || !target.tagName) {
       return false;
     }
     const tag = target.tagName;
-    return tag === 'TEXTAREA' || tag === 'INPUT' || target.isContentEditable === true;
+    if (tag === 'INPUT') {
+      return !/^(checkbox|radio|button|submit|reset|range|color|file)$/i.test(target.type || '');
+    }
+    return tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable === true;
   }
 
   function wireGlobals() {
@@ -2261,17 +3143,85 @@
     }
     if (copyBtn) {
       copyBtn.addEventListener('click', () => {
-        void copyJson();
+        if (canSubmit) {
+          void copyJson();
+        }
+        else {
+          requestSend();
+        }
       });
     }
     if (submitBtn) {
       submitBtn.addEventListener('click', () => {
-        void submit();
+        requestSend();
       });
+    }
+    if (confirmDialog) {
+      confirmDialog.addEventListener('close', onConfirmClose);
+    }
+    if (confirmSend) {
+      confirmSend.addEventListener('click', onConfirmSend);
+    }
+    if (jumpBtn) {
+      jumpBtn.addEventListener('click', () => {
+        const target = firstPendingIndex();
+        if (target >= 0) {
+          go(target);
+        }
+      });
+    }
+    if (hideRecToggle) {
+      hideRecToggle.addEventListener('change', () => {
+        applyHideRec(hideRecToggle.checked);
+        writeFlag(VIEW_HIDE_REC_KEY, hideRecToggle.checked);
+        if (idx === items.length) {
+          renderSummary();
+        }
+      });
+    }
+    if (shuffleBtn) {
+      shuffleBtn.addEventListener('click', reshuffle);
+    }
+    if (unshuffleBtn) {
+      unshuffleBtn.addEventListener('click', restoreAuthorOrder);
     }
     if (themeToggle) {
       themeToggle.addEventListener('click', toggleTheme);
     }
+    if (prevBtn) {
+      prevBtn.addEventListener('click', () => go(idx - 1));
+    }
+    if (skipBtn) {
+      skipBtn.addEventListener('click', () => skipCurrent(false));
+    }
+    if (nextBtn) {
+      nextBtn.addEventListener('click', () => goNext(false));
+    }
+    if (autoAdvanceToggle) {
+      autoAdvanceToggle.addEventListener('change', () => {
+        autoAdvance = autoAdvanceToggle.checked;
+        writeFlag(AUTO_ADVANCE_KEY, autoAdvance);
+        if (!autoAdvance) {
+          cancelAutoAdvance();
+        }
+      });
+    }
+    if (moreBtn) {
+      moreBtn.addEventListener('click', () => {
+        if (barEl && barEl.classList.contains('is-more-open')) {
+          closeMore();
+        }
+        else {
+          openMore();
+        }
+      });
+      document.addEventListener('click', (event) => {
+        if (barEl && barEl.classList.contains('is-more-open') && !barEl.contains(event.target)) {
+          closeMore();
+        }
+      });
+    }
+    watchOnScreenKeyboard();
 
     if (expandInput) {
       expandInput.addEventListener('input', () => {
@@ -2338,7 +3288,23 @@
     }
 
     document.addEventListener('keydown', (event) => {
+      // The native modals handle their own keys (Esc, Tab, Enter on a button).
+      if (isConfirmOpen() || isLightboxOpen()) {
+        return;
+      }
+      // A focused carousel owns its arrow keys (handled on the carousel).
+      if (event.target && event.target.closest && event.target.closest('.mkd-carousel')) {
+        return;
+      }
       if (event.key === 'Escape') {
+        cancelAutoAdvance();
+        if (barEl && barEl.classList.contains('is-more-open')) {
+          closeMore();
+          if (moreBtn) {
+            moreBtn.focus();
+          }
+          return;
+        }
         if (currentRowPopKey) {
           closeRowPop();
           return;
@@ -2353,24 +3319,40 @@
       // Cmd/Ctrl+Enter: submit (--wait) or copy the JSON (copy mode).
       if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
         event.preventDefault();
-        if (canSubmit) {
-          void submit();
-        }
-        else {
-          void copyJson();
-        }
+        requestSend();
         return;
       }
-      // Arrow keys navigate the deck (ignored while typing or in a modal).
+      // Deck keys: never while typing, inside a popover/panel, or with a modifier.
       if (isTypingTarget(event.target) || currentRowPopKey || (expand && !expand.hidden)) {
         return;
       }
+      if (event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
       if (event.key === 'ArrowRight' && idx < items.length) {
-        go(idx + 1);
+        goNext(true);
+        return;
+      }
+      // Enter on a focused control keeps its native meaning (press that control),
+      // except on the option already chosen: there it means "next", not "unpick".
+      const onChosen = event.target && event.target.classList
+        && event.target.classList.contains('mkd-opt') && event.target.classList.contains('is-selected');
+      if (event.key === 'Enter' && (onChosen || !isInteractiveTarget(event.target)) && idx < items.length) {
+        event.preventDefault();
+        goNext(true);
         return;
       }
       if (event.key === 'ArrowLeft' && idx > -1) {
-        go(idx - 1);
+        go(idx - 1, true);
+        return;
+      }
+      if ((event.key === 's' || event.key === 'S') && idx >= 0 && idx < items.length) {
+        event.preventDefault();
+        skipCurrent(true);
+        return;
+      }
+      if (/^[1-9]$/.test(event.key) && pickByPosition(Number(event.key))) {
+        event.preventDefault();
         return;
       }
       if (event.key === '?' && !event.metaKey && !event.ctrlKey && !event.altKey) {
@@ -2378,6 +3360,42 @@
         toggleKbd();
       }
     });
+  }
+
+  // ---- mobile overflow ("More actions") + on-screen keyboard ----
+
+  function openMore() {
+    if (barEl && moreBtn) {
+      barEl.classList.add('is-more-open');
+      moreBtn.setAttribute('aria-expanded', 'true');
+    }
+  }
+
+  function closeMore() {
+    if (barEl && moreBtn) {
+      barEl.classList.remove('is-more-open');
+      moreBtn.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  /**
+   * While the on-screen keyboard is up (visual viewport much shorter than the
+   * layout viewport, with a field focused) the fixed bar would float over the
+   * text being typed, so it steps aside instead of jumping around.
+   */
+  function watchOnScreenKeyboard() {
+    const vv = window.visualViewport;
+    if (!vv || !appRoot) {
+      return;
+    }
+    const check = () => {
+      const typing = isTypingTarget(document.activeElement);
+      const open = typing && vv.height < window.innerHeight * 0.8;
+      appRoot.classList.toggle('is-kb-open', open);
+    };
+    vv.addEventListener('resize', check);
+    document.addEventListener('focusin', check);
+    document.addEventListener('focusout', () => window.setTimeout(check, 0));
   }
 
   // --------------------------------------------------------------------------
@@ -2396,7 +3414,10 @@
     }
     const modKey = isMacPlatform() ? '\u2318' : 'Ctrl';
     const rows = [
+      { action: 'Pick option by position (A = 1)', keys: ['1', '\u2026', '6'] },
+      { action: 'Next screen', keys: ['Enter'] },
       { action: 'Previous / next screen', keys: ['\u2190', '\u2192'] },
+      { action: 'Skip for now', keys: ['S'] },
       { action: canSubmit ? 'Submit answers' : 'Copy the result JSON', keys: [modKey, 'Enter'] },
       { action: 'Close panel / popover / legend', keys: ['Esc'] },
       { action: 'Quote selected text', keys: ['select', 'quote'] },
@@ -2465,14 +3486,25 @@
 
     loadState();
 
-    items.forEach((item, index) => {
+    items.forEach((item) => {
       if (state[item.id]) {
-        buildItem(item, index);
+        buildItem(item);
       }
     });
+    applyHideRec(readFlag(VIEW_HIDE_REC_KEY));
+    autoAdvance = readFlag(AUTO_ADVANCE_KEY);
+    if (autoAdvanceToggle) {
+      autoAdvanceToggle.checked = autoAdvance;
+    }
+    lastShuffle = loadShuffleOrder();
+    if (lastShuffle && readFlag(SHUFFLE_ACTIVE_KEY)) {
+      shuffleOrder = lastShuffle;
+      applyShuffle(true);
+    }
     buildIntroNav();
     buildKbdLegend();
     wireGlobals();
+    wireMedia();
     render();
   }
 

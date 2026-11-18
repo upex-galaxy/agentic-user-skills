@@ -1,0 +1,34 @@
+# launch.txt: one self-contained line per worker, for a human to paste
+#
+# Copy to <scope path>/launch.txt. Owner: the conductor.
+#
+# RULES
+#   1. Write this file always, with or without a runtime. A supervised worker is launched natively
+#      or through jitso (no command line here) and gets the task spec as its first prompt; these
+#      lines serve a human who pastes them and a terminal deliberately left unsupervised.
+#   2. The PROMPT is identical to the task spec, byte for byte. Do not paraphrase it.
+#   3. Regenerate the file whole on each planning pass. Finished items drop out.
+#   4. Each line is self-contained: it starts the agent with the full prompt.
+#   5. Keep double quotes, < and > out of the prompt. They break the shell parse, the terminal still
+#      reports success, and nothing runs. Single-quote the prompt.
+#   6. Validate before launching: sh -n <this file>, after stripping the placeholders you will fill.
+#   7. Lines starting with # are documentation; never hand one to a launcher.
+#   8. Every prompt OPENS with /<skill> <label> fleet worker when the worker runs a skill (else
+#      <label> fleet worker). <label> is one token, [<KEY>-]<slug>, kebab-case, single hyphens
+#      inside, a slug of 3 or 4 words the owner can read. A launch without the
+#      token leaves the tab titled "worker-<task id>". The prompt also carries the continuation
+#      sentence, as below.
+#   9. The permission flag matches the profile's orchestration.permission_modes.worker. The lines
+#      below carry the default, bypass. Confirm each flag with <harness> --help on this machine
+#      before pasting: flags move between releases.
+#
+# Claude Code: use the full model id, never an alias, because an alias moves on its own. -n names
+# the session; inside an Orca terminal the name gains the handle, outside it is the bare label.
+# <permission-flag> is the profile's bypass flag for this harness.
+claude -n "<label>${ORCA_TERMINAL_HANDLE:+--$ORCA_TERMINAL_HANDLE}" --model <full-model-id> --effort <effort> <permission-flag> '/<skill> <label> fleet worker. Read <scope path>/COMMON.md then <scope path>/W-<label>.md and execute your brief. Run every stage without returning to the prompt until worker_done is sent, except to end your turn right after an ask; stage boundaries are not checkpoints. No heartbeats.'
+
+# OpenCode: no name flag and no effort flag; the roster carries the name.
+opencode --model <provider/model> <permission-flag> --prompt '/<skill> <label> fleet worker. Read <scope path>/COMMON.md then <scope path>/W-<label>.md and execute your brief. Run every stage without returning to the prompt until worker_done is sent, except to end your turn right after an ask; stage boundaries are not checkpoints. No heartbeats.'
+
+# Codex: no name flag; type '/rename <label>--<handle>' into the session once it is up.
+codex --model <full-model-id> <permission-flag> '/<skill> <label> fleet worker. Read <scope path>/COMMON.md then <scope path>/W-<label>.md and execute your brief. Run every stage without returning to the prompt until worker_done is sent, except to end your turn right after an ask; stage boundaries are not checkpoints. No heartbeats.'

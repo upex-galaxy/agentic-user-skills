@@ -10,58 +10,66 @@
  * below carries a full system fallback stack so the page renders correctly
  * offline.
  *
- * Theme model (three states, prototype-faithful):
- *   :root                      -> light palette (the default)
- *   @media dark + no override  -> dark palette (system preference)
- *   :root[data-theme="dark"]   -> dark palette (explicit toggle choice)
- *   :root[data-theme="light"]  -> light palette (explicit toggle choice)
+ * Theme model (dark first, the system decides until the user chooses):
+ *   :root                                   -> deep-navy dark palette (the default)
+ *   @media light + no explicit choice       -> matte pastel light palette
+ *   :root[data-theme="light"]               -> light palette (explicit toggle choice)
+ *   :root[data-theme="dark"]                -> dark palette (explicit toggle choice)
+ * The `data-theme` attribute (not a <meta name="color-scheme">) carries the
+ * choice because artifact mode is a fragment with no <head> of its own.
  */
 
 /* ==========================================================================
-   Design tokens - light (default)
+   Design tokens - dark (default)
    ========================================================================== */
 
 :root {
-  --mkd-bg: #f6f8f7;
-  --mkd-surface: #ffffff;
-  --mkd-surface-raised: #eef2f0;
-  --mkd-border: #d9e1dd;
-  --mkd-text: #1b2523;
-  --mkd-text-strong: #0f1a17;
-  --mkd-text-muted: #54655f;
+  color-scheme: dark;
 
-  --mkd-accent: #177e6d;
-  --mkd-accent-strong: #0c5a4d;
-  --mkd-accent-ink: #0c5a4d;
-  --mkd-accent-contrast: #ffffff;
-  --mkd-accent-tint: #e0efeb;
-  --mkd-accent-ring: rgba(23, 126, 109, 0.35);
+  --mkd-bg: #0b1120;
+  --mkd-bg-glow: rgba(76, 201, 176, 0.07);
+  --mkd-grid: rgba(141, 160, 196, 0.07);
+  --mkd-surface: #111a2c;
+  --mkd-surface-raised: #18223a;
+  --mkd-border: #253150;
+  --mkd-border-strong: #34426a;
+  --mkd-text: #d6deec;
+  --mkd-text-strong: #f1f5fb;
+  --mkd-text-muted: #8f9db8;
+
+  --mkd-accent: #4cc9b0;
+  --mkd-accent-strong: #72dac5;
+  --mkd-accent-ink: #7fe0cc;
+  --mkd-accent-contrast: #05201a;
+  --mkd-accent-tint: #13302f;
+  --mkd-accent-ring: rgba(76, 201, 176, 0.5);
 
   /* Amber "recommended" family + severity chip families. */
-  --mkd-rec: #a85b10;
-  --mkd-rec-soft: #f6e8d8;
-  --mkd-high: #b3362b;
-  --mkd-high-soft: #f5e1de;
-  --mkd-medium: #8a6414;
-  --mkd-medium-soft: #f2e9d2;
-  --mkd-low: #5a6b68;
-  --mkd-low-soft: #e5eae8;
+  --mkd-rec: #f2b866;
+  --mkd-rec-soft: #33291b;
+  --mkd-high: #f39189;
+  --mkd-high-soft: #3a2027;
+  --mkd-medium: #e6c35c;
+  --mkd-medium-soft: #322c18;
+  --mkd-low: #a0abc2;
+  --mkd-low-soft: #1d263b;
 
-  --mkd-danger: #c0392b;
-  --mkd-danger-contrast: #fff;
+  --mkd-danger: #ff8a80;
+  --mkd-danger-contrast: #2a0906;
 
-  --mkd-code-bg: #eef2f0;
-  --mkd-zebra: rgba(20, 40, 35, 0.03);
-  --mkd-chip-x-bg: rgba(20, 40, 35, 0.08);
-  --mkd-img-x-bg: rgba(20, 40, 35, 0.55);
+  --mkd-code-bg: #0a0f1c;
+  --mkd-zebra: rgba(255, 255, 255, 0.025);
+  --mkd-chip-x-bg: rgba(255, 255, 255, 0.08);
+  --mkd-img-x-bg: rgba(0, 0, 0, 0.6);
+  --mkd-scrim: rgba(3, 7, 16, 0.62);
+
+  --mkd-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 18px 40px rgba(0, 0, 0, 0.38);
+  --mkd-shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --mkd-shadow-lift: 0 18px 44px rgba(0, 0, 0, 0.55);
 
   --mkd-radius: 16px;
   --mkd-radius-sm: 10px;
   --mkd-radius-pill: 999px;
-
-  --mkd-shadow: 0 10px 30px rgba(20, 40, 35, 0.08);
-  --mkd-shadow-soft: 0 2px 8px rgba(20, 40, 35, 0.06);
-  --mkd-shadow-lift: 0 14px 36px rgba(20, 40, 35, 0.14);
 
   --mkd-font:
     'Albert Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
@@ -79,90 +87,60 @@
   /* Minimum gap a broken-out table keeps from the viewport edge. */
   --mkd-gutter: 24px;
   --mkd-pad: 20px;
+  --mkd-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --mkd-transition: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* Height reserved under the stage for the fixed footer bar. */
+  --mkd-bar-space: calc(96px + env(safe-area-inset-bottom, 0px));
 }
 
 /* ==========================================================================
-   Design tokens - dark (system preference, unless light explicitly chosen)
+   Design tokens - light (only when the header toggle chooses it; dark is the default)
+   Matte pastel: no pure white, low-chroma surfaces, almost no shadow.
    ========================================================================== */
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --mkd-bg: #101513;
-    --mkd-surface: #182019;
-    --mkd-surface-raised: #1f2a24;
-    --mkd-border: #2c3a33;
-    --mkd-text: #e7ece9;
-    --mkd-text-strong: #f2f7f4;
-    --mkd-text-muted: #9dafa8;
+/* Explicit light choice via the header toggle - same values as above. */
+:root[data-theme='light'] {
+  color-scheme: light;
 
-    --mkd-accent: #43b79e;
-    --mkd-accent-strong: #5ac7af;
-    --mkd-accent-ink: #7bd4bf;
-    --mkd-accent-contrast: #08201a;
-    --mkd-accent-tint: #1b322b;
-    --mkd-accent-ring: rgba(67, 183, 158, 0.4);
+  --mkd-bg: #eceef4;
+  --mkd-bg-glow: rgba(126, 172, 196, 0.16);
+  --mkd-grid: rgba(70, 84, 120, 0.05);
+  --mkd-surface: #f6f6f9;
+  --mkd-surface-raised: #e7eaf1;
+  --mkd-border: #d4d9e4;
+  --mkd-border-strong: #b9c0d0;
+  --mkd-text: #2a3040;
+  --mkd-text-strong: #161a25;
+  --mkd-text-muted: #565e76;
 
-    --mkd-rec: #e5a455;
-    --mkd-rec-soft: #33271a;
-    --mkd-high: #e27a6e;
-    --mkd-high-soft: #37211e;
-    --mkd-medium: #d9b04c;
-    --mkd-medium-soft: #322b18;
-    --mkd-low: #93a5a0;
-    --mkd-low-soft: #232d29;
+  --mkd-accent: #2d776c;
+  --mkd-accent-strong: #22625a;
+  --mkd-accent-ink: #21605a;
+  --mkd-accent-contrast: #ffffff;
+  --mkd-accent-tint: #d8eae5;
+  --mkd-accent-ring: rgba(45, 119, 108, 0.38);
 
-    --mkd-danger: #ff7b72;
-    --mkd-danger-contrast: #fff;
+  --mkd-rec: #8a500f;
+  --mkd-rec-soft: #f2e3cf;
+  --mkd-high: #a4372e;
+  --mkd-high-soft: #f3dcd9;
+  --mkd-medium: #765710;
+  --mkd-medium-soft: #efe5cb;
+  --mkd-low: #535e72;
+  --mkd-low-soft: #e1e5ee;
 
-    --mkd-code-bg: #0c1210;
-    --mkd-zebra: rgba(255, 255, 255, 0.02);
-    --mkd-chip-x-bg: rgba(255, 255, 255, 0.08);
-    --mkd-img-x-bg: rgba(0, 0, 0, 0.6);
+  --mkd-danger: #ad3529;
+  --mkd-danger-contrast: #ffffff;
 
-    --mkd-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-    --mkd-shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.3);
-    --mkd-shadow-lift: 0 14px 36px rgba(0, 0, 0, 0.5);
-  }
-}
+  --mkd-code-bg: #e7eaf1;
+  --mkd-zebra: rgba(40, 50, 80, 0.03);
+  --mkd-chip-x-bg: rgba(40, 50, 80, 0.08);
+  --mkd-img-x-bg: rgba(20, 26, 40, 0.55);
+  --mkd-scrim: rgba(36, 42, 60, 0.32);
 
-/* Explicit dark choice via the header toggle - same values as above. */
-:root[data-theme='dark'] {
-  --mkd-bg: #101513;
-  --mkd-surface: #182019;
-  --mkd-surface-raised: #1f2a24;
-  --mkd-border: #2c3a33;
-  --mkd-text: #e7ece9;
-  --mkd-text-strong: #f2f7f4;
-  --mkd-text-muted: #9dafa8;
-
-  --mkd-accent: #43b79e;
-  --mkd-accent-strong: #5ac7af;
-  --mkd-accent-ink: #7bd4bf;
-  --mkd-accent-contrast: #08201a;
-  --mkd-accent-tint: #1b322b;
-  --mkd-accent-ring: rgba(67, 183, 158, 0.4);
-
-  --mkd-rec: #e5a455;
-  --mkd-rec-soft: #33271a;
-  --mkd-high: #e27a6e;
-  --mkd-high-soft: #37211e;
-  --mkd-medium: #d9b04c;
-  --mkd-medium-soft: #322b18;
-  --mkd-low: #93a5a0;
-  --mkd-low-soft: #232d29;
-
-  --mkd-danger: #ff7b72;
-  --mkd-danger-contrast: #fff;
-
-  --mkd-code-bg: #0c1210;
-  --mkd-zebra: rgba(255, 255, 255, 0.02);
-  --mkd-chip-x-bg: rgba(255, 255, 255, 0.08);
-  --mkd-img-x-bg: rgba(0, 0, 0, 0.6);
-
-  --mkd-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  --mkd-shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --mkd-shadow-lift: 0 14px 36px rgba(0, 0, 0, 0.5);
+  --mkd-shadow: 0 1px 2px rgba(40, 50, 80, 0.05);
+  --mkd-shadow-soft: 0 1px 2px rgba(40, 50, 80, 0.06);
+  --mkd-shadow-lift: 0 12px 32px rgba(40, 50, 80, 0.14);
 }
 
 /* Smooth the dark<->light flip on the large color-bearing surfaces. */
@@ -193,11 +171,28 @@ body,
 html {
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
+  /* Keep a focused field clear of the fixed action bar (WCAG 2.4.11). */
+  scroll-padding-bottom: var(--mkd-bar-space);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
 
 body {
   margin: 0;
-  background: var(--mkd-bg);
+  min-height: 100dvh;
+  background-color: var(--mkd-bg);
+  /* Editor-canvas texture: a faint dot grid under a soft accent glow. */
+  background-image:
+    radial-gradient(1200px 520px at 50% -180px, var(--mkd-bg-glow), transparent 70%),
+    radial-gradient(var(--mkd-grid) 1px, transparent 1.2px);
+  background-size:
+    100% 100%,
+    22px 22px;
+  background-attachment: fixed;
   color: var(--mkd-text);
   font-family: var(--mkd-font);
   font-size: 16px;
@@ -231,6 +226,22 @@ button {
   padding: 12px clamp(16px, 4vw, 40px);
   background: var(--mkd-bg);
   border-bottom: 1px solid var(--mkd-border);
+}
+
+@supports (padding: max(0px)) {
+  .mkd-header {
+    padding-left: max(clamp(16px, 4vw, 40px), env(safe-area-inset-left, 0px));
+    padding-right: max(clamp(16px, 4vw, 40px), env(safe-area-inset-right, 0px));
+    padding-top: max(12px, env(safe-area-inset-top, 0px));
+  }
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) and (background: color-mix(in srgb, red 50%, transparent)) {
+  .mkd-header {
+    background: color-mix(in srgb, var(--mkd-bg) 86%, transparent);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
 }
 
 .mkd-brand {
@@ -389,8 +400,9 @@ button {
 
 .mkd-stage {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   place-items: start center;
-  padding: clamp(18px, 4vw, 44px) clamp(14px, 4vw, 40px) 150px;
+  padding: clamp(18px, 4vw, 44px) clamp(14px, 4vw, 40px) var(--mkd-bar-space);
 }
 
 .mkd-card {
@@ -409,13 +421,18 @@ button {
 
 .mkd-card.is-current {
   display: block;
-  animation: mkd-enter 0.28s ease;
+  animation: mkd-enter 220ms var(--mkd-ease-out);
+}
+
+/* Keyboard moves are repeated many times: they land instantly. */
+#mkd-app[data-nav='key'] .mkd-card.is-current {
+  animation: none;
 }
 
 @keyframes mkd-enter {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(6px);
   }
 
   to {
@@ -432,9 +449,10 @@ button {
   align-items: center;
   flex-wrap: wrap;
   margin-bottom: 14px;
+  font-family: var(--mkd-font-mono);
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 500;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--mkd-text-muted);
 }
@@ -701,11 +719,18 @@ button {
   text-align: left;
   transition:
     border-color 120ms ease,
-    background 120ms ease;
+    background 120ms ease,
+    transform 140ms var(--mkd-ease-out);
 }
 
-.mkd-opt:hover {
-  border-color: var(--mkd-accent);
+@media (hover: hover) and (pointer: fine) {
+  .mkd-opt:hover {
+    border-color: var(--mkd-accent);
+  }
+}
+
+.mkd-opt:active {
+  transform: scale(0.99);
 }
 
 .mkd-opt:focus-visible {
@@ -727,13 +752,15 @@ button {
 }
 
 .mkd-opt__key {
-  font-family: var(--mkd-font-display);
-  font-weight: 800;
-  font-size: 15px;
+  font-family: var(--mkd-font-mono);
+  font-weight: 500;
+  font-size: 14px;
   color: var(--mkd-accent-ink);
 }
 
 .mkd-opt__label {
+  flex: 1 1 14ch;
+  min-width: 0;
   font-weight: 700;
 }
 
@@ -791,6 +818,84 @@ button {
 }
 
 .mkd-opt.has-badge .mkd-opt__mark {
+  display: none;
+}
+
+/* ---- Compact decisions (4+ options): clamped justifications, 2 columns wide ---- */
+
+.mkd-opts.is-dense {
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.mkd-opts.is-dense .mkd-opt {
+  /* A stretched grid cell must not center a button's content vertically. */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: 12px 16px;
+}
+
+.mkd-opts.is-dense .mkd-opt__just {
+  display: -webkit-box;
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+.mkd-opts.is-dense.is-expanded .mkd-opt__just,
+.mkd-opts.is-dense .mkd-opt.is-selected .mkd-opt__just {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+  line-clamp: none;
+}
+
+@media (min-width: 1000px) {
+  .mkd-opts.is-dense {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mkd-opts.is-dense .mkd-opt[data-opt-key='CUSTOM'],
+  .mkd-opts.is-dense .mkd-custom-input {
+    grid-column: 1 / -1;
+  }
+}
+
+.mkd-opts__expand {
+  display: block;
+  margin: 14px 0 -6px auto;
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  color: var(--mkd-accent-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.mkd-opts__expand[hidden] {
+  display: none;
+}
+
+.mkd-opts__expand:focus-visible {
+  outline: 2px solid var(--mkd-accent);
+  outline-offset: 2px;
+}
+
+.mkd-bar__btn--jump {
+  border-style: dashed;
+  color: var(--mkd-text-muted);
+}
+
+.mkd-bar__btn--jump[hidden] {
   display: none;
 }
 
@@ -988,10 +1093,6 @@ button {
 }
 
 .mkd-card--table .mkd-card__interactive,
-.mkd-card--table .mkd-card__nav {
-  padding: 0 clamp(22px, 4vw, 40px) clamp(22px, 4vw, 40px);
-}
-
 .mkd-card--table .mkd-card__content {
   margin-bottom: 14px;
 }
@@ -1301,27 +1402,10 @@ button {
   outline: none;
 }
 
-/* ==========================================================================
-   Card navigation (Prev / Skip / Next, built by app.js)
-   ========================================================================== */
-
-.mkd-card__nav {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-top: 26px;
-}
-
-.mkd-card__nav:empty {
-  display: none;
-}
-
-.mkd-card__nav-spacer {
-  flex: 1;
-}
-
 .mkd-btn {
+  min-height: 44px;
   padding: 10px 20px;
+  white-space: nowrap;
   border: 1.5px solid var(--mkd-border);
   border-radius: var(--mkd-radius-sm);
   background: var(--mkd-surface);
@@ -1337,6 +1421,11 @@ button {
 
 .mkd-btn:hover {
   border-color: var(--mkd-accent);
+}
+
+.mkd-btn:active:not([disabled]),
+.mkd-bar__btn:active:not([disabled]) {
+  transform: scale(0.97);
 }
 
 .mkd-btn:focus-visible {
@@ -1480,34 +1569,147 @@ button {
   z-index: 40;
   background: var(--mkd-surface);
   border-top: 1px solid var(--mkd-border);
-  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.08);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  transition: transform 200ms var(--mkd-ease-out);
+}
+
+/* The bar steps aside while the on-screen keyboard is up (see app.js). */
+#mkd-app.is-kb-open .mkd-bar {
+  transform: translateY(100%);
 }
 
 .mkd-bar__row {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 10px clamp(14px, 4vw, 40px);
-  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px max(clamp(14px, 4vw, 40px), env(safe-area-inset-right, 0px)) 10px
+    max(clamp(14px, 4vw, 40px), env(safe-area-inset-left, 0px));
 }
 
-.mkd-stat {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--mkd-text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.mkd-stat b {
-  color: var(--mkd-text);
-}
-
-.mkd-stat--ok b {
+/* Native <progress> as a thin line along the bar's top edge (track on the
+   element, fill on the vendor pseudo-elements - never grouped, or the whole
+   rule is dropped). */
+.mkd-progress {
+  -webkit-appearance: none;
+  appearance: none;
+  position: absolute;
+  top: -1px;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: 3px;
+  border: 0 solid;
+  overflow: clip;
+  background: transparent;
   color: var(--mkd-accent);
 }
 
-.mkd-stat--rec b {
-  color: var(--mkd-rec);
+.mkd-progress::-webkit-progress-bar {
+  background: transparent;
+}
+
+.mkd-progress::-webkit-progress-value {
+  background: var(--mkd-accent);
+  transition: inline-size 240ms var(--mkd-ease-out);
+}
+
+.mkd-progress::-moz-progress-bar {
+  background: var(--mkd-accent);
+}
+
+.mkd-bar__count {
+  flex: none;
+  font-family: var(--mkd-font-mono);
+  font-size: 12.5px;
+  color: var(--mkd-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mkd-bar__count b {
+  color: var(--mkd-text-strong);
+  font-weight: 500;
+}
+
+.mkd-bar__pending.is-zero {
+  color: var(--mkd-accent-ink);
+}
+
+.mkd-bar__secondary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mkd-bar__nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.mkd-bar__nav .mkd-btn {
+  min-height: 42px;
+  padding: 8px 16px;
+}
+
+.mkd-bar__nav [hidden] {
+  display: none;
+}
+
+/* Next: quiet until the current item is answered, then the call to action. */
+#mkd-next {
+  position: relative;
+  overflow: hidden;
+  min-width: 112px;
+}
+
+#mkd-next.is-idle:not([disabled]) {
+  background: var(--mkd-surface);
+  border-color: var(--mkd-border-strong);
+  color: var(--mkd-text);
+}
+
+/* Auto-advance: a fill sweeps across Next while the move is pending. */
+#mkd-next::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.22);
+  transform: scaleX(0);
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+#mkd-next.is-advancing::after {
+  transform: scaleX(1);
+  transition: transform var(--mkd-auto-ms, 900ms) linear;
+}
+
+.mkd-bar__more {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius-sm);
+  background: var(--mkd-surface);
+  color: var(--mkd-text-muted);
+}
+
+.mkd-bar__more:focus-visible {
+  outline: 2px solid var(--mkd-accent);
+  outline-offset: 2px;
+}
+
+.mkd-bar__more[aria-expanded='true'] {
+  border-color: var(--mkd-accent);
+  color: var(--mkd-accent-ink);
 }
 
 .mkd-bar__spacer {
@@ -1524,7 +1726,8 @@ button {
 }
 
 .mkd-bar__btn {
-  padding: 9px 18px;
+  min-height: 40px;
+  padding: 8px 16px;
   border: 1.5px solid var(--mkd-border);
   border-radius: var(--mkd-radius-sm);
   background: var(--mkd-surface);
@@ -1535,7 +1738,8 @@ button {
   transition:
     border-color var(--mkd-transition),
     background var(--mkd-transition),
-    color var(--mkd-transition);
+    color var(--mkd-transition),
+    transform 140ms var(--mkd-ease-out);
 }
 
 .mkd-bar__btn:hover {
@@ -1733,6 +1937,7 @@ button {
 
 .mkd-expand__input {
   flex: 1 1 auto;
+  field-sizing: content;
   width: 100%;
   min-height: 40vh;
   padding: 14px 16px;
@@ -2189,11 +2394,846 @@ button {
 }
 
 /* ==========================================================================
+   Display options (header): hide recommended + shuffle options
+   Display only - the Result is computed from the data, never from the DOM.
+   ========================================================================== */
+
+.mkd-view {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius-pill);
+  background: var(--mkd-surface);
+}
+
+.mkd-switch--sm {
+  position: relative;
+  gap: 8px;
+  min-height: 34px;
+  padding: 4px 12px 4px 6px;
+  border-radius: var(--mkd-radius-pill);
+  transition: background-color var(--mkd-transition);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mkd-switch--sm:hover {
+    background: var(--mkd-surface-raised);
+  }
+}
+
+.mkd-view__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: var(--mkd-radius-pill);
+  background: transparent;
+  color: var(--mkd-text-muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background-color var(--mkd-transition),
+    color var(--mkd-transition),
+    transform 140ms var(--mkd-ease-out);
+}
+
+.mkd-view__btn:active {
+  transform: scale(0.97);
+}
+
+.mkd-view__btn:focus-visible {
+  outline: 2px solid var(--mkd-accent);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mkd-view__btn:hover {
+    background: var(--mkd-surface-raised);
+    color: var(--mkd-text-strong);
+  }
+}
+
+.mkd-view__btn[hidden] {
+  display: none;
+}
+
+.mkd-view.is-shuffled #mkd-shuffle {
+  color: var(--mkd-accent-ink);
+}
+
+.mkd-view__btn--reset {
+  border: 1px dashed var(--mkd-border-strong);
+}
+
+/* Wide screens: an icon (named by aria-label) keeps the header on one row. */
+@media (min-width: 721px) {
+  .mkd-view__btn--reset {
+    width: 34px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .mkd-view__reset-label {
+    display: none;
+  }
+}
+
+.mkd-switch--sm .mkd-switch__track {
+  width: 30px;
+  height: 18px;
+}
+
+.mkd-switch--sm .mkd-switch__track::after {
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  transition:
+    transform 200ms var(--mkd-ease-out),
+    background var(--mkd-transition);
+}
+
+.mkd-switch--sm .mkd-switch__input:checked + .mkd-switch__track::after {
+  transform: translateX(12px);
+}
+
+.mkd-switch--sm .mkd-switch__input:focus-visible + .mkd-switch__track {
+  outline: 2px solid var(--mkd-accent);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.mkd-switch--sm .mkd-switch__label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--mkd-text-muted);
+  white-space: nowrap;
+}
+
+.mkd-switch--sm .mkd-switch__input:checked ~ .mkd-switch__label {
+  color: var(--mkd-text-strong);
+}
+
+/* Hide recommended: every badge, the star in summary chips, the rec tiles
+   and the bolded "Recommended" lead-in inside a justification. The check
+   circle comes back so the recommended option is not the only one without it. */
+#mkd-app[data-hide-rec] :is(.mkd-opt__badge, .mkd-rec-word, .mkd-rec-star, .mkd-tile--rec) {
+  display: none;
+}
+
+#mkd-app[data-hide-rec] .mkd-opt.has-badge .mkd-opt__mark {
+  display: grid;
+}
+
+/* ==========================================================================
+   Send confirmation (native modal <dialog>)
+   ========================================================================== */
+
+.mkd-confirm {
+  width: min(440px, calc(100vw - 32px));
+  padding: 22px 22px 18px;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius);
+  background: var(--mkd-surface);
+  color: var(--mkd-text);
+  box-shadow: var(--mkd-shadow-lift);
+}
+
+.mkd-confirm:modal {
+  overscroll-behavior: contain;
+}
+
+.mkd-confirm[open] {
+  animation: mkd-confirm-in 200ms var(--mkd-ease-out);
+}
+
+.mkd-confirm::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: var(--mkd-scrim);
+}
+
+@keyframes mkd-confirm-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.mkd-confirm__title {
+  margin: 0 0 8px;
+  font-family: var(--mkd-font-display);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--mkd-text-strong);
+}
+
+.mkd-confirm__body {
+  margin: 0 0 18px;
+  font-size: 0.95rem;
+  color: var(--mkd-text-muted);
+}
+
+.mkd-confirm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 0;
+}
+
+/* ==========================================================================
+   Media: figures, video, embeds, link cards, diagrams, carousel, lightbox
+   ========================================================================== */
+
+.mkd-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.mkd-card__media {
+  margin: 18px 0 4px;
+}
+
+.mkd-card--table .mkd-card__media {
+  padding: 0 clamp(22px, 4vw, 40px);
+}
+
+.mkd-media__fig {
+  position: relative;
+  margin: 0;
+}
+
+.mkd-media__caption {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--mkd-text-muted);
+}
+
+.mkd-media__zoom {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius-sm);
+  background: var(--mkd-code-bg);
+  overflow: hidden;
+  cursor: zoom-in;
+}
+
+.mkd-media__zoom:focus-visible,
+.mkd-diagram__zoom:focus-visible,
+.mkd-embed__open:focus-visible,
+.mkd-linkcard:focus-visible,
+.mkd-carousel__btn:focus-visible,
+.mkd-carousel__dot:focus-visible,
+.mkd-carousel__track:focus-visible,
+.mkd-opts__view:focus-visible,
+.mkd-lightbox__close:focus-visible {
+  outline: 2px solid var(--mkd-accent);
+  outline-offset: 2px;
+}
+
+.mkd-media__img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: min(44vh, 400px);
+  margin-inline: auto;
+  object-fit: contain;
+  aspect-ratio: auto 16 / 9;
+}
+
+.mkd-media__zoom-icon {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--mkd-radius-pill);
+  background: var(--mkd-surface);
+  color: var(--mkd-text);
+  opacity: 0;
+  transition: opacity 160ms var(--mkd-ease-out);
+}
+
+.mkd-media__zoom:hover .mkd-media__zoom-icon,
+.mkd-media__zoom:focus-visible .mkd-media__zoom-icon {
+  opacity: 0.92;
+}
+
+.mkd-media__video {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: min(44vh, 400px);
+  aspect-ratio: auto 16 / 9;
+  border-radius: var(--mkd-radius-sm);
+  background: #05080f;
+}
+
+/* Embeds: a reserved 16:9 box, and the open-in-new-tab link always below it
+   (a blocked or private frame cannot be detected, so the link never hides). */
+.mkd-embed {
+  position: relative;
+  /* Height capped so the open-in-new-tab link below stays in view. */
+  max-width: calc(min(44vh, 400px) * 16 / 9);
+  margin-inline: auto;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius-sm);
+  background: var(--mkd-code-bg);
+  overflow: hidden;
+}
+
+.mkd-embed__frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.mkd-embed__open {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius-pill);
+  color: var(--mkd-accent-ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.mkd-embed__host {
+  font-family: var(--mkd-font-mono);
+  font-weight: 500;
+  color: var(--mkd-text-muted);
+}
+
+/* Artifact mode: a video is a poster card that opens it in a new tab (the
+   viewer blocks remote frames), and a remote image that could not be inlined
+   shows its alt text instead of a broken icon. */
+.mkd-videocard {
+  position: relative;
+  display: block;
+  max-width: calc(min(44vh, 400px) * 16 / 9);
+  margin-inline: auto;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius-sm);
+  background:
+    radial-gradient(circle at 50% 45%, var(--mkd-surface-raised), var(--mkd-code-bg) 70%);
+  color: inherit;
+  text-decoration: none;
+  overflow: hidden;
+}
+
+.mkd-videocard__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mkd-videocard__play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--mkd-radius-pill);
+  background: rgba(5, 8, 15, 0.72);
+  color: #fff;
+  transform: translate(-50%, -60%);
+  transition: transform 160ms var(--mkd-ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mkd-videocard:hover .mkd-videocard__play {
+    transform: translate(-50%, -60%) scale(1.06);
+  }
+}
+
+.mkd-videocard__bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: linear-gradient(to top, rgba(5, 8, 15, 0.85), rgba(5, 8, 15, 0));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mkd-videocard__host {
+  font-family: var(--mkd-font-mono);
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.mkd-videocard:focus-visible {
+  outline: 2px solid var(--mkd-accent);
+  outline-offset: 2px;
+}
+
+.mkd-media__missing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 140px;
+  padding: 18px;
+  border: 1px dashed var(--mkd-border-strong);
+  border-radius: var(--mkd-radius-sm);
+  background: var(--mkd-code-bg);
+  text-align: center;
+}
+
+.mkd-media__missing-label {
+  font-family: var(--mkd-font-mono);
+  font-size: 12px;
+  color: var(--mkd-text-muted);
+}
+
+.mkd-media__missing-alt {
+  color: var(--mkd-text);
+  font-size: 14.5px;
+}
+
+/* Link cards: a preview, never a frame of the page. */
+.mkd-linkcard {
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+  padding: 12px;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius-sm);
+  background: var(--mkd-surface-raised);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color var(--mkd-transition);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mkd-linkcard:hover {
+    border-color: var(--mkd-accent);
+  }
+}
+
+.mkd-linkcard__img {
+  flex: none;
+  width: 120px;
+  aspect-ratio: 1.91 / 1;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--mkd-code-bg);
+}
+
+.mkd-linkcard__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mkd-linkcard__title {
+  font-weight: 700;
+  color: var(--mkd-text-strong);
+  overflow-wrap: anywhere;
+}
+
+.mkd-linkcard__desc {
+  display: -webkit-box;
+  font-size: 13.5px;
+  color: var(--mkd-text-muted);
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.mkd-linkcard__host {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  font-family: var(--mkd-font-mono);
+  font-size: 12px;
+  color: var(--mkd-accent-ink);
+}
+
+/* Diagrams: the source is the fallback until Mermaid draws the SVG. */
+.mkd-diagram {
+  padding: 14px;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius-sm);
+  background: var(--mkd-code-bg);
+}
+
+.mkd-diagram__canvas {
+  display: none;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.mkd-diagram__canvas svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mkd-diagram.is-rendered .mkd-diagram__canvas {
+  display: block;
+}
+
+.mkd-diagram.is-rendered .mkd-diagram__src {
+  display: none;
+}
+
+.mkd-diagram__src {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  font-family: var(--mkd-font-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--mkd-text);
+  white-space: pre;
+}
+
+.mkd-diagram__notice {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--mkd-medium);
+}
+
+.mkd-diagram__notice[hidden] {
+  display: none;
+}
+
+.mkd-diagram__zoom {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius-pill);
+  background: var(--mkd-surface);
+  color: var(--mkd-text-muted);
+  cursor: zoom-in;
+}
+
+.mkd-diagram.is-rendered .mkd-diagram__zoom {
+  display: grid;
+}
+
+/* Carousel: native scroll-snap track (touch swipe for free), finite. */
+/* Track on top; controls in a row below it (‹ dots 1/N ›) so they never
+   cover slide content such as a link card's text. */
+.mkd-carousel {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  grid-template-areas:
+    'track track track track'
+    'prev dots count next';
+  align-items: center;
+  gap: 8px 6px;
+}
+
+.mkd-carousel__track {
+  grid-area: track;
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+  border-radius: var(--mkd-radius-sm);
+}
+
+.mkd-carousel__track::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mkd-carousel__track {
+    scroll-behavior: smooth;
+  }
+}
+
+.mkd-carousel__slide {
+  flex: 0 0 100%;
+  min-width: 0;
+  scroll-snap-align: center;
+}
+
+.mkd-carousel__controls {
+  display: contents;
+}
+
+.mkd-carousel__btn--prev {
+  grid-area: prev;
+}
+
+.mkd-carousel__btn--next {
+  grid-area: next;
+}
+
+.mkd-carousel__btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius-pill);
+  background: var(--mkd-surface);
+  color: var(--mkd-text);
+  touch-action: manipulation;
+  transition:
+    opacity 160ms var(--mkd-ease-out),
+    transform 140ms var(--mkd-ease-out);
+}
+
+.mkd-carousel__btn:active:not([disabled]) {
+  transform: scale(0.94);
+}
+
+.mkd-carousel__btn[disabled] {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.mkd-carousel__count {
+  grid-area: count;
+  padding: 0 4px;
+  color: var(--mkd-text-muted);
+  font-family: var(--mkd-font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mkd-carousel__dots {
+  grid-area: dots;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+
+/* 24px targets around an 8px dot; the active one is wider, not just colored. */
+.mkd-carousel__dot {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  touch-action: manipulation;
+}
+
+.mkd-carousel__dot::before {
+  content: '';
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: auto;
+  border-radius: var(--mkd-radius-pill);
+  background: var(--mkd-border-strong);
+  transition:
+    width 180ms var(--mkd-ease-out),
+    background-color 180ms var(--mkd-ease-out);
+}
+
+.mkd-carousel__dot[aria-current='true']::before {
+  width: 18px;
+  background: var(--mkd-accent);
+}
+
+/* Option media: purely visual inside the option button. */
+.mkd-opt__media {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.mkd-opt__thumb {
+  position: relative;
+  display: block;
+  width: 64px;
+  height: 40px;
+  border: 1px solid var(--mkd-border);
+  border-radius: 6px;
+  background: var(--mkd-code-bg);
+  overflow: hidden;
+}
+
+.mkd-opt__thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mkd-opt__play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgba(5, 8, 15, 0.35);
+}
+
+.mkd-opt__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius-pill);
+  color: var(--mkd-text-muted);
+  font-family: var(--mkd-font-mono);
+  font-size: 11.5px;
+}
+
+.mkd-opts.is-dense .mkd-opt__media {
+  margin-top: 6px;
+}
+
+.mkd-opts.is-dense .mkd-opt__thumb {
+  width: 44px;
+  height: 28px;
+}
+
+.mkd-opts.is-dense .mkd-opt__chip {
+  height: 22px;
+  padding: 0 7px;
+}
+
+.mkd-opts__view {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 4px 12px;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius-pill);
+  background: var(--mkd-surface);
+  color: var(--mkd-accent-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mkd-opt__full-tag {
+  margin: 0 0 8px;
+  font-family: var(--mkd-font-mono);
+  font-size: 12.5px;
+  color: var(--mkd-text-muted);
+}
+
+/* Lightbox: a native modal dialog (focus trapped and restored by the browser). */
+.mkd-lightbox {
+  width: min(1100px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  padding: 44px 16px 16px;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius);
+  background: var(--mkd-surface);
+  color: var(--mkd-text);
+  box-shadow: var(--mkd-shadow-lift);
+}
+
+.mkd-lightbox:modal {
+  overscroll-behavior: contain;
+}
+
+.mkd-lightbox::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: rgba(3, 6, 14, 0.78);
+}
+
+.mkd-lightbox[open] {
+  animation: mkd-confirm-in 200ms var(--mkd-ease-out);
+}
+
+.mkd-lightbox__close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-height: 32px;
+  padding: 4px 14px;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius-pill);
+  background: var(--mkd-surface-raised);
+  color: var(--mkd-text-muted);
+  font: inherit;
+  font-size: 13px;
+}
+
+.mkd-lightbox .mkd-media__img,
+.mkd-lightbox .mkd-media__video {
+  max-height: calc(100dvh - 160px);
+}
+
+.mkd-lightbox .mkd-diagram__src {
+  max-height: none;
+}
+
+.mkd-lightbox .mkd-carousel__track {
+  align-items: center;
+  min-height: min(60dvh, 520px);
+}
+
+/* ==========================================================================
    Responsive: <= 720px
    ========================================================================== */
 
 @media (max-width: 720px) {
+  /* Three header rows would eat a third of a phone screen if sticky; the
+     footer progress bar keeps the position visible instead. */
   .mkd-header {
+    position: static;
     gap: 10px;
     padding: 10px 14px;
   }
@@ -2213,6 +3253,27 @@ button {
     margin-left: auto;
   }
 
+  .mkd-view {
+    order: 4;
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: space-between;
+    border-radius: var(--mkd-radius);
+  }
+
+  .mkd-switch--sm,
+  .mkd-view__btn {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-height: 40px;
+  }
+
+  .mkd-bar__progress {
+    flex-basis: 100%;
+    max-width: none;
+  }
+
+
   .mkd-card {
     padding: 18px;
   }
@@ -2226,8 +3287,7 @@ button {
     padding-right: 18px;
   }
 
-  .mkd-card--table .mkd-card__interactive,
-  .mkd-card--table .mkd-card__nav {
+  .mkd-card--table .mkd-card__interactive {
     padding: 0 18px 18px;
   }
 
@@ -2264,8 +3324,87 @@ button {
     padding: 10px 14px;
   }
 
-  .mkd-stage {
-    padding-bottom: 190px;
+  :root {
+    --mkd-bar-space: calc(84px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* One slim row: count, More, Previous (icon), Skip, Next. */
+  .mkd-bar__row {
+    gap: 8px;
+    padding: 8px max(12px, env(safe-area-inset-right, 0px)) 8px max(12px, env(safe-area-inset-left, 0px));
+  }
+
+  .mkd-linkcard__img {
+    width: 84px;
+  }
+
+  .mkd-card--table .mkd-card__media {
+    padding: 0 18px;
+  }
+
+  .mkd-bar__sep,
+  .mkd-bar__pending,
+  .mkd-bar__label {
+    display: none;
+  }
+
+  .mkd-bar__more {
+    display: inline-flex;
+    order: 2;
+  }
+
+  .mkd-bar__nav {
+    order: 3;
+    gap: 6px;
+  }
+
+  .mkd-bar__nav .mkd-btn {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 8px 12px;
+  }
+
+  #mkd-next {
+    min-width: 96px;
+  }
+
+  /* Icon-only Previous keeps a visible edge so it still reads as a button. */
+  #mkd-prev {
+    border-color: var(--mkd-border);
+  }
+
+  /* Secondary actions live in a sheet above the bar, opened from More. */
+  .mkd-bar__secondary {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    padding: 10px 12px;
+    background: var(--mkd-surface);
+    border-top: 1px solid var(--mkd-border);
+    box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.18);
+    visibility: hidden;
+    opacity: 0;
+    transform: translateY(8px);
+    transition:
+      opacity 160ms var(--mkd-ease-out),
+      transform 160ms var(--mkd-ease-out),
+      visibility 0s linear 160ms;
+  }
+
+  .mkd-bar.is-more-open .mkd-bar__secondary {
+    visibility: visible;
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 180ms var(--mkd-ease-out),
+      transform 180ms var(--mkd-ease-out);
+  }
+
+  .mkd-bar.is-more-open .mkd-json:not([hidden]) {
+    display: none;
   }
 }
 

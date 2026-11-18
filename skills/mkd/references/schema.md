@@ -26,6 +26,7 @@ There are two shapes: the **Spec** the AI writes (input), and the **Result** the
 | `headline` | `string` | no | Intro heading. Defaults to `title`. |
 | `body` | `string` | no | Markdown, PM voice. |
 | `stats` | `{ n: string \| number, label: string }[]` | no | Stat tiles (e.g. `115 / verified findings`). `n` accepts a number and is normalized to a string. |
+| `media` | `MediaEntry[]` | no | Shown under the intro body. See [Media](#media-display-only). |
 
 ### `Item` — common fields (all four types)
 
@@ -36,6 +37,7 @@ There are two shapes: the **Spec** the AI writes (input), and the **Result** the
 | `title` | `string` | yes | Non-empty. The card heading + rail tooltip + summary row. |
 | `severity` | `'high' \| 'medium' \| 'low'` | no | Rendered as a colored chip in the eyebrow. |
 | `scope` | `string` | no | Non-empty when present. Rendered as an accent chip. |
+| `media` | `MediaEntry[]` | no | Shown under the problem (decision), the content (question, report) or the table intro. See [Media](#media-display-only). |
 
 ### `DecisionItem` (`type: "decision"`)
 
@@ -54,6 +56,7 @@ There are two shapes: the **Spec** the AI writes (input), and the **Result** the
 | `label` | `string` | yes | Non-empty. Inline markdown supported. |
 | `justification` | `string` | yes | **Non-empty — the HARD RULE.** The written value/cost rationale. Inline markdown supported. An option without it fails validation. |
 | `recommended` | `boolean` | no | **At most ONE option per decision** may be `true` (a second fails validation). Its justification must state WHY it is recommended. |
+| `media` | `MediaEntry[]` | no | Thumbnails inside the option card; "View option media" opens them full size. A media-only option still needs its `justification`. |
 
 Decision extras rendered by the UI (not in the spec): the custom option textarea (when `allowCustom`) and a per-decision "Note for Claude (optional)" textarea.
 
@@ -104,6 +107,33 @@ Each row's answer lives behind a compact "Answer" button that opens a popover (c
 | --- | --- | --- | --- |
 | `required` | `boolean` | no | Default `false`. |
 | `placeholder` | `string` | no | Textarea placeholder. |
+
+### Media (display only)
+
+`media` is an array allowed on `intro`, on every item and on every decision option. One entry renders as a figure; two or more render as a carousel (arrows, dots, `1/N` counter, swipe, left/right keys while focused, no auto-play). Media never reaches the Result.
+
+| `type` | Fields | Notes |
+| --- | --- | --- |
+| `image` | `src`, `alt` (required), `caption?` | Click to enlarge (lightbox). |
+| `video` | `src` (mp4, webm or mov), `poster?`, `caption?` | `<video controls muted playsinline preload="metadata">`, never autoplays. Without `poster`, the first frame becomes the poster when ffmpeg is present. |
+| `embed` | `url`, `caption?` | Loom (`loom.com/share/<id>`) or YouTube (`watch?v=`, `youtu.be/`, `/shorts/`, `/live/`, `/embed/`; `t=` becomes the start time). Copy and wait modes: a sandboxed 16:9 iframe (`loom.com/embed/<id>` or `youtube-nocookie.com/embed/<id>`) with an "Open in new tab" link that is always visible. `--artifact` mode: a poster card (thumbnail, play icon, caption) that opens the video in a new tab, with no iframe. Any other host fails validation. |
+| `link` | `url` (https), `title?`, `description?`, `image?` | A preview card, never an iframe. Missing fields are read from the page's Open Graph tags at build time; when that fails the card is a plain titled link. |
+| `diagram` | `format: "mermaid"`, `code`, `caption?` | Mermaid is loaded from the CDN only when a deck has a diagram, follows the deck theme, and falls back to the source code block when it cannot load or parse. |
+| `svg` | exactly one of `src` (local path) or `svg` (inline markup), `alt` (required), `caption?` | Sanitized at build time and rendered as an image. |
+
+Sources (`src`, `poster`, `image`): a local path (relative to the spec file, or absolute), an `https:` URL, or a `data:` URI. Local files are inlined as `data:` URIs in every mode so the page is self-contained; https URLs stay URLs. Any other scheme fails validation.
+
+Build-time rules (the CLI, not `validateSpec`):
+
+- A missing local file exits 2 and names the path (`items[3].media[0].src: file not found: ...`).
+- A local video is transcoded with ffmpeg to WebM VP9 (480p max height, about 700 kbps, no audio, 24 fps cap) and cached under `~/.mkd/media/`. Without ffmpeg, or for a WebM already under 1.5 MB, it is inlined as is with a warning. A video over 6 MB after processing exits 2.
+- Page budget: a warning above 8 MB; in `--artifact` mode a page over 14 MB exits 2 and names the heaviest media to shrink or host.
+- `--artifact` mode loads nothing remote, because the artifact viewer blocks remote frames and images:
+  - Embeds become poster cards. The thumbnail (YouTube `i.ytimg.com/vi/<id>/hqdefault.jpg`, Loom oEmbed `thumbnail_url`, its still JPEG first) is fetched at build time and inlined when it is under 150 KB; otherwise the card shows a plain play icon.
+  - https images, link-card images and video posters are fetched and inlined when they are under 200 KB; otherwise the figure shows its `alt` text and the card renders without the image. A remote video becomes a poster card that opens it in a new tab.
+  - The CLI then scans the page and warns on stderr about any remaining remote `src`/`href` that loads a resource (fonts from Google Fonts and scripts from `cdn.jsdelivr.net/npm/` are allowed).
+
+  Copy and wait modes keep the iframes and https URLs.
 
 ---
 
@@ -191,6 +221,8 @@ Item level: not an object; `id` missing/empty/**duplicated**; `type` not one of 
 `report`: `content` missing or empty.
 
 `table`: `table` not an object; `columns` empty or with empty strings; `rows` empty; row `id` missing/duplicated; `cells` length ≠ `columns.length` or non-string cells; `rowControls`/`rowText` failing their rules.
+
+`media` (intro, items, options): not a non-empty array; entry `type` not one of `image`, `video`, `embed`, `link`, `diagram`, `svg`; `alt` missing on `image`/`svg`; a source that is not a local path, `https:` or `data:`; `link.url` not https; `embed.url` not a Loom or YouTube video URL; `diagram.format` not `mermaid` or empty `code`; `svg` with both or neither of `src`/`svg`, or `svg` markup without an `<svg>` element.
 
 `Controls`: `type` invalid; `options` present on `toggle`; `options` missing/empty on `single`/`multi`; option `value`/`label` missing or duplicated `value`; `required` non-boolean. `TextField`: non-object; `required` non-boolean; `placeholder` non-string.
 

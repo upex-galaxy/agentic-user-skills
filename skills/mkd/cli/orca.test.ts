@@ -199,3 +199,20 @@ describe('closeOrcaTab', () => {
     expect(await closeOrcaTab({ ...opts, run: fakeRunner([[/tab close/, { code: 1, stdout: '' }]]) })).toBe(false);
   });
 });
+
+describe('open-artifact subcommand', () => {
+  const cli = new URL('./index.ts', import.meta.url).pathname;
+  const run = async (url?: string) => {
+    const proc = Bun.spawn(['bun', cli, 'open-artifact', ...(url ? [url] : [])], { stdout: 'pipe', stderr: 'pipe' });
+    await proc.exited;
+    return { code: proc.exitCode, out: await new Response(proc.stdout).text() };
+  };
+
+  it('rejects a missing or non-claude.ai URL with exit 2 and nothing on stdout', async () => {
+    for (const url of [undefined, 'http://claude.ai/artifact/x', 'https://evil.example/artifact/x', 'not a url']) {
+      const result = await run(url);
+      expect(result.code).toBe(2);
+      expect(result.out).toBe('');
+    }
+  });
+});

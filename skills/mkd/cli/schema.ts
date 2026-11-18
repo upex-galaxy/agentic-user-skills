@@ -58,6 +58,86 @@ export interface ItemTable {
 
 export type Severity = 'high' | 'medium' | 'low';
 
+// ============================================================================
+// MEDIA (display only - never part of the Result)
+// ============================================================================
+
+/**
+ * A media entry, allowed on the intro, on every item and on every decision
+ * option. Several entries render as a carousel. `src` is a local path
+ * (relative to the spec file, or absolute), an https URL, or (after
+ * `resolveMedia`) a `data:` URI. The CLI inlines local files so every page is
+ * self-contained.
+ */
+export type MediaEntry
+  = | ImageMedia
+    | VideoMedia
+    | EmbedMedia
+    | LinkMedia
+    | DiagramMedia
+    | SvgMedia;
+
+export interface ImageMedia {
+  type: 'image'
+  src: string
+  alt: string
+  caption?: string
+  /** Intrinsic size, filled by resolveMedia when it can read the file header. */
+  width?: number
+  height?: number
+}
+
+export interface VideoMedia {
+  type: 'video'
+  src: string
+  poster?: string
+  caption?: string
+  width?: number
+  height?: number
+  /** MIME type of `src`, filled by resolveMedia. */
+  mime?: string
+}
+
+export interface EmbedMedia {
+  type: 'embed'
+  /** The share/watch URL the author wrote. */
+  url: string
+  caption?: string
+  /** Filled by validation: the only iframe source ever rendered. */
+  provider: 'loom' | 'youtube'
+  embedUrl: string
+  /**
+   * Artifact mode only: the video thumbnail as a data URI, fetched at build
+   * time (the artifact CSP blocks remote frames and images).
+   */
+  thumbnail?: string
+}
+
+export interface LinkMedia {
+  type: 'link'
+  url: string
+  title?: string
+  description?: string
+  image?: string
+}
+
+export interface DiagramMedia {
+  type: 'diagram'
+  format: 'mermaid'
+  code: string
+  caption?: string
+}
+
+export interface SvgMedia {
+  type: 'svg'
+  src?: string
+  svg?: string
+  alt: string
+  caption?: string
+  width?: number
+  height?: number
+}
+
 /** A collapsible context balloon on a decision ("How does X work today?"). */
 export interface ContextBalloon {
   title: string
@@ -75,6 +155,7 @@ export interface DecisionOption {
   label: string
   justification: string
   recommended?: boolean
+  media?: MediaEntry[]
 }
 
 interface ItemBase {
@@ -82,6 +163,7 @@ interface ItemBase {
   title: string
   severity?: Severity
   scope?: string
+  media?: MediaEntry[]
 }
 
 export interface DecisionItem extends ItemBase {
@@ -126,6 +208,7 @@ export interface SpecIntro {
   headline?: string
   body?: string
   stats?: IntroStat[]
+  media?: MediaEntry[]
 }
 
 export interface Spec {
@@ -167,6 +250,7 @@ interface NormalizedItemBase {
   title: string
   severity?: Severity
   scope?: string
+  media?: MediaEntry[]
 }
 
 export interface NormalizedDecisionItem extends NormalizedItemBase {
@@ -463,6 +547,10 @@ function normalizeIntro(rawIntro: unknown): SpecIntro | null {
       return { n, label: rawStat.label };
     });
   }
+  const media = normalizeMedia(rawIntro.media, 'intro.media');
+  if (media) {
+    intro.media = media;
+  }
   return intro;
 }
 
@@ -471,6 +559,7 @@ interface NormalizedItemBaseFields {
   title: string
   severity?: Severity
   scope?: string
+  media?: MediaEntry[]
 }
 
 function normalizeItem(
@@ -535,6 +624,11 @@ function normalizeItem(
       );
     }
     base.scope = rawItem.scope;
+  }
+
+  const media = normalizeMedia(rawItem.media, `${where}.media`);
+  if (media) {
+    base.media = media;
   }
 
   switch (type) {
@@ -666,6 +760,10 @@ function normalizeDecision(
     };
     if (recommended) {
       option.recommended = true;
+    }
+    const optionMedia = normalizeMedia(rawOption.media, `${optionWhere}.media`);
+    if (optionMedia) {
+      option.media = optionMedia;
     }
     return option;
   });
@@ -1012,4 +1110,193 @@ function normalizeText(
   }
 
   return text;
+}
+
+// ============================================================================
+// MEDIA VALIDATION (pure and synchronous; files and network live in media.ts)
+// ============================================================================
+
+const MEDIA_TYPES = ['image', 'video', 'embed', 'link', 'diagram', 'svg'] as const;
+
+function optionalString(value: unknown, path: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'string') {
+    throw new SpecError(`${path} must be a string when present.`, path);
+  }
+  return value;
+}
+
+/** A local path, an https URL, or a data: URI. Any other scheme is rejected. */
+function mediaSource(value: unknown, path: string): string {
+  if (!isNonEmptyString(value)) {
+    throw new SpecError(`${path} must be a non-empty string (a local path or an https URL).`, path);
+  }
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(value);
+  if (scheme && !/^(?:https|data)$/i.test(scheme[1]) && !/^[a-z]:[\\/]/i.test(value)) {
+    throw new SpecError(`${path} must be a local path or an https URL (got scheme "${scheme[1]}:").`, path);
+  }
+  return value;
+}
+
+function httpsUrl(value: unknown, path: string): URL {
+  if (!isNonEmptyString(value)) {
+    throw new SpecError(`${path} must be a non-empty https URL.`, path);
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  }
+  catch {
+    throw new SpecError(`${path} is not a valid URL: ${value}`, path);
+  }
+  if (url.protocol !== 'https:') {
+    throw new SpecError(`${path} must be an https URL (got ${url.protocol}).`, path);
+  }
+  return url;
+}
+
+/** YouTube `t=` / `start=` values ("90", "1m30s", "1h2m3s") to whole seconds. */
+function startSeconds(raw: string | null): number {
+  if (!raw) {
+    return 0;
+  }
+  if (/^\d+$/.test(raw)) {
+    return Number(raw);
+  }
+  const m = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(raw);
+  return m ? Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0) : 0;
+}
+
+/**
+ * Turn a Loom or YouTube share/watch URL into the only iframe source the page
+ * will ever render. Every other host is rejected (exit 2): an arbitrary site
+ * belongs in a link card, never in a frame.
+ */
+export function embedSource(value: unknown, path: string): { provider: 'loom' | 'youtube', embedUrl: string } {
+  const url = httpsUrl(value, path);
+  const host = url.hostname.toLowerCase().replace(/^(?:www\.|m\.)/, '');
+  const parts = url.pathname.split('/').filter(Boolean);
+
+  if (host === 'loom.com') {
+    const id = (parts[0] === 'share' || parts[0] === 'embed') ? parts[1] : undefined;
+    if (!id || !/^[A-Z0-9]{10,64}$/i.test(id)) {
+      throw new SpecError(`${path}: a Loom URL must look like https://www.loom.com/share/<id>.`, path);
+    }
+    return { provider: 'loom', embedUrl: `https://www.loom.com/embed/${id}` };
+  }
+
+  if (host === 'youtube.com' || host === 'youtu.be' || host === 'youtube-nocookie.com') {
+    let id: string | undefined;
+    if (host === 'youtu.be') {
+      id = parts[0];
+    }
+    else if (parts[0] === 'watch') {
+      id = url.searchParams.get('v') ?? undefined;
+    }
+    else if (['shorts', 'live', 'embed', 'v'].includes(parts[0] ?? '')) {
+      id = parts[1];
+    }
+    if (!id || !/^[\w-]{6,20}$/.test(id)) {
+      throw new SpecError(`${path}: could not find the video id in this YouTube URL.`, path);
+    }
+    const start = startSeconds(url.searchParams.get('t') ?? url.searchParams.get('start'));
+    return { provider: 'youtube', embedUrl: `https://www.youtube-nocookie.com/embed/${id}${start > 0 ? `?start=${start}` : ''}` };
+  }
+
+  throw new SpecError(
+    `${path}: embeds accept Loom or YouTube URLs only (got host "${url.hostname}"). Use a "link" media entry for any other page.`,
+    path,
+  );
+}
+
+/**
+ * Validate a `media` array. Returns undefined when absent, so a spec without
+ * media normalizes exactly as before.
+ */
+export function normalizeMedia(raw: unknown, where: string): MediaEntry[] | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new SpecError(`${where} must be a non-empty array when present.`, where);
+  }
+  return raw.map((entry: unknown, index) => {
+    const at = `${where}[${index}]`;
+    if (!isPlainObject(entry)) {
+      throw new SpecError(`${at} must be an object.`, at);
+    }
+    const type = entry.type;
+    if (typeof type !== 'string' || !(MEDIA_TYPES as readonly string[]).includes(type)) {
+      throw new SpecError(`${at}.type must be one of: ${MEDIA_TYPES.join(', ')}.`, `${at}.type`);
+    }
+    const caption = optionalString(entry.caption, `${at}.caption`);
+    const withCaption = <T extends object>(value: T): T => (caption ? { ...value, caption } : value);
+
+    switch (type) {
+      case 'image': {
+        if (!isNonEmptyString(entry.alt)) {
+          throw new SpecError(`${at}.alt is required on an image: describe what it shows.`, `${at}.alt`);
+        }
+        return withCaption<ImageMedia>({ type, src: mediaSource(entry.src, `${at}.src`), alt: entry.alt });
+      }
+      case 'video': {
+        const video: VideoMedia = { type, src: mediaSource(entry.src, `${at}.src`) };
+        if (entry.poster !== undefined) {
+          video.poster = mediaSource(entry.poster, `${at}.poster`);
+        }
+        return withCaption(video);
+      }
+      case 'embed': {
+        const { provider, embedUrl } = embedSource(entry.url, `${at}.url`);
+        return withCaption<EmbedMedia>({ type, url: entry.url as string, provider, embedUrl });
+      }
+      case 'link': {
+        const link: LinkMedia = { type, url: httpsUrl(entry.url, `${at}.url`).href };
+        const title = optionalString(entry.title, `${at}.title`);
+        const description = optionalString(entry.description, `${at}.description`);
+        if (title) {
+          link.title = title;
+        }
+        if (description) {
+          link.description = description;
+        }
+        if (entry.image !== undefined) {
+          link.image = mediaSource(entry.image, `${at}.image`);
+        }
+        return link;
+      }
+      case 'diagram': {
+        if (entry.format !== 'mermaid') {
+          throw new SpecError(`${at}.format must be "mermaid".`, `${at}.format`);
+        }
+        if (!isNonEmptyString(entry.code)) {
+          throw new SpecError(`${at}.code must be a non-empty string of Mermaid source.`, `${at}.code`);
+        }
+        return withCaption<DiagramMedia>({ type, format: 'mermaid', code: entry.code });
+      }
+      default: {
+        if (!isNonEmptyString(entry.alt)) {
+          throw new SpecError(`${at}.alt is required on an svg: describe what it shows.`, `${at}.alt`);
+        }
+        const hasSrc = entry.src !== undefined;
+        const hasSvg = entry.svg !== undefined;
+        if (hasSrc === hasSvg) {
+          throw new SpecError(`${at} needs exactly one of "src" (a path) or "svg" (inline markup).`, at);
+        }
+        const svg: SvgMedia = { type: 'svg', alt: entry.alt };
+        if (hasSrc) {
+          svg.src = mediaSource(entry.src, `${at}.src`);
+        }
+        else {
+          if (!isNonEmptyString(entry.svg) || !/<svg[\s>]/i.test(entry.svg)) {
+            throw new SpecError(`${at}.svg must be inline markup containing an <svg> element.`, `${at}.svg`);
+          }
+          svg.svg = entry.svg;
+        }
+        return withCaption(svg);
+      }
+    }
+  });
 }

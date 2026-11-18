@@ -9,200 +9,81 @@ complementary_categories: [meta-skill]
 
 # MKD (`mkd`) — Make Decision
 
-MKD is a local decision-deck CLI the AI invokes mid-conversation. It renders a browser page where the user works through a deck of items **one screen at a time** (Slack Catch-Up style): decisions with justified options, questions with controls, report sections to react to, and answerable tables. The default flow is **non-blocking copy-paste**: the CLI opens the page and exits; the user answers whenever they want and pastes the Result JSON into the chat. That JSON is the **execution contract** — the AI executes exactly what it says.
+MKD renders a browser deck where the user works through items **one screen at a time** (Slack Catch-Up style): decisions with justified options, questions with controls, report sections to react to, answerable tables. The answers come back as a **Result JSON**, which is the **execution contract**: execute exactly what it says.
 
-This skill needs **no install step**: there is no compiled binary and nothing added to PATH. The AI runs the CLI from the skill directory with Bun. All output (rendered decks, results, images) lands under `~/.mkd/` — never the cwd — so running it inside any repo leaves **zero footprint** there.
+No install step: the AI runs `bun "<skill-dir>/cli/index.ts" <specPath> [flags]` from the skill directory (`<repo>/.claude/skills/mkd` or `~/.claude/skills/mkd`). Output (decks, results, images) lands under `~/.mkd/`, so a repo gets **zero footprint**. If Bun is missing, tell the user to install it (`curl -fsSL https://bun.sh/install | bash`); never substitute Node.
 
-## Running it (no install)
-
-```bash
-bun "<skill-dir>/cli/index.ts" <specPath> [--wait | --copy] [--no-open] [--port <n>] [--timeout <min>]
-bun "<skill-dir>/cli/index.ts" <specPath> --artifact --title-prefix <session-name>   # Claude Code only
-```
-
-`<skill-dir>` is this skill's install directory:
-
-- project-level: `<repo>/.claude/skills/mkd`
-- user-level: `~/.claude/skills/mkd`
-
-Bun runs TypeScript directly; cold start is negligible. If Bun is missing, tell the user to install it (`curl -fsSL https://bun.sh/install | bash`) — do not substitute Node.
-
-## When to use vs `AskUserQuestion` vs inline prose
+## Use it when
 
 | Situation | Use |
 | --- | --- |
-| 1-2 option pick, single yes/no, ≤3 simple decisions | `AskUserQuestion` |
-| >3 decision points, or decisions needing context + written tradeoffs | **MKD** |
-| A long multi-section report/plan the user should react to point by point | **MKD** (`report` items) |
-| Row-by-row verdicts over tabular data | **MKD** (`table` item) |
-| The reply must be ANCHORED to exact phrases | **MKD** (highlight-to-quote) |
-| Non-interactive / CI / no human at a browser | neither — emit plain output |
+| 1-2 option pick, one yes/no, up to 3 simple decisions | the harness question tool |
+| More than 3 decisions, or decisions needing context and written tradeoffs | **MKD** |
+| A long report or plan to react to section by section | **MKD** (`report` items) |
+| Row-by-row verdicts over a table | **MKD** (`table` item) |
+| A reply anchored to exact phrases | **MKD** (highlight-to-quote) |
+| No human at a browser (CI, non-interactive) | neither: emit plain output |
 
-## The deck model
+## Writing a spec
 
-A spec is a list of **items**; each item is one screen. Four types:
+Read `references/examples.md` (copy-pasteable specs) before writing the first one, and `references/schema.md` for every field, default and validation rule. A spec is a list of **items**, one screen each:
 
-| Type | What the screen holds | Answer captured |
+| Type | Screen | Answer captured |
 | --- | --- | --- |
-| `decision` | Problem statement (plain PM language) + collapsible context balloons + options **with written justification** + optional custom option + note | `chosen` key (or `"CUSTOM"` + `customText`), `wasRecommended`, `note` |
-| `question` | Markdown content + `single`/`multi`/`toggle` control + free text | `controlAnswer`, `text`, `quotes` |
+| `decision` | Problem (plain PM language), collapsible context balloons, options with written justification, optional custom option, note | `chosen` key (or `"CUSTOM"` + `customText`), `wasRecommended`, `note` |
+| `question` | Markdown content, `single`/`multi`/`toggle` control, free text | `controlAnswer`, `text`, `quotes` |
 | `report` | A report section to react to | `text`, `quotes` |
-| `table` | Answerable table, one answer per row (popover controls + text) | `rows[]` each with `controlAnswer`/`text`/`quotes`, plus item `note` |
+| `table` | One answer per row (popover controls + text) | `rows[]` with `controlAnswer`/`text`/`quotes`, plus item `note` |
 
-Deck chrome, always on: intro screen (headline + markdown + stat tiles), navigable progress rail, ← → arrow keys, per-item **Skip for now** (skipped = decide later, NOT a rejection), summary screen, live footer stats (answered / rec followed / changed / custom / skipped), light/dark theme, localStorage persistence (closing the tab loses nothing).
+Deck chrome, always on: intro screen, progress rail, sticky Previous / Skip for now / Next bar (skip means decide later, never a rejection), keyboard keys (1-6 pick, Enter or right arrow next, S skip), summary screen, progress footer, dark default theme with a light toggle, localStorage persistence (closing the tab loses nothing). The user can also **Shuffle** the options and **Hide recommended** to decide without your nudge; both are display only.
 
-## HARD RULE — justified options (this is the point of the tool)
+### Justified options (the point of the tool)
 
-When authoring `decision` items:
+1. Every option carries a written `justification`: what it buys and what it costs. The validator rejects an option without one (exit 2).
+2. At most one option is `recommended`, and its justification says why it is the recommendation ("**Recommended** because ...").
+3. The `problem` is plain language for someone without the full technical context; jargon and codenames go inside `context` balloons that explain how things work today.
+4. Every real tradeoff the user should know about is written down: an unexplained option list is the failure this tool exists to remove.
 
-1. **Every option carries a written `justification`**: what it buys (value) and what it costs. The validator **rejects** any option without one (exit 2) — do not fight it, write the justification.
-2. **At most one option is `recommended`**, and its justification must state **why it is the recommendation** explicitly (e.g. "**Recommended** because …").
-3. The `problem` is written in **plain language** (PM voice) for someone without the full technical context; jargon and internal codenames go inside `context` balloons that explain how things work today.
-4. Every real tradeoff the user should know about goes in writing. An unexplained option list is exactly the failure mode this tool exists to eliminate.
+5. **Option count.** Offer as many real alternatives as the question has: usually 2-3, up to 5 when the paths are genuinely distinct and viable, never padded. The custom option comes on top (6 slots).
+6. **Even-handed justifications.** Give every option a justification of similar length (within about 20%), the same structure (value, then cost) and the same tone, so length and warmth do not reveal your pick. The recommendation lives only in the recommended option's own text and its `recommended` flag: the `problem`, the `context` and the other options never name it or lean toward it.
+7. Refer to options by `label`, never by letter: the user can **Shuffle** the options, and the letters then follow the screen position, not the spec `key`. The Result still carries your original `key` in `chosen`.
 
-## Spec schema in brief
+Write `title`, `problem`, `content` and justifications in the user's language; the UI chrome is English.
 
-```jsonc
-{
-  "session": "audit-skills-alignment",   // required — result echo + persistence key
-  "source": ".session/.../audit.md",     // optional pointer to the source artifact
-  "title": "Catch-Up: audit decisions",  // required
-  "intro": {                              // optional intro screen
-    "headline": "8 decisions await you",
-    "body": "Markdown, PM voice",
-    "stats": [{ "n": "115", "label": "verified findings" }]
-  },
-  "items": [
-    {
-      "id": "D1", "type": "decision", "title": "…",
-      "severity": "high",                // optional: high | medium | low (chip)
-      "scope": "test-documentation",     // optional (chip)
-      "problem": "Plain-language markdown problem statement",
-      "context": [{ "title": "How does X work today?", "body": "markdown" }],
-      "options": [
-        { "key": "A", "label": "…", "justification": "Value + cost. **Recommended** because …", "recommended": true },
-        { "key": "B", "label": "…", "justification": "Value + cost." }
-      ],
-      "allowCustom": true                // default true
-    },
-    { "id": "Q1", "type": "question", "title": "…", "content": "markdown",
-      "controls": { "type": "single", "required": true, "options": [{ "value": "keep", "label": "Keep" }] },
-      "text": { "placeholder": "Why?" } },
-    { "id": "R1", "type": "report", "title": "…", "content": "markdown section" },
-    { "id": "T1", "type": "table", "title": "…", "content": "optional intro",
-      "table": { "columns": ["Test", "Rate"], "rows": [{ "id": "r1", "cells": ["a", "b"] }],
-                 "rowControls": { "type": "single", "options": [ … ] } } }
-  ]
-}
-```
+## Media
 
-Full contract (every field, defaults, validation rules) → `references/schema.md`. Worked copy-pasteable specs → `references/examples.md`.
+`media` is an array on the intro, any item and any decision option: `image` (alt required), `video`, `embed` (Loom or YouTube URL), `link` (a preview card; the CLI reads Open Graph at build time), `diagram` (`format: "mermaid"`), `svg`. Two or more entries make a carousel. Local files are inlined; videos become muted 480p WebM when `ffmpeg` exists (6 MB each). Fields, limits and errors: `references/schema.md`.
 
-## Which flow to use: by harness
+The claude.ai artifact viewer blocks frames and remote images, so in artifact mode embeds become poster cards that open in a new tab. A deck that leans on playable embeds goes through the Orca, copy or `--wait` flow (full HTML, embeds play).
 
-Pick the flow from the harness you are running in. Artifact mode needs the `Artifact`, `ArtifactData` and `ArtifactComments` tools, which only Claude Code has (and only when the session is signed in to claude.ai). The CLI cannot call those tools, so it never picks artifact mode by itself: you opt in with `--artifact` and publish the page yourself.
+## Pick the flow
 
-| Harness | Flow | How |
+The CLI never picks artifact mode by itself (it cannot call the `Artifact` tools): you opt in with `--artifact`. Check your own tool list, not `CLAUDECODE=1`, which proves the harness and not the `Artifact` tool.
+
+| Environment | Flow | Command |
 | --- | --- | --- |
-| **Claude Code** with the `Artifact` tool in its tool list | **artifact mode** | `--artifact --title-prefix <session-name>`, then publish + watch (steps below) |
-| Claude Code without the `Artifact` tool (not signed in to claude.ai: API key, Bedrock, Vertex), or a subagent / print session (it cannot hold a watch) | the flows for other harnesses | as below |
-| OpenCode, Cursor, Codex, any other | Orca tab inside Orca, else copy mode; `--wait` for a same-turn answer | see "Which flow runs: Orca or not" |
+| Claude Code with `Artifact`, `ArtifactData`, `ArtifactComments` (signed in to claude.ai), main session | **artifact mode** | `<spec> --artifact --title-prefix <session-name>`, then publish and watch |
+| Inside Orca (`ORCA_TERMINAL_HANDLE` set or `orca status --json` reachable) | **Orca flow**: tab next to the terminal, blocks until Send, Result on stdout. Run it in the background | `<spec>` |
+| Anything else, no answer needed in this turn | **copy mode**: opens the browser, exits; the user pastes the JSON | `<spec>` |
+| Anything else, the next step needs the answer now | **`--wait`**: serves, blocks until submit, Result on stdout | `<spec> --wait` |
 
-Claude Code sets `CLAUDECODE=1` in the shells it runs. That proves the harness, not that this session has the `Artifact` tool, so the CLI only prints a one-line stderr hint when it sees it and keeps its usual default. Check your own tool list instead.
+A subagent, a print session or Claude Code without the `Artifact` tool cannot hold a watch: use the Orca, copy or `--wait` rows. Other flags: `--copy` (force copy mode inside Orca), `--no-open`, `--port <n>`, `--timeout <min>`.
 
-## Exact invocation — Claude Code (artifact mode)
-
-The user answers inside a claude.ai artifact. **Send to Claude** saves the Result JSON in the artifact's database and posts a comment addressed to Claude, which wakes this session. Nothing runs on localhost and there is nothing to copy.
-
-1. **Write the spec** to `~/.mkd/spec-<name>.json`, then **run**:
-   `bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-<name>.json --artifact --title-prefix <session-name>`.
-   The session name is the first line of `ListAgents` ("This session is …") or the terminal title. The CLI validates the spec, writes `~/.mkd/artifact-<name>.html` (a page fragment: `<title>` first, no doctype/html/head/body), prints **only that path on stdout**, opens nothing and exits 0. stderr names the db document the answer will land in. Exit 2 = bad spec, as always.
-2. **Publish** it with the `Artifact` tool: `file_path` = the printed path, an `icon` (e.g. `checklist`), a one-line `description`, and `capabilities: {db: {}, comments: {}}`. Give the user the link.
-3. **Confirm the watch**: `ArtifactComments` with `action: "watch"` and no `url` lists this session's watches. The artifact's row must say **auto-replies armed**; if it does not, call `watch` with its `url`. Only an armed watch lets the Send wake this session. Then end the turn or keep working; do not poll.
-4. **On wake-up** (a comment sent to Claude on that artifact): `ArtifactData` `action: "get"`, `collection: "results"`, `doc_id`: the spec's `session` (stderr printed the exact id; characters a db path rejects become `-`). The `result` field is the Result JSON string: parse it and treat it as the execution contract, exactly as in copy mode. Reply to the comment thread with what you will do and resolve it (`ArtifactComments` `reply`, then `resolve`).
-5. **To fix the deck**, edit the spec, re-run the same command and publish the same `file_path` again (or pass the artifact `url` from another conversation): the URL stays, and saved answers persist because browser storage belongs to the artifact.
-
-If the page shows "Sending is not available in this view" (the viewer lacks the `db` grant, e.g. someone with view-only access), the user can still press **Copy JSON** and paste it into the chat. If the answers saved but the notice failed ("Saved, but Claude was not notified"), the user tells you in the chat and you read the db document as in step 4. Image paste is off in artifact mode (no server to store the bytes).
-
-## Which flow runs: Orca or not
-
-The CLI checks for Orca before it opens anything. Orca counts as present when `ORCA_TERMINAL_HANDLE` is set (the process runs in an Orca-managed terminal) or when `orca status --json` reports a reachable runtime. The executable is resolved the way Orca's own `orca-cli` skill does it: `ORCA_CLI_COMMAND`, then `orca-dev` in an Orca dev checkout, then `orca-ide` on Linux outside a managed terminal (bare `orca` there is usually the GNOME screen reader), then `orca`. A failed check counts as "no Orca" and prints nothing.
-
-| Environment | Flags | What happens |
-| --- | --- | --- |
-| No Orca | none | **copy mode**: render, open the system browser, exit 0. Unchanged. |
-| No Orca | `--wait` | serve, open the system browser, block until submit |
-| Orca | none | **Orca flow**: serve, open a tab bound to the current worktree, block until the user presses **Send to Claude**, Result JSON on stdout |
-| Orca | `--copy` | copy mode, system browser, exit 0 (the old flow) |
-| any | `--no-open` | same mode as above, but nothing is opened; the path or URL goes to stderr |
-
-The tab is bound with `--worktree path:<git toplevel of the cwd>`, so run the CLI from inside the checkout the user is working in. After `orca tab create` the CLI reads `orca tab list` and checks that the tab exists and its `loadError` is null. If the tab cannot be created or the page fails to load, the CLI closes any tab it created, opens the system browser instead and says so on stderr. When the run ends (submit, timeout, Ctrl-C or SIGTERM) it closes the tab it opened; if the close fails, stderr says the tab now points to a dead server.
-
-## Exact invocation — inside Orca (default there)
-
-The CLI blocks until the user submits, so never run it in the foreground: a foreground call would hold the agent's turn for up to 24h.
-
-1. **Write the spec** to `~/.mkd/spec-<name>.json`.
-2. **Run it in the background**, from the user's checkout:
-   - **Claude Code**: Bash tool with `run_in_background: true` on `bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-<name>.json`. The harness notifies you when the process exits; read its stdout then. Measured on Orca 1.4.190.
-   - **OpenCode / Codex / Cursor** (unverified: none was measured): start it detached with the shell, output under `~/.mkd/`: `nohup bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-<name>.json > ~/.mkd/stdout-<name>.json 2> ~/.mkd/stderr-<name>.log &`. The redirect truncates the log, so once `~/.mkd/stderr-<name>.log` contains `result written to`, this run's submit has landed: read `~/.mkd/result-<name>.json` (the same Result as stdout). If the harness cannot keep a background process alive, pass `--copy` and use the copy-mode steps below.
-3. **Tell the user** the deck is open in a tab next to this terminal and that **Send to Claude** returns the answers directly, with nothing to copy. Then end the turn or keep working.
-4. **When the process exits**, act on the exit code (table under `--wait`). Exit 0 means stdout holds the Result JSON: treat it as the execution contract, exactly as in copy mode.
-
-**Stable port, persistent answers.** Each deck gets its own port in 4747-4946, derived from `<name>` in `spec-<name>.json` (else from `session`). A half-answered deck reopened from the same spec lands on the same origin, so its saved answers come back. If that port is busy the CLI binds the next free one and says on stderr that answers saved on the original port will not show. `--port <n>` overrides the derived port.
-
-**One copy of a deck at a time.** Browser storage is per origin and per browser engine: the same deck in the system browser and in an Orca tab (or as a `file://` page and over loopback) keeps two sets of answers that never merge. The CLI remembers where it last opened each deck (`~/.mkd/opened-<name>.json`) and warns on stderr when this run opens it somewhere else; when you see that warning, tell the user which copy is live. It also says so when an earlier `~/.mkd/result-<name>.json` backup exists (the next submit overwrites it).
-
-## Exact invocation — default outside Orca (copy mode, non-blocking)
-
-1. **Write the spec** to `~/.mkd/spec-<name>.json` (that filename makes the page land at `~/.mkd/deck-<name>.html`). Keeping it under `~/.mkd/` keeps the repo clean.
-2. **Run:** `bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-<name>.json`. The CLI validates, renders a self-contained page, opens the browser, and **exits 0 immediately**. Nothing lands on stdout.
-3. **Tell the user** the deck is open in their browser and that pressing **Copy JSON** (footer) and pasting it into the chat brings the answers back. Then continue with other work or end the turn — do NOT block or poll.
-4. **When the pasted JSON arrives**, parse it and treat it as the execution contract: `status: "skipped"` items are "decide later" (re-ask later, never assume a rejection); `chosen: "CUSTOM"` means execute `customText` as stated (or ask if something does not add up); always read each item's `note`.
-
-## `--wait` (blocking, same-turn answer)
-
-Outside Orca, use it only when the AI genuinely needs the answer in the same turn to continue. Inside Orca this is already the default flow.
-
-- `bun "<skill-dir>/cli/index.ts" <specPath> --wait` serves the deck over loopback (`--port`, default: the deck's stable port in 4747-4946, auto-increments) with a per-run `x-mkd-token` submit gate, waits for the browser's submit (`--timeout <min>`, default 1440 = 24h), then prints the Result JSON to **stdout** (the ONLY thing on stdout; banners/errors go to stderr) and writes a backup to `~/.mkd/result-<name>.json`.
-- Image paste (clipboard → attachment) works **only** in wait mode (`--wait` or the Orca flow): entries in `images` arrive as absolute file paths under `~/.mkd/` the AI can `Read`. Copy mode disables paste (no server to persist bytes).
-
-Exit codes and absence protocol (`--wait` and the Orca flow):
-
-| Exit | Meaning | What the AI does |
-| --- | --- | --- |
-| 0 | submitted — Result JSON on stdout | parse it, continue the same turn |
-| 1 | timeout with NO submission (or runtime error) | user is AWAY, not an error — post a standby note, offer to relaunch |
-| 2 | bad spec (unreadable / failed validation) | fix the spec at the reported path, re-run |
-| 130 | Ctrl-C | the user cancelled — ask what they want next |
-| 143 | SIGTERM (the harness or someone killed the background process) | relaunch with the same spec; the stable port brings saved answers back |
+**Before running any flow, read the matching section of `references/flows.md`**: it holds the exact steps, the pending-deck rule for artifact mode, ports, exit codes and the `open-artifact <url>` subcommand.
 
 ## Reading the Result
 
 ```jsonc
-{
-  "session": "audit-skills-alignment",
-  "source": ".session/.../audit.md",
-  "submittedAt": "2026-08-21T…",
+{ "session": "...", "submittedAt": "...",
   "stats": { "total": 8, "answered": 6, "skipped": 1, "recFollowed": 4, "overridden": 1, "custom": 1 },
-  "items": [
-    { "id": "D1", "type": "decision", "title": "…", "status": "answered",
-      "chosen": "A", "chosenLabel": "…", "wasRecommended": true, "customText": "", "note": "…" },
-    { "id": "Q1", "type": "question", "status": "answered", "controlAnswer": "keep", "text": "…", "quotes": ["…"] },
-    { "id": "R1", "type": "report", "status": "skipped", "controlAnswer": null, "text": "", "quotes": [] },
-    { "id": "T1", "type": "table", "status": "answered", "note": "", "quotes": [],
-      "rows": [{ "id": "r1", "controlAnswer": "fix", "text": "", "quotes": [] }] }
-  ]
-}
+  "items": [ { "id": "D1", "type": "decision", "status": "answered", "chosen": "A", "chosenLabel": "...", "wasRecommended": true, "customText": "", "note": "..." } ] }
 ```
 
-- Artifact mode: the same object, stored as a JSON string in the `result` field of `results/<session>` (next to `session` and `submittedAt`). Like copy mode, it is built by the page and not reshaped by a server.
-- `controlAnswer` decodes by control type: `single` → `string|null`, `multi` → `string[]`, `toggle` → `boolean`.
-- `quotes` are exact phrases the user highlighted from that item's content (or that row's cells) — weight them when interpreting `text`.
-- Match `items[].id` (and `rows[].id`) back to the ids you authored to anchor every answer.
+- `status: "skipped"` means decide later: re-ask later, never assume a rejection.
+- `chosen: "CUSTOM"` means execute `customText` as stated; ask if it does not add up. Read every item's `note`.
+- `controlAnswer` decodes by control: `single` is `string|null`, `multi` is `string[]`, `toggle` is `boolean`.
+- `quotes` are exact phrases the user highlighted: weight them when interpreting `text`.
+- Match `items[].id` and `rows[].id` back to the ids you authored. Full shape: `references/schema.md`.
+- Artifact mode stores the same object as a JSON string in `results/<session>` (field `result`).
 
-## Notes
-
-- UI chrome is English (repo-artifact rule); `title`/`problem`/`content`/justifications are whatever language you author — write them in the user's language.
-- The page loads its display fonts from Google Fonts with full system fallbacks; offline it degrades gracefully.
-- The CLI is decoupled (Bun built-ins only, zero external deps) — see `cli/README.md`.
+The page loads its display fonts from Google Fonts with system fallbacks; offline it degrades gracefully. The CLI uses Bun built-ins only (`cli/README.md`).

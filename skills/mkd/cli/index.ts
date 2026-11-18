@@ -37,11 +37,13 @@
  * step: run it from the skill directory with `bun <skill-dir>/cli/index.ts`.
  */
 
+import type { MediaReport } from './media.ts';
 import type { Result } from './schema.ts';
 import type { ServeHandle } from './server.ts';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { checkPageBudget, findBlockedResources, formatMb, hasMedia, prepareForArtifact, resolveMedia } from './media.ts';
 import { closeOrcaTab, derivePort, detectOrca, openOrcaTab, resolveMode, worktreeSelector } from './orca.ts';
 import { artifactDocId, render } from './render.ts';
 import { SpecError, validateSpec } from './schema.ts';
@@ -112,6 +114,10 @@ const HELP = `mkd - MKD (Make Decision) interactive decision-deck CLI
 USAGE
   bun <skill-dir>/cli/index.ts <specPath> [options]
 
+  bun <skill-dir>/cli/index.ts open-artifact <url>
+                      Inside Orca: open a published claude.ai artifact in a tab
+                      bound to the current worktree. stdout: opened | skipped
+
 ARGUMENTS
   specPath            Path to a spec JSON file (required)
 
@@ -157,8 +163,53 @@ const DEFAULT_TIMEOUT_MINUTES = 1440;
 const DONE_SCREEN_MS = 800;
 
 // ============================================================================
+// open-artifact: show a published claude.ai artifact in an Orca tab
+// ============================================================================
+
+/**
+ * `mkd open-artifact <url>`: the agent runs it right after the Artifact tool
+ * returns the URL. Inside Orca the artifact opens in a tab bound to the
+ * current worktree; the system browser is never used. stdout carries one
+ * word: `opened` (the tab exists, loadError null) or `skipped` (no Orca, or
+ * the tab failed; stderr says why and the agent gives the link instead).
+ * Exit 2 only for a URL that is not a claude.ai https link.
+ */
+async function runOpenArtifact(url: string | undefined): Promise<void> {
+  let parsed: URL | null = null;
+  try {
+    parsed = url ? new URL(url) : null;
+  }
+  catch {
+    parsed = null;
+  }
+  if (!parsed || parsed.protocol !== 'https:' || parsed.hostname !== 'claude.ai') {
+    console.error('[mkd] error: open-artifact needs one https://claude.ai/... artifact URL.');
+    process.exit(2);
+  }
+
+  const orca = await detectOrca(process.env, process.platform);
+  if (!orca.detected) {
+    console.error('[mkd] Orca not detected: give the user the artifact link.');
+    console.log('skipped');
+    return;
+  }
+  const selector = await worktreeSelector(process.cwd());
+  const opened = await openOrcaTab({ cmd: orca.cmd, url: parsed.href, selector });
+  if (opened.ok) {
+    console.error(`[mkd] artifact opened in an Orca tab bound to ${selector}.`);
+    console.log('opened');
+    return;
+  }
+  console.error(`[mkd] could not open an Orca tab (${opened.reason}): give the user the artifact link.`);
+  console.log('skipped');
+}
+
+// ============================================================================
 // MAIN
 // ============================================================================
+
+/** What media.ts inlined for this run, for the page-budget messages. */
+let pageMedia: MediaReport = { weights: [], inlinedBytes: 0 };
 
 async function main(): Promise<void> {
   const { positional, flags } = parseArgs(process.argv.slice(2));
@@ -166,6 +217,11 @@ async function main(): Promise<void> {
   if (getBoolFlag(flags, 'help') || getBoolFlag(flags, 'h')) {
     console.error(HELP);
     process.exit(0);
+  }
+
+  if (positional[0] === 'open-artifact') {
+    await runOpenArtifact(positional[1]);
+    return;
   }
 
   const specPath = positional[0];
@@ -219,10 +275,41 @@ async function main(): Promise<void> {
     throw error;
   }
 
+  // Inline local media, transcode videos, read link previews: once, before
+  // any mode renders, so copy / wait / artifact pages are identical.
+  let mediaReport: MediaReport = { weights: [], inlinedBytes: 0 };
+  if (hasMedia(spec)) {
+    try {
+      const resolved = await resolveMedia(spec, dirname(resolve(specPath)));
+      spec = resolved.spec;
+      mediaReport = resolved.report;
+    }
+    catch (error) {
+      if (error instanceof SpecError) {
+        console.error(`[mkd] invalid spec at ${error.path}: ${error.message}`);
+        process.exit(2);
+      }
+      throw error;
+    }
+    console.error(`[mkd] media: ${mediaReport.weights.length} inlined payload(s), ${formatMb(mediaReport.inlinedBytes)}.`);
+  }
+  pageMedia = mediaReport;
+
   // Short run id for the fallback filenames + logging.
   const id = Date.now().toString(36);
   const specName = specNameFromPath(specPath);
   const name = specName ?? id;
+
+  if (artifact && hasMedia(spec)) {
+    // The artifact viewer loads nothing remote: inline thumbnails and remote
+    // images now; whatever cannot be inlined renders without the resource.
+    const prepared = await prepareForArtifact(spec);
+    spec = prepared.spec;
+    pageMedia = { weights: [...pageMedia.weights, ...prepared.report.weights], inlinedBytes: pageMedia.inlinedBytes + prepared.report.inlinedBytes };
+    if (prepared.report.weights.length > 0) {
+      console.error(`[mkd] artifact: inlined ${prepared.report.weights.length} remote picture(s), ${formatMb(prepared.report.inlinedBytes)}.`);
+    }
+  }
 
   if (artifact) {
     // Stable per deck, so a re-run republishes to the same artifact: the spec
@@ -237,7 +324,7 @@ async function main(): Promise<void> {
     : await detectOrca(process.env, process.platform);
   const choice = resolveMode({ wait, copy, noOpen }, orca.detected);
   if (process.env.CLAUDECODE === '1') {
-    console.error('[mkd] note: running under Claude Code. If this session has the Artifact tool, --artifact returns the answers through a claude.ai artifact with no copy-paste and no local server (SKILL.md, "Exact invocation — Claude Code (artifact mode)").');
+    console.error('[mkd] note: running under Claude Code. If this session has the Artifact tool, --artifact returns the answers through a claude.ai artifact with no copy-paste and no local server (references/flows.md, "Artifact mode").');
   }
 
   if (backupExists(name)) {
@@ -263,6 +350,28 @@ async function main(): Promise<void> {
 }
 
 // ============================================================================
+// PAGE BUDGET (media can make a page heavy)
+// ============================================================================
+
+/** Report the page weight; exit 2 when an artifact page is over budget. */
+function enforcePageBudget(html: string, mode: 'copy' | 'wait' | 'artifact'): void {
+  const bytes = new TextEncoder().encode(html).length;
+  try {
+    checkPageBudget(bytes, mode, pageMedia);
+  }
+  catch (error) {
+    if (error instanceof SpecError) {
+      console.error(`[mkd] error: ${error.message}`);
+      process.exit(2);
+    }
+    throw error;
+  }
+  if (pageMedia.weights.length > 0) {
+    console.error(`[mkd] page size: ${formatMb(bytes)} (${mode} mode).`);
+  }
+}
+
+// ============================================================================
 // COPY MODE (default, non-blocking)
 // ============================================================================
 
@@ -272,6 +381,7 @@ async function runCopyMode(
   open: boolean,
 ): Promise<void> {
   const html = render(spec, { mode: 'copy' });
+  enforcePageBudget(html, 'copy');
   const pagePath = join(MKD_HOME, `deck-${sanitizeForFilename(name)}.html`);
 
   try {
@@ -302,6 +412,10 @@ async function runArtifactMode(
   titlePrefix: string | undefined,
 ): Promise<void> {
   const html = render(spec, { mode: 'artifact', titlePrefix });
+  enforcePageBudget(html, 'artifact');
+  for (const blocked of findBlockedResources(html)) {
+    console.error(`[mkd] warning: the artifact viewer will block this remote resource: ${blocked}`);
+  }
   const pagePath = join(MKD_HOME, `artifact-${sanitizeForFilename(name)}.html`);
 
   try {
@@ -338,6 +452,7 @@ async function runWaitMode(
   name: string,
   opts: WaitOptions,
 ): Promise<void> {
+  enforcePageBudget(render(spec, { mode: 'wait', submitToken: 'budget-check' }), 'wait');
   let handle: ServeHandle | null = null;
   let boundUrl = `http://localhost:${opts.port}/`;
   let boundPort = opts.port;

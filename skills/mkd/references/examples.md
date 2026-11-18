@@ -189,4 +189,34 @@ bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-release-readiness.json --artifact --t
 Publish that path with the `Artifact` tool and `capabilities: {db: {}, comments: {}}`,
 confirm the watch says **auto-replies armed**, and on the wake-up read
 `ArtifactData` `get` (`collection: "results"`, `doc_id`: the spec's `session`).
-Full steps: `SKILL.md`, "Exact invocation — Claude Code (artifact mode)".
+Full steps: `references/flows.md`, "Artifact mode".
+
+---
+
+## 6. Media: images on options, a carousel, a link card, a diagram
+
+```json
+{
+  "session": "logo-review",
+  "title": "Logo review",
+  "items": [
+    {
+      "id": "D1", "type": "decision", "title": "Which logo direction?",
+      "problem": "Three directions for the header logo.",
+      "media": [
+        { "type": "image", "src": "~/.mkd/media-demo/ref-1.png", "alt": "Current header", "caption": "Today" },
+        { "type": "link", "url": "https://example.com/brand-guide" },
+        { "type": "diagram", "format": "mermaid", "code": "flowchart LR\n  A[Brief] --> B[Direction] --> C[Final]" }
+      ],
+      "options": [
+        { "key": "A", "label": "Rounded", "justification": "Friendly. Cost: less formal.", "recommended": true,
+          "media": [{ "type": "image", "src": "~/.mkd/media-demo/a.png", "alt": "Rounded logo" }] },
+        { "key": "B", "label": "Sharp", "justification": "Precise. Cost: colder tone.",
+          "media": [{ "type": "image", "src": "~/.mkd/media-demo/b.png", "alt": "Sharp logo" }] }
+      ]
+    }
+  ]
+}
+```
+
+Two or more `media` entries render as a carousel. Videos: `{ "type": "video", "src": "clip.mp4" }` is shrunk to muted WebM; `{ "type": "embed", "url": "<Loom or YouTube URL>" }` plays in the Orca, copy and `--wait` flows and becomes a poster card in artifact mode.
