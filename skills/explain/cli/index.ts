@@ -385,6 +385,18 @@ async function cmdPreview(p: ParsedArgs): Promise<number> {
   return 0;
 }
 
+/**
+ * Default contact-sheet frames: n scenes spread over the video (first and last included), each at 70 % of its own
+ * time, so a frame shows a settled scene instead of a transition.
+ */
+export function sheetTimes(scenes: { start: number, dur: number }[], n: number): number[] {
+  if (!scenes.length) { return []; }
+  return Array.from({ length: n }, (_, i) => {
+    const sc = scenes[n === 1 ? scenes.length - 1 : Math.round((i * (scenes.length - 1)) / (n - 1))];
+    return Math.round((sc.start + sc.dur * 0.7) * 100) / 100;
+  });
+}
+
 /** Write <build dir>/sheet.png: cols x rows frames rendered in the page (or cut from the MP4 with --from-mp4). */
 async function writeSheet(t: Target, b: Build, p: ParsedArgs): Promise<string> {
   const cols = p.flags.cols === undefined ? 3 : Number(p.flags.cols);
@@ -398,8 +410,8 @@ async function writeSheet(t: Target, b: Build, p: ParsedArgs): Promise<string> {
     const { duration } = await pageScenes(html);
     return (await sheetFromMp4({ mp4, out, duration, cols, rows })).file;
   }
-  let times: number[] | 'all' = 'all';
-  if (typeof p.flags.at === 'string') { times = planStills(parseAt(p.flags.at), (await pageScenes(html)).scenes).map(x => x.t); }
+  const { scenes } = await pageScenes(html);
+  const times = typeof p.flags.at === 'string' ? planStills(parseAt(p.flags.at), scenes).map(x => x.t) : sheetTimes(scenes, cols * rows);
   return (await sheet({ html, out, times, cols, rows })).file;
 }
 
@@ -478,7 +490,7 @@ const HELP: Record<string, string> = {
   build: 'build <dir|scene.js> [--preset <name>]\n  Build the self-contained index.html into the explainer folder (a scene file other than scene.js builds into ~/explainers/<date>-<name>/); prints its path. A --preset other than the configured one (explain.json, else the scene, else hologram) is a one-off build in <dir>/presets/<name>/; explain.json is never rewritten. --style is an alias of --preset.',
   check: 'check <dir|scene.js> [--preset <name>]\n  Build if needed, run the QA gate headless; QA JSON on stdout. Exit 1 on errors, 0 on warnings only.',
   stills: 'stills <dir|scene.js> [--preset <name>] [--at ci:3.5,git:5.2,12.4] [--scene <name>] [--from-mp4 [--out video.mp4]]\n  PNGs named NN-<scene>@<local seconds>.png to <dir>/stills/ (old ones replaced). --at takes <scene>:<seconds of that scene> or global seconds. Default: 2 per scene at 40 % and 85 % of it; --scene <name> gives 4 of that scene. --from-mp4 cuts them from the exported MP4 with ffmpeg into <dir>/stills/mp4/.',
-  sheet: 'sheet <dir|scene.js> [--preset <name>] [--cols 3] [--rows 2] [--at ...] [--from-mp4]\n  One contact-sheet PNG (cols x rows frames at 960x540; 3x2 = 2880x1080) to <dir>/sheet.png, rendered in the page without ffmpeg; frames spread evenly over the video unless --at names them. --from-mp4 cuts it from the exported MP4 with ffmpeg.',
+  sheet: 'sheet <dir|scene.js> [--preset <name>] [--cols 3] [--rows 2] [--at ...] [--from-mp4]\n  One contact-sheet PNG (cols x rows frames at 960x540; 3x2 = 2880x1080) to <dir>/sheet.png, rendered in the page without ffmpeg; frames at 70 % of scenes spread over the video unless --at names them. --from-mp4 cuts it from the exported MP4 with ffmpeg.',
   export: 'export <dir|scene.js> [--out video.mp4] [--bitrate 2] [--force]\n  Run check (refuses on errors unless --force), export <dir>/<slug>.mp4 (a relative --out is inside <dir>), print path, duration, size, time; ffprobe verifies when available.',
   preview: 'preview <dir> [--preset <name>]\n  Open index.html in the default browser.',
   preset: 'preset list | new <name> [--from sketch|hologram|poster] | check <name> | use <dir> <name> | promote <name>\n  Presets are the look of a video. list: built-in and user presets (~/.explain/presets, or EXPLAIN_PRESETS). new: copy one into the user folder with a README checklist. check: validate it, build the gallery scene in it, QA must pass. use: save it in the folder\'s explain.json. promote: copy a checked user preset into the skill (maintainers).',

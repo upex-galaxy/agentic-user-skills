@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, test } from 'bun:test';
 import { buildHash, buildPage, insideSkillDir, readBuildHash, SKILL_DIR } from './build.ts';
 import { findChrome } from './chrome.ts';
-import { dateStamp, defaultAt, defaultStillTimes, ensureBuilt, explainerDir, parseArgs, parseAt, parseBitrate, parsePreset, parseTimes, planStills, resolveOut, resolveTarget, sceneTemplate, slugify, UsageError } from './index.ts';
+import { dateStamp, defaultAt, defaultStillTimes, ensureBuilt, explainerDir, parseArgs, parseAt, parseBitrate, parsePreset, parseTimes, planStills, resolveOut, resolveTarget, sceneTemplate, sheetTimes, slugify, UsageError } from './index.ts';
 import { listPresets, newPreset } from './presets.ts';
 
 const temps: string[] = [];
@@ -42,6 +42,11 @@ describe('argument parsing', () => {
   });
   test('boolean flag does not eat the next positional', () => {
     expect(parseArgs(['--force', 'dir']).positional).toEqual(['dir']);
+  });
+  test('sheet frames sit at 70 % of scenes spread over the video', () => {
+    const scenes = [{ start: 0, dur: 10 }, { start: 9, dur: 10 }, { start: 18, dur: 10 }];
+    expect(sheetTimes(scenes, 3)).toEqual([7, 16, 25]);
+    expect(sheetTimes(scenes, 6)).toHaveLength(6);
   });
   test('a repeated --at adds to the list', () => {
     expect(parseArgs(['x', '--at', 'a:1', '--at', 'b:2']).flags.at).toBe('a:1,b:2');
