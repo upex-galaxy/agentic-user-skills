@@ -10,58 +10,66 @@
  * below carries a full system fallback stack so the page renders correctly
  * offline.
  *
- * Theme model (three states, prototype-faithful):
- *   :root                      -> light palette (the default)
- *   @media dark + no override  -> dark palette (system preference)
- *   :root[data-theme="dark"]   -> dark palette (explicit toggle choice)
- *   :root[data-theme="light"]  -> light palette (explicit toggle choice)
+ * Theme model (dark first, the system decides until the user chooses):
+ *   :root                                   -> deep-navy dark palette (the default)
+ *   @media light + no explicit choice       -> matte pastel light palette
+ *   :root[data-theme="light"]               -> light palette (explicit toggle choice)
+ *   :root[data-theme="dark"]                -> dark palette (explicit toggle choice)
+ * The `data-theme` attribute (not a <meta name="color-scheme">) carries the
+ * choice because artifact mode is a fragment with no <head> of its own.
  */
 
 /* ==========================================================================
-   Design tokens - light (default)
+   Design tokens - dark (default)
    ========================================================================== */
 
 :root {
-  --mkd-bg: #f6f8f7;
-  --mkd-surface: #ffffff;
-  --mkd-surface-raised: #eef2f0;
-  --mkd-border: #d9e1dd;
-  --mkd-text: #1b2523;
-  --mkd-text-strong: #0f1a17;
-  --mkd-text-muted: #54655f;
+  color-scheme: dark;
 
-  --mkd-accent: #177e6d;
-  --mkd-accent-strong: #0c5a4d;
-  --mkd-accent-ink: #0c5a4d;
-  --mkd-accent-contrast: #ffffff;
-  --mkd-accent-tint: #e0efeb;
-  --mkd-accent-ring: rgba(23, 126, 109, 0.35);
+  --mkd-bg: #0b1120;
+  --mkd-bg-glow: rgba(76, 201, 176, 0.07);
+  --mkd-grid: rgba(141, 160, 196, 0.07);
+  --mkd-surface: #111a2c;
+  --mkd-surface-raised: #18223a;
+  --mkd-border: #253150;
+  --mkd-border-strong: #34426a;
+  --mkd-text: #d6deec;
+  --mkd-text-strong: #f1f5fb;
+  --mkd-text-muted: #8f9db8;
+
+  --mkd-accent: #4cc9b0;
+  --mkd-accent-strong: #72dac5;
+  --mkd-accent-ink: #7fe0cc;
+  --mkd-accent-contrast: #05201a;
+  --mkd-accent-tint: #13302f;
+  --mkd-accent-ring: rgba(76, 201, 176, 0.5);
 
   /* Amber "recommended" family + severity chip families. */
-  --mkd-rec: #a85b10;
-  --mkd-rec-soft: #f6e8d8;
-  --mkd-high: #b3362b;
-  --mkd-high-soft: #f5e1de;
-  --mkd-medium: #8a6414;
-  --mkd-medium-soft: #f2e9d2;
-  --mkd-low: #5a6b68;
-  --mkd-low-soft: #e5eae8;
+  --mkd-rec: #f2b866;
+  --mkd-rec-soft: #33291b;
+  --mkd-high: #f39189;
+  --mkd-high-soft: #3a2027;
+  --mkd-medium: #e6c35c;
+  --mkd-medium-soft: #322c18;
+  --mkd-low: #a0abc2;
+  --mkd-low-soft: #1d263b;
 
-  --mkd-danger: #c0392b;
-  --mkd-danger-contrast: #fff;
+  --mkd-danger: #ff8a80;
+  --mkd-danger-contrast: #2a0906;
 
-  --mkd-code-bg: #eef2f0;
-  --mkd-zebra: rgba(20, 40, 35, 0.03);
-  --mkd-chip-x-bg: rgba(20, 40, 35, 0.08);
-  --mkd-img-x-bg: rgba(20, 40, 35, 0.55);
+  --mkd-code-bg: #0a0f1c;
+  --mkd-zebra: rgba(255, 255, 255, 0.025);
+  --mkd-chip-x-bg: rgba(255, 255, 255, 0.08);
+  --mkd-img-x-bg: rgba(0, 0, 0, 0.6);
+  --mkd-scrim: rgba(3, 7, 16, 0.62);
+
+  --mkd-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 18px 40px rgba(0, 0, 0, 0.38);
+  --mkd-shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --mkd-shadow-lift: 0 18px 44px rgba(0, 0, 0, 0.55);
 
   --mkd-radius: 16px;
   --mkd-radius-sm: 10px;
   --mkd-radius-pill: 999px;
-
-  --mkd-shadow: 0 10px 30px rgba(20, 40, 35, 0.08);
-  --mkd-shadow-soft: 0 2px 8px rgba(20, 40, 35, 0.06);
-  --mkd-shadow-lift: 0 14px 36px rgba(20, 40, 35, 0.14);
 
   --mkd-font:
     'Albert Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
@@ -79,90 +87,60 @@
   /* Minimum gap a broken-out table keeps from the viewport edge. */
   --mkd-gutter: 24px;
   --mkd-pad: 20px;
+  --mkd-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --mkd-transition: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* Height reserved under the stage for the fixed footer bar. */
+  --mkd-bar-space: 120px;
 }
 
 /* ==========================================================================
-   Design tokens - dark (system preference, unless light explicitly chosen)
+   Design tokens - light (only when the header toggle chooses it; dark is the default)
+   Matte pastel: no pure white, low-chroma surfaces, almost no shadow.
    ========================================================================== */
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --mkd-bg: #101513;
-    --mkd-surface: #182019;
-    --mkd-surface-raised: #1f2a24;
-    --mkd-border: #2c3a33;
-    --mkd-text: #e7ece9;
-    --mkd-text-strong: #f2f7f4;
-    --mkd-text-muted: #9dafa8;
+/* Explicit light choice via the header toggle - same values as above. */
+:root[data-theme='light'] {
+  color-scheme: light;
 
-    --mkd-accent: #43b79e;
-    --mkd-accent-strong: #5ac7af;
-    --mkd-accent-ink: #7bd4bf;
-    --mkd-accent-contrast: #08201a;
-    --mkd-accent-tint: #1b322b;
-    --mkd-accent-ring: rgba(67, 183, 158, 0.4);
+  --mkd-bg: #eceef4;
+  --mkd-bg-glow: rgba(126, 172, 196, 0.16);
+  --mkd-grid: rgba(70, 84, 120, 0.05);
+  --mkd-surface: #f6f6f9;
+  --mkd-surface-raised: #e7eaf1;
+  --mkd-border: #d4d9e4;
+  --mkd-border-strong: #b9c0d0;
+  --mkd-text: #2a3040;
+  --mkd-text-strong: #161a25;
+  --mkd-text-muted: #565e76;
 
-    --mkd-rec: #e5a455;
-    --mkd-rec-soft: #33271a;
-    --mkd-high: #e27a6e;
-    --mkd-high-soft: #37211e;
-    --mkd-medium: #d9b04c;
-    --mkd-medium-soft: #322b18;
-    --mkd-low: #93a5a0;
-    --mkd-low-soft: #232d29;
+  --mkd-accent: #2d776c;
+  --mkd-accent-strong: #22625a;
+  --mkd-accent-ink: #21605a;
+  --mkd-accent-contrast: #ffffff;
+  --mkd-accent-tint: #d8eae5;
+  --mkd-accent-ring: rgba(45, 119, 108, 0.38);
 
-    --mkd-danger: #ff7b72;
-    --mkd-danger-contrast: #fff;
+  --mkd-rec: #8a500f;
+  --mkd-rec-soft: #f2e3cf;
+  --mkd-high: #a4372e;
+  --mkd-high-soft: #f3dcd9;
+  --mkd-medium: #765710;
+  --mkd-medium-soft: #efe5cb;
+  --mkd-low: #535e72;
+  --mkd-low-soft: #e1e5ee;
 
-    --mkd-code-bg: #0c1210;
-    --mkd-zebra: rgba(255, 255, 255, 0.02);
-    --mkd-chip-x-bg: rgba(255, 255, 255, 0.08);
-    --mkd-img-x-bg: rgba(0, 0, 0, 0.6);
+  --mkd-danger: #ad3529;
+  --mkd-danger-contrast: #ffffff;
 
-    --mkd-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-    --mkd-shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.3);
-    --mkd-shadow-lift: 0 14px 36px rgba(0, 0, 0, 0.5);
-  }
-}
+  --mkd-code-bg: #e7eaf1;
+  --mkd-zebra: rgba(40, 50, 80, 0.03);
+  --mkd-chip-x-bg: rgba(40, 50, 80, 0.08);
+  --mkd-img-x-bg: rgba(20, 26, 40, 0.55);
+  --mkd-scrim: rgba(36, 42, 60, 0.32);
 
-/* Explicit dark choice via the header toggle - same values as above. */
-:root[data-theme='dark'] {
-  --mkd-bg: #101513;
-  --mkd-surface: #182019;
-  --mkd-surface-raised: #1f2a24;
-  --mkd-border: #2c3a33;
-  --mkd-text: #e7ece9;
-  --mkd-text-strong: #f2f7f4;
-  --mkd-text-muted: #9dafa8;
-
-  --mkd-accent: #43b79e;
-  --mkd-accent-strong: #5ac7af;
-  --mkd-accent-ink: #7bd4bf;
-  --mkd-accent-contrast: #08201a;
-  --mkd-accent-tint: #1b322b;
-  --mkd-accent-ring: rgba(67, 183, 158, 0.4);
-
-  --mkd-rec: #e5a455;
-  --mkd-rec-soft: #33271a;
-  --mkd-high: #e27a6e;
-  --mkd-high-soft: #37211e;
-  --mkd-medium: #d9b04c;
-  --mkd-medium-soft: #322b18;
-  --mkd-low: #93a5a0;
-  --mkd-low-soft: #232d29;
-
-  --mkd-danger: #ff7b72;
-  --mkd-danger-contrast: #fff;
-
-  --mkd-code-bg: #0c1210;
-  --mkd-zebra: rgba(255, 255, 255, 0.02);
-  --mkd-chip-x-bg: rgba(255, 255, 255, 0.08);
-  --mkd-img-x-bg: rgba(0, 0, 0, 0.6);
-
-  --mkd-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  --mkd-shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --mkd-shadow-lift: 0 14px 36px rgba(0, 0, 0, 0.5);
+  --mkd-shadow: 0 1px 2px rgba(40, 50, 80, 0.05);
+  --mkd-shadow-soft: 0 1px 2px rgba(40, 50, 80, 0.06);
+  --mkd-shadow-lift: 0 12px 32px rgba(40, 50, 80, 0.14);
 }
 
 /* Smooth the dark<->light flip on the large color-bearing surfaces. */
@@ -197,7 +175,16 @@ html {
 
 body {
   margin: 0;
-  background: var(--mkd-bg);
+  min-height: 100dvh;
+  background-color: var(--mkd-bg);
+  /* Editor-canvas texture: a faint dot grid under a soft accent glow. */
+  background-image:
+    radial-gradient(1200px 520px at 50% -180px, var(--mkd-bg-glow), transparent 70%),
+    radial-gradient(var(--mkd-grid) 1px, transparent 1.2px);
+  background-size:
+    100% 100%,
+    22px 22px;
+  background-attachment: fixed;
   color: var(--mkd-text);
   font-family: var(--mkd-font);
   font-size: 16px;
@@ -231,6 +218,14 @@ button {
   padding: 12px clamp(16px, 4vw, 40px);
   background: var(--mkd-bg);
   border-bottom: 1px solid var(--mkd-border);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) and (background: color-mix(in srgb, red 50%, transparent)) {
+  .mkd-header {
+    background: color-mix(in srgb, var(--mkd-bg) 86%, transparent);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
 }
 
 .mkd-brand {
@@ -389,8 +384,9 @@ button {
 
 .mkd-stage {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   place-items: start center;
-  padding: clamp(18px, 4vw, 44px) clamp(14px, 4vw, 40px) 150px;
+  padding: clamp(18px, 4vw, 44px) clamp(14px, 4vw, 40px) var(--mkd-bar-space);
 }
 
 .mkd-card {
@@ -409,13 +405,13 @@ button {
 
 .mkd-card.is-current {
   display: block;
-  animation: mkd-enter 0.28s ease;
+  animation: mkd-enter 220ms var(--mkd-ease-out);
 }
 
 @keyframes mkd-enter {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(6px);
   }
 
   to {
@@ -432,9 +428,10 @@ button {
   align-items: center;
   flex-wrap: wrap;
   margin-bottom: 14px;
+  font-family: var(--mkd-font-mono);
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 500;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--mkd-text-muted);
 }
@@ -701,11 +698,18 @@ button {
   text-align: left;
   transition:
     border-color 120ms ease,
-    background 120ms ease;
+    background 120ms ease,
+    transform 140ms var(--mkd-ease-out);
 }
 
-.mkd-opt:hover {
-  border-color: var(--mkd-accent);
+@media (hover: hover) and (pointer: fine) {
+  .mkd-opt:hover {
+    border-color: var(--mkd-accent);
+  }
+}
+
+.mkd-opt:active {
+  transform: scale(0.99);
 }
 
 .mkd-opt:focus-visible {
@@ -727,13 +731,15 @@ button {
 }
 
 .mkd-opt__key {
-  font-family: var(--mkd-font-display);
-  font-weight: 800;
-  font-size: 15px;
+  font-family: var(--mkd-font-mono);
+  font-weight: 500;
+  font-size: 14px;
   color: var(--mkd-accent-ink);
 }
 
 .mkd-opt__label {
+  flex: 1 1 14ch;
+  min-width: 0;
   font-weight: 700;
 }
 
@@ -1307,6 +1313,7 @@ button {
 
 .mkd-card__nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
   margin-top: 26px;
@@ -1321,7 +1328,9 @@ button {
 }
 
 .mkd-btn {
+  min-height: 44px;
   padding: 10px 20px;
+  white-space: nowrap;
   border: 1.5px solid var(--mkd-border);
   border-radius: var(--mkd-radius-sm);
   background: var(--mkd-surface);
@@ -1337,6 +1346,11 @@ button {
 
 .mkd-btn:hover {
   border-color: var(--mkd-accent);
+}
+
+.mkd-btn:active:not([disabled]),
+.mkd-bar__btn:active:not([disabled]) {
+  transform: scale(0.97);
 }
 
 .mkd-btn:focus-visible {
@@ -1491,23 +1505,75 @@ button {
   flex-wrap: wrap;
 }
 
-.mkd-stat {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--mkd-text-muted);
-  font-variant-numeric: tabular-nums;
+.mkd-bar__progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 260px;
+  min-width: 0;
+  max-width: 460px;
 }
 
-.mkd-stat b {
-  color: var(--mkd-text);
-}
-
-.mkd-stat--ok b {
+/* Native <progress>, fully restyled (track on the element, fill on the
+   vendor pseudo-elements - never grouped, or the whole rule is dropped). */
+.mkd-progress {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1 1 auto;
+  min-width: 80px;
+  height: 8px;
+  border: 0 solid;
+  border-radius: var(--mkd-radius-pill);
+  overflow: clip;
+  background: var(--mkd-surface-raised);
+  box-shadow: inset 0 0 0 1px var(--mkd-border);
   color: var(--mkd-accent);
 }
 
-.mkd-stat--rec b {
-  color: var(--mkd-rec);
+.mkd-progress::-webkit-progress-bar {
+  background: transparent;
+}
+
+.mkd-progress::-webkit-progress-value {
+  background: var(--mkd-accent);
+  border-radius: var(--mkd-radius-pill);
+  transition: inline-size 240ms var(--mkd-ease-out);
+}
+
+.mkd-progress::-moz-progress-bar {
+  background: var(--mkd-accent);
+  border-radius: var(--mkd-radius-pill);
+}
+
+.mkd-bar__count {
+  flex: none;
+  font-family: var(--mkd-font-mono);
+  font-size: 12.5px;
+  color: var(--mkd-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mkd-bar__count b {
+  color: var(--mkd-text-strong);
+  font-weight: 500;
+}
+
+.mkd-bar__pending.is-zero {
+  color: var(--mkd-accent-ink);
+}
+
+.mkd-bar__btn--jump {
+  border-style: dashed;
+  color: var(--mkd-text-muted);
+}
+
+.mkd-bar__btn--jump:hover {
+  color: var(--mkd-text);
+}
+
+.mkd-bar__btn--jump[hidden] {
+  display: none;
 }
 
 .mkd-bar__spacer {
@@ -1524,7 +1590,8 @@ button {
 }
 
 .mkd-bar__btn {
-  padding: 9px 18px;
+  min-height: 40px;
+  padding: 8px 16px;
   border: 1.5px solid var(--mkd-border);
   border-radius: var(--mkd-radius-sm);
   background: var(--mkd-surface);
@@ -1535,7 +1602,8 @@ button {
   transition:
     border-color var(--mkd-transition),
     background var(--mkd-transition),
-    color var(--mkd-transition);
+    color var(--mkd-transition),
+    transform 140ms var(--mkd-ease-out);
 }
 
 .mkd-bar__btn:hover {
@@ -1733,6 +1801,7 @@ button {
 
 .mkd-expand__input {
   flex: 1 1 auto;
+  field-sizing: content;
   width: 100%;
   min-height: 40vh;
   padding: 14px 16px;
@@ -2189,11 +2258,202 @@ button {
 }
 
 /* ==========================================================================
+   Display options (header): hide recommended + shuffle options
+   Display only - the Result is computed from the data, never from the DOM.
+   ========================================================================== */
+
+.mkd-view {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius-pill);
+  background: var(--mkd-surface);
+}
+
+.mkd-switch--sm {
+  position: relative;
+  gap: 8px;
+  min-height: 34px;
+  padding: 4px 12px 4px 6px;
+  border-radius: var(--mkd-radius-pill);
+  transition: background-color var(--mkd-transition);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mkd-switch--sm:hover {
+    background: var(--mkd-surface-raised);
+  }
+}
+
+.mkd-view__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: var(--mkd-radius-pill);
+  background: transparent;
+  color: var(--mkd-text-muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background-color var(--mkd-transition),
+    color var(--mkd-transition),
+    transform 140ms var(--mkd-ease-out);
+}
+
+.mkd-view__btn:active {
+  transform: scale(0.97);
+}
+
+.mkd-view__btn:focus-visible {
+  outline: 2px solid var(--mkd-accent);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mkd-view__btn:hover {
+    background: var(--mkd-surface-raised);
+    color: var(--mkd-text-strong);
+  }
+}
+
+.mkd-view__btn[hidden] {
+  display: none;
+}
+
+.mkd-view.is-shuffled #mkd-shuffle {
+  color: var(--mkd-accent-ink);
+}
+
+.mkd-view__btn--reset {
+  border: 1px dashed var(--mkd-border-strong);
+}
+
+.mkd-switch--sm .mkd-switch__track {
+  width: 30px;
+  height: 18px;
+}
+
+.mkd-switch--sm .mkd-switch__track::after {
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  transition:
+    transform 200ms var(--mkd-ease-out),
+    background var(--mkd-transition);
+}
+
+.mkd-switch--sm .mkd-switch__input:checked + .mkd-switch__track::after {
+  transform: translateX(12px);
+}
+
+.mkd-switch--sm .mkd-switch__input:focus-visible + .mkd-switch__track {
+  outline: 2px solid var(--mkd-accent);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.mkd-switch--sm .mkd-switch__label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--mkd-text-muted);
+  white-space: nowrap;
+}
+
+.mkd-switch--sm .mkd-switch__input:checked ~ .mkd-switch__label {
+  color: var(--mkd-text-strong);
+}
+
+/* Hide recommended: every badge, the star in summary chips, the rec tiles
+   and the bolded "Recommended" lead-in inside a justification. The check
+   circle comes back so the recommended option is not the only one without it. */
+#mkd-app[data-hide-rec] :is(.mkd-opt__badge, .mkd-rec-word, .mkd-rec-star, .mkd-tile--rec) {
+  display: none;
+}
+
+#mkd-app[data-hide-rec] .mkd-opt.has-badge .mkd-opt__mark {
+  display: grid;
+}
+
+/* ==========================================================================
+   Send confirmation (native modal <dialog>)
+   ========================================================================== */
+
+.mkd-confirm {
+  width: min(440px, calc(100vw - 32px));
+  padding: 22px 22px 18px;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius);
+  background: var(--mkd-surface);
+  color: var(--mkd-text);
+  box-shadow: var(--mkd-shadow-lift);
+}
+
+.mkd-confirm:modal {
+  overscroll-behavior: contain;
+}
+
+.mkd-confirm[open] {
+  animation: mkd-confirm-in 200ms var(--mkd-ease-out);
+}
+
+.mkd-confirm::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: var(--mkd-scrim);
+}
+
+@keyframes mkd-confirm-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.mkd-confirm__title {
+  margin: 0 0 8px;
+  font-family: var(--mkd-font-display);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--mkd-text-strong);
+}
+
+.mkd-confirm__body {
+  margin: 0 0 18px;
+  font-size: 0.95rem;
+  color: var(--mkd-text-muted);
+}
+
+.mkd-confirm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 0;
+}
+
+/* ==========================================================================
    Responsive: <= 720px
    ========================================================================== */
 
 @media (max-width: 720px) {
+  /* Three header rows would eat a third of a phone screen if sticky; the
+     footer progress bar keeps the position visible instead. */
   .mkd-header {
+    position: static;
     gap: 10px;
     padding: 10px 14px;
   }
@@ -2211,6 +2471,38 @@ button {
 
   .mkd-header__tools {
     margin-left: auto;
+  }
+
+  .mkd-view {
+    order: 4;
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: space-between;
+    border-radius: var(--mkd-radius);
+  }
+
+  .mkd-switch--sm,
+  .mkd-view__btn {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-height: 40px;
+  }
+
+  .mkd-bar__progress {
+    flex-basis: 100%;
+    max-width: none;
+  }
+
+  .mkd-card__nav {
+    gap: 8px;
+  }
+
+  .mkd-card__nav .mkd-btn {
+    padding: 10px 14px;
+  }
+
+  .mkd-card__nav .mkd-btn--ghost {
+    padding-inline: 6px;
   }
 
   .mkd-card {
@@ -2264,8 +2556,8 @@ button {
     padding: 10px 14px;
   }
 
-  .mkd-stage {
-    padding-bottom: 190px;
+  :root {
+    --mkd-bar-space: 168px;
   }
 }
 

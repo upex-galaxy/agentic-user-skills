@@ -310,11 +310,17 @@
   const rail = byId('mkd-rail');
   const introCard = byId('mkd-intro');
   const summaryCard = byId('mkd-summary');
-  const statAnswered = byId('mkd-s-answered');
-  const statRec = byId('mkd-s-rec');
-  const statOver = byId('mkd-s-over');
-  const statCustom = byId('mkd-s-custom');
-  const statSkipped = byId('mkd-s-skipped');
+  const appRoot = byId('mkd-app');
+  const progressBar = byId('mkd-progress');
+  const countDone = byId('mkd-count-done');
+  const countPending = byId('mkd-count-pending');
+  const jumpBtn = byId('mkd-jump');
+  const confirmDialog = byId('mkd-confirm');
+  const confirmBody = byId('mkd-confirm-body');
+  const confirmSend = byId('mkd-confirm-send');
+  const hideRecToggle = byId('mkd-hide-rec');
+  const shuffleBtn = byId('mkd-shuffle');
+  const unshuffleBtn = byId('mkd-unshuffle');
   const jsonToggle = byId('mkd-json-toggle');
   const jsonPanel = byId('mkd-json-panel');
   const jsonOut = byId('mkd-json-out');
@@ -362,6 +368,9 @@
   // --------------------------------------------------------------------------
 
   const THEME_STORAGE_KEY = 'mkd-theme';
+  const ICON_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+  const ICON_MOON = `${ICON_SVG}<path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7Z"/></svg>`;
+  const ICON_SUN = `${ICON_SVG}<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></svg>`;
   let themeMemory = null;
 
   function readStoredTheme() {
@@ -387,28 +396,18 @@
     }
   }
 
-  function systemPrefersDark() {
-    try {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches;
-    }
-    catch {
-      return false;
-    }
-  }
-
-  /** The theme currently in effect: explicit choice, else the system's. */
   function effectiveTheme() {
     const stored = readStoredTheme();
     if (stored === 'light' || stored === 'dark') {
       return stored;
     }
-    return systemPrefersDark() ? 'dark' : 'light';
+    return 'dark';
   }
 
   /**
    * Apply an EXPLICIT theme choice via `data-theme` on <html>. With no stored
-   * choice the attribute is absent and the CSS `prefers-color-scheme` block
-   * decides — so this is only called with a concrete stored/toggled value.
+   * choice the attribute is absent and the dark default tokens apply, so this
+   * is only called with a concrete stored/toggled value.
    */
   function applyTheme(theme) {
     const root = document.documentElement;
@@ -426,15 +425,210 @@
       return;
     }
     const isLight = effectiveTheme() === 'light';
-    // Show the glyph for the theme you'd switch TO.
-    themeToggle.textContent = isLight ? '\u263E' : '\u2600';
-    themeToggle.setAttribute('aria-pressed', isLight ? 'false' : 'true');
+    // Show the icon for the theme you'd switch TO.
+    themeToggle.innerHTML = isLight ? ICON_MOON : ICON_SUN;
+    themeToggle.setAttribute('aria-label', isLight ? 'Switch to dark theme' : 'Switch to light theme');
   }
 
   function toggleTheme() {
     const next = effectiveTheme() === 'light' ? 'dark' : 'light';
     applyTheme(next);
     writeStoredTheme(next);
+  }
+
+  // --------------------------------------------------------------------------
+  // DISPLAY OPTIONS — hide recommended, shuffle options (display only: the
+  // Result is built from `state` and the spec, never from the DOM order or
+  // what is visible)
+  // --------------------------------------------------------------------------
+
+  const VIEW_HIDE_REC_KEY = 'mkd-view-hide-rec';
+  const SHUFFLE_ORDER_KEY = `mkd-shuffle-${spec.session || 'deck'}`;
+  const SHUFFLE_ACTIVE_KEY = `${SHUFFLE_ORDER_KEY}-on`;
+  const viewMemory = Object.create(null);
+
+  function readFlag(key) {
+    try {
+      const value = window.localStorage.getItem(key);
+      if (value === '1' || value === '0') {
+        return value === '1';
+      }
+    }
+    catch {
+      // localStorage blocked — fall back to the in-memory value.
+    }
+    return viewMemory[key] === true;
+  }
+
+  function writeFlag(key, on) {
+    viewMemory[key] = on;
+    try {
+      window.localStorage.setItem(key, on ? '1' : '0');
+    }
+    catch {
+      // localStorage blocked — the in-memory value still carries the session.
+    }
+  }
+
+  function applyHideRec(on) {
+    if (appRoot) {
+      if (on) {
+        appRoot.setAttribute('data-hide-rec', '');
+      }
+      else {
+        appRoot.removeAttribute('data-hide-rec');
+      }
+    }
+    if (hideRecToggle) {
+      hideRecToggle.checked = on;
+    }
+  }
+
+  function same(a, b) {
+    return a.every((key, i) => key === b[i]);
+  }
+
+  /**
+   * Fisher-Yates, re-rolled until the order differs from the author's AND from
+   * the previous shuffle, so every press visibly acts. Two options have only
+   * one non-author order, so there the previous-order rule cannot apply (it
+   * would loop forever): they stay swapped.
+   */
+  function shuffledKeys(keys, previous) {
+    if (keys.length < 2) {
+      return keys.slice();
+    }
+    if (keys.length === 2) {
+      return [keys[1], keys[0]];
+    }
+    let out = keys.slice();
+    do {
+      out = keys.slice();
+      for (let i = out.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = out[i];
+        out[i] = out[j];
+        out[j] = tmp;
+      }
+    } while (same(out, keys) || (previous && same(out, previous)));
+    return out;
+  }
+
+  /** One permutation per decision while shuffled; null in the author's order. */
+  let shuffleOrder = null;
+
+  /** A saved permutation from an earlier view of this deck, or null when none is valid. */
+  function loadShuffleOrder() {
+    let saved = null;
+    try {
+      saved = JSON.parse(window.localStorage.getItem(SHUFFLE_ORDER_KEY));
+    }
+    catch {
+      saved = null;
+    }
+    if (!saved || typeof saved !== 'object') {
+      return null;
+    }
+    const order = Object.create(null);
+    for (const item of items) {
+      if (item.type !== 'decision') {
+        continue;
+      }
+      const keys = item.options.map(option => option.key);
+      const prior = Array.isArray(saved[item.id]) ? saved[item.id] : null;
+      const valid = prior
+        && prior.length === keys.length
+        && keys.every(key => prior.includes(key));
+      if (!valid) {
+        return null;
+      }
+      order[item.id] = prior.slice();
+    }
+    return order;
+  }
+
+  /** Every press rolls a fresh permutation per decision, kept across reloads. */
+  function reshuffle() {
+    const previous = shuffleOrder || lastShuffle;
+    const order = Object.create(null);
+    for (const item of items) {
+      if (item.type === 'decision') {
+        order[item.id] = shuffledKeys(
+          item.options.map(option => option.key),
+          previous ? previous[item.id] : null,
+        );
+      }
+    }
+    shuffleOrder = order;
+    try {
+      window.localStorage.setItem(SHUFFLE_ORDER_KEY, JSON.stringify(order));
+    }
+    catch {
+      // Storage blocked — the in-memory order still holds for this view.
+    }
+    lastShuffle = order;
+    applyShuffle(true);
+    writeFlag(SHUFFLE_ACTIVE_KEY, true);
+  }
+
+  /** The last shuffle, remembered so the next press never repeats it. */
+  let lastShuffle = null;
+
+  function restoreAuthorOrder() {
+    applyShuffle(false);
+    writeFlag(SHUFFLE_ACTIVE_KEY, false);
+    if (shuffleBtn) {
+      shuffleBtn.focus();
+    }
+  }
+
+  /**
+   * Reorder the option NODES (not CSS `order`) so tab and reading order follow.
+   * On: the shuffled order, and the visible letter follows the POSITION
+   * (A, B, C ...) so it never leaks the original order. Off: the author's
+   * order and keys. `data-opt-key` always keeps the spec key the Result is
+   * built from.
+   */
+  function applyShuffle(on) {
+    if (on && !shuffleOrder) {
+      return;
+    }
+    if (!on) {
+      shuffleOrder = null;
+    }
+    for (const item of items) {
+      if (item.type !== 'decision') {
+        continue;
+      }
+      const section = itemSection(item.id);
+      const list = section ? section.querySelector('.mkd-opts') : null;
+      if (!list) {
+        continue;
+      }
+      const anchor = list.querySelector(`.mkd-opt[data-opt-key="${CUSTOM_KEY}"]`);
+      const keys = on ? shuffleOrder[item.id] : item.options.map(option => option.key);
+      keys.forEach((key, position) => {
+        const btn = list.querySelector(`.mkd-opt[data-opt-key="${cssAttrEscape(key)}"]`);
+        if (btn) {
+          list.insertBefore(btn, anchor);
+          const letter = btn.querySelector('.mkd-opt__key');
+          if (letter) {
+            letter.textContent = on ? positionLetter(position) : key;
+          }
+        }
+      });
+    }
+    if (unshuffleBtn) {
+      unshuffleBtn.hidden = !on;
+    }
+    const view = shuffleBtn ? shuffleBtn.closest('.mkd-view') : null;
+    if (view) {
+      view.classList.toggle('is-shuffled', on);
+    }
+  }
+
+  function positionLetter(position) {
+    return position < 26 ? String.fromCharCode(65 + position) : String(position + 1);
   }
 
   // --------------------------------------------------------------------------
@@ -615,13 +809,13 @@
 
     const tiles = el('div', 'mkd-tiles');
     const tileData = [
-      { n: stats.recFollowed, label: 'recommendations followed' },
-      { n: stats.overridden, label: 'recommendations changed' },
+      { n: stats.recFollowed, label: 'recommendations followed', rec: true },
+      { n: stats.overridden, label: 'recommendations changed', rec: true },
       { n: stats.custom, label: 'custom decisions' },
       { n: stats.skipped, label: 'skipped' },
     ];
     for (const tile of tileData) {
-      const box = el('div', 'mkd-tile');
+      const box = el('div', tile.rec ? 'mkd-tile mkd-tile--rec' : 'mkd-tile');
       const n = el('div', 'mkd-tile__n');
       n.textContent = String(tile.n);
       const label = el('div', 'mkd-tile__label');
@@ -649,8 +843,8 @@
 
     const legend = el('p', 'mkd-legend');
     legend.textContent = canSubmit
-      ? `Last step: press "${spec.submitLabel}" in the footer. Skipped items stay as "skipped" — decide later, not a rejection.`
-      : 'Last step: press "Copy JSON" in the footer and paste it into the chat. Skipped items stay as "skipped" — decide later, not a rejection.';
+      ? `Last step: press "${spec.submitLabel}" in the footer. Skipped items stay as "skipped": decide later, not a rejection.`
+      : 'Last step: press "Copy JSON" in the footer and paste it into the chat. Skipped items stay as "skipped": decide later, not a rejection.';
     summaryCard.appendChild(legend);
 
     const nav = el('div', 'mkd-card__nav');
@@ -688,7 +882,7 @@
 
     if (status === 'skipped') {
       chip.classList.add('mkd-chip--muted');
-      chip.textContent = '\u2014 skipped';
+      chip.textContent = 'skipped';
       return chip;
     }
     if (status === 'pending') {
@@ -704,7 +898,12 @@
       }
       const option = optionByKey(item, entry.chosen);
       chip.classList.add('mkd-chip--pick');
-      chip.textContent = option ? `${option.label}${option.recommended ? ' \u2605' : ''}` : String(entry.chosen);
+      chip.textContent = option ? option.label : String(entry.chosen);
+      if (option && option.recommended) {
+        const star = el('span', 'mkd-rec-star', { 'aria-label': 'recommended' });
+        star.textContent = ' \u2605';
+        chip.appendChild(star);
+      }
       return chip;
     }
     chip.classList.add('mkd-chip--pick');
@@ -1682,8 +1881,13 @@
   // EXPAND-TO-WRITE PANEL
   // --------------------------------------------------------------------------
 
+  /** Native auto-grow where supported; the scrollHeight path is the fallback. */
+  const nativeFieldSizing = typeof CSS !== 'undefined'
+    && typeof CSS.supports === 'function'
+    && CSS.supports('field-sizing', 'content');
+
   function autoGrowExpandInput() {
-    if (!expandInput) {
+    if (!expandInput || nativeFieldSizing) {
       return;
     }
     expandInput.style.height = 'auto';
@@ -2002,20 +2206,20 @@
 
   function refreshAll() {
     const stats = computeStats();
-    if (statAnswered) {
-      statAnswered.textContent = String(stats.answered);
+    const done = stats.answered + stats.skipped;
+    const pending = stats.total - done;
+    if (progressBar) {
+      progressBar.value = done;
     }
-    if (statRec) {
-      statRec.textContent = String(stats.recFollowed);
+    if (countDone) {
+      countDone.textContent = String(done);
     }
-    if (statOver) {
-      statOver.textContent = String(stats.overridden);
+    if (countPending) {
+      countPending.textContent = `${pending} pending`;
+      countPending.classList.toggle('is-zero', pending === 0);
     }
-    if (statCustom) {
-      statCustom.textContent = String(stats.custom);
-    }
-    if (statSkipped) {
-      statSkipped.textContent = String(stats.skipped);
+    if (jumpBtn) {
+      jumpBtn.hidden = pending === 0 || firstPendingIndex() === idx;
     }
 
     if (jsonPanel && !jsonPanel.hidden) {
@@ -2080,12 +2284,88 @@
       }
     }
     if (copyBtn) {
-      copyBtn.textContent = copied ? 'Copied! Paste it in the chat' : 'Copy failed \u2014 select the JSON below';
+      copyBtn.textContent = copied ? 'Copied! Paste it in the chat' : 'Copy failed: select the JSON below';
       copyBtn.classList.add('is-copied');
       setTimeout(() => {
         copyBtn.textContent = 'Copy JSON';
         copyBtn.classList.remove('is-copied');
       }, 2400);
+    }
+  }
+
+  // ---- pending items + send confirmation ----
+
+  function firstPendingIndex() {
+    return items.findIndex(item => itemStatus(item) === 'pending');
+  }
+
+  function isConfirmOpen() {
+    return Boolean(confirmDialog && confirmDialog.open);
+  }
+
+  /** The real send action: submit (wait/artifact) or copy the JSON (copy mode). */
+  function performSend() {
+    if (canSubmit) {
+      void submit();
+    }
+    else {
+      void copyJson();
+    }
+  }
+
+  /**
+   * Every path to Send (footer button, summary CTA, Cmd/Ctrl+Enter) lands
+   * here: with items still pending, ask first in a modal dialog.
+   */
+  function requestSend() {
+    if (isConfirmOpen() || submitting) {
+      return;
+    }
+    if (canSubmit && items.some(item => !itemSatisfied(item))) {
+      return;
+    }
+    const stats = computeStats();
+    const pending = stats.total - stats.answered - stats.skipped;
+    if (pending === 0) {
+      performSend();
+      return;
+    }
+    const noun = pending === 1 ? 'item has' : 'items have';
+    const action = canSubmit ? `"${spec.submitLabel}"` : '"Copy JSON"';
+    const message = `${pending} of ${stats.total} ${noun} no answer yet. They will go back as "pending". Use ${action} anyway, or review them first?`;
+    if (!confirmDialog || typeof confirmDialog.showModal !== 'function') {
+      if (window.confirm(message)) {
+        performSend();
+      }
+      return;
+    }
+    if (confirmBody) {
+      confirmBody.textContent = message;
+    }
+    confirmDialog.returnValue = '';
+    confirmDialog.showModal();
+  }
+
+  /**
+   * "Send anyway" sends inside the click itself: copy mode writes to the
+   * clipboard, and WebKit only allows that within the user gesture, which a
+   * later `close` event no longer carries.
+   */
+  function onConfirmSend(event) {
+    event.preventDefault();
+    confirmDialog.returnValue = '';
+    confirmDialog.close();
+    performSend();
+  }
+
+  function onConfirmClose() {
+    const choice = confirmDialog.returnValue;
+    confirmDialog.returnValue = '';
+    if (choice === 'review') {
+      const target = firstPendingIndex();
+      if (target >= 0) {
+        go(target);
+      }
     }
   }
 
@@ -2285,13 +2565,47 @@
     }
     if (copyBtn) {
       copyBtn.addEventListener('click', () => {
-        void copyJson();
+        if (canSubmit) {
+          void copyJson();
+        }
+        else {
+          requestSend();
+        }
       });
     }
     if (submitBtn) {
       submitBtn.addEventListener('click', () => {
-        void submit();
+        requestSend();
       });
+    }
+    if (confirmDialog) {
+      confirmDialog.addEventListener('close', onConfirmClose);
+    }
+    if (confirmSend) {
+      confirmSend.addEventListener('click', onConfirmSend);
+    }
+    if (jumpBtn) {
+      jumpBtn.addEventListener('click', () => {
+        const target = firstPendingIndex();
+        if (target >= 0) {
+          go(target);
+        }
+      });
+    }
+    if (hideRecToggle) {
+      hideRecToggle.addEventListener('change', () => {
+        applyHideRec(hideRecToggle.checked);
+        writeFlag(VIEW_HIDE_REC_KEY, hideRecToggle.checked);
+        if (idx === items.length) {
+          renderSummary();
+        }
+      });
+    }
+    if (shuffleBtn) {
+      shuffleBtn.addEventListener('click', reshuffle);
+    }
+    if (unshuffleBtn) {
+      unshuffleBtn.addEventListener('click', restoreAuthorOrder);
     }
     if (themeToggle) {
       themeToggle.addEventListener('click', toggleTheme);
@@ -2362,6 +2676,10 @@
     }
 
     document.addEventListener('keydown', (event) => {
+      // The native modal handles its own keys (Esc, Tab, Enter on a button).
+      if (isConfirmOpen()) {
+        return;
+      }
       if (event.key === 'Escape') {
         if (currentRowPopKey) {
           closeRowPop();
@@ -2377,12 +2695,7 @@
       // Cmd/Ctrl+Enter: submit (--wait) or copy the JSON (copy mode).
       if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
         event.preventDefault();
-        if (canSubmit) {
-          void submit();
-        }
-        else {
-          void copyJson();
-        }
+        requestSend();
         return;
       }
       // Arrow keys navigate the deck (ignored while typing or in a modal).
@@ -2494,6 +2807,12 @@
         buildItem(item, index);
       }
     });
+    applyHideRec(readFlag(VIEW_HIDE_REC_KEY));
+    lastShuffle = loadShuffleOrder();
+    if (lastShuffle && readFlag(SHUFFLE_ACTIVE_KEY)) {
+      shuffleOrder = lastShuffle;
+      applyShuffle(true);
+    }
     buildIntroNav();
     buildKbdLegend();
     wireGlobals();

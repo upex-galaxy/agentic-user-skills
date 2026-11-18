@@ -164,6 +164,17 @@ function renderItemCard(item: NormalizedItem, index: number, total: number): str
 }
 
 /**
+ * A bolded lead-in such as `**Recommended** because ...` (or the Spanish
+ * `**Recomendada**`) inside the recommended option's justification. The
+ * "Hide recommended" toggle hides it along with the badge.
+ */
+const REC_WORD = /<strong>(\s*(?:recommended|recommendation|recomendad[ao]s?|recomendaci[oó]n)\b[^<]*)<\/strong>/gi;
+
+function markRecWord(html: string): string {
+  return html.replace(REC_WORD, '<strong class="mkd-rec-word">$1</strong>');
+}
+
+/**
  * Render a decision's options server-side so labels + justifications carry
  * markdown (inline code, bold). `app.js` only wires the click handlers and
  * the selected state onto these buttons.
@@ -176,7 +187,7 @@ function renderDecisionOptions(item: NormalizedItem & { type: 'decision' }): str
       return `
           <button type="button" class="mkd-opt${isRec ? ' has-badge' : ''}" data-opt-key="${escapeHtml(option.key)}">
             <span class="mkd-opt__head"><span class="mkd-opt__key">${escapeHtml(option.key)}</span><span class="mkd-opt__label">${mdInline(option.label)}</span>${badge}</span>
-            <span class="mkd-opt__just">${mdInline(option.justification)}</span>
+            <span class="mkd-opt__just">${isRec ? markRecWord(mdInline(option.justification)) : mdInline(option.justification)}</span>
             <span class="mkd-opt__mark">✓</span>
           </button>`;
     })
@@ -284,6 +295,20 @@ export function render(spec: NormalizedSpec, opts: RenderOptions): string {
     .map((item, index) => renderItemCard(item, index, total))
     .join('\n');
 
+  const hasDecisions = spec.items.some(item => item.type === 'decision');
+  const viewOptions = hasDecisions
+    ? `
+      <div class="mkd-view" role="group" aria-label="Display options">
+        <label class="mkd-switch mkd-switch--sm" title="Hide every recommended marking while you decide">
+          <input type="checkbox" class="mkd-switch__input" id="mkd-hide-rec" role="switch">
+          <span class="mkd-switch__track" aria-hidden="true"></span>
+          <span class="mkd-switch__label">Hide recommended</span>
+        </label>
+        <button type="button" class="mkd-view__btn" id="mkd-shuffle" title="Show every decision's options in a new random order (press again to reshuffle)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>Shuffle options</button>
+        <button type="button" class="mkd-view__btn mkd-view__btn--reset" id="mkd-unshuffle" title="Back to the author's order and letters" hidden>Original order</button>
+      </div>`
+    : '';
+
   const submitButton
     = mode !== 'copy'
       ? `\n        <button type="button" class="mkd-bar__btn mkd-bar__btn--primary" id="mkd-submit" disabled>${escapeHtml(spec.submitLabel)}</button>`
@@ -310,10 +335,10 @@ export function render(spec: NormalizedSpec, opts: RenderOptions): string {
           <span class="mkd-brand__session">${escapeHtml(spec.session)}</span>
         </span>
       </div>
-      <nav class="mkd-rail" id="mkd-rail" aria-label="Progress"></nav>
+      <nav class="mkd-rail" id="mkd-rail" aria-label="Progress"></nav>${viewOptions}
       <div class="mkd-header__tools">
-        <button type="button" class="mkd-kbd-toggle" id="mkd-kbd-toggle" aria-label="Keyboard shortcuts" title="Keyboard shortcuts">&#9000;</button>
-        <button type="button" class="mkd-theme-toggle" id="mkd-theme-toggle" aria-label="Toggle light/dark theme" aria-pressed="false" title="Toggle light/dark theme"></button>
+        <button type="button" class="mkd-kbd-toggle" id="mkd-kbd-toggle" aria-label="Keyboard shortcuts" title="Keyboard shortcuts"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M10 10h.01M14 10h.01M17.5 10h.01M7.5 14h9"/></svg></button>
+        <button type="button" class="mkd-theme-toggle" id="mkd-theme-toggle" aria-label="Toggle light/dark theme" title="Toggle light/dark theme"></button>
       </div>
     </header>
     <div class="mkd-stage" id="mkd-stage">
@@ -323,11 +348,11 @@ ${cards}
     </div>
     <footer class="mkd-bar">
       <div class="mkd-bar__row">
-        <span class="mkd-stat">Answered <b id="mkd-s-answered">0</b>/${total}</span>
-        <span class="mkd-stat mkd-stat--ok">Rec followed <b id="mkd-s-rec">0</b></span>
-        <span class="mkd-stat mkd-stat--rec">Changed <b id="mkd-s-over">0</b></span>
-        <span class="mkd-stat">Custom <b id="mkd-s-custom">0</b></span>
-        <span class="mkd-stat">Skipped <b id="mkd-s-skipped">0</b></span>
+        <div class="mkd-bar__progress">
+          <progress class="mkd-progress" id="mkd-progress" max="${total}" value="0" aria-labelledby="mkd-progress-label"></progress>
+          <span class="mkd-bar__count" id="mkd-progress-label"><b id="mkd-count-done">0</b>/${total} done · <span class="mkd-bar__pending" id="mkd-count-pending">${total} pending</span></span>
+        </div>
+        <button type="button" class="mkd-bar__btn mkd-bar__btn--jump" id="mkd-jump">First pending &#8594;</button>
         <span class="mkd-bar__spacer"></span>
         <span class="mkd-bar__error" id="mkd-submit-error" hidden></span>
         <button type="button" class="mkd-bar__btn" id="mkd-json-toggle">View JSON</button>
@@ -350,6 +375,14 @@ ${cards}
         <textarea class="mkd-expand__input" id="mkd-expand-input" rows="10"></textarea>
       </div>
     </div>
+    <dialog class="mkd-confirm" id="mkd-confirm" aria-labelledby="mkd-confirm-title" aria-describedby="mkd-confirm-body">
+      <h2 class="mkd-confirm__title" id="mkd-confirm-title">Some items are still pending</h2>
+      <p class="mkd-confirm__body" id="mkd-confirm-body"></p>
+      <form method="dialog" class="mkd-confirm__actions">
+        <button type="submit" class="mkd-btn" value="send" id="mkd-confirm-send">Send anyway</button>
+        <button type="submit" class="mkd-btn mkd-btn--primary" value="review" autofocus>Review pending</button>
+      </form>
+    </dialog>
     <button type="button" class="mkd-quote-btn" id="mkd-quote-btn" hidden>quote</button>
     <div class="mkd-kbd" id="mkd-kbd" hidden aria-hidden="true">
       <div class="mkd-kbd__backdrop" id="mkd-kbd-backdrop"></div>
