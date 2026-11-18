@@ -65,6 +65,12 @@ describe('cue keys and pronunciation', () => {
     // No provider receives the language: a detected language that flips must not regenerate (or re-bill) a line.
     expect(cueKey({ ...kokoro, lang: 'es' }, 'hello')).toBe(base);
   });
+  test('a beat hold or key never changes the line a plan sends, so it never re-bills', () => {
+    const plain = planVoice([{ id: '0.0', scene: 'a', text: 'hola' }], kokoro, []);
+    const beat = { id: '0.0', scene: 'a', text: 'hola', hold: 2, key: 'k' };
+    const held = planVoice([beat], kokoro, []);
+    expect(held[0].key).toBe(plain[0].key);
+  });
   test('applyPronunciation: longest first, whole words, case-insensitive', () => {
     const rules = [{ pattern: 'API', replacement: 'A P I' }, { pattern: 'API key', replacement: 'ay pee eye key' }];
     expect(applyPronunciation('An api key and the API, not rapid or APIs.', rules)).toBe('An ay pee eye key and the A P I, not rapid or APIs.');

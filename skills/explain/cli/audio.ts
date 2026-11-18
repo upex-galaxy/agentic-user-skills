@@ -7,7 +7,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { kit as engineKit } from '../engine/index.js';
-import { specCues as engineCues } from '../engine/narration.js';
+import { scriptCover as engineCover, specCues as engineCues, formatCover as engineFormatCover } from '../engine/narration.js';
 import { detectLang as engineLang } from '../engine/pieces/titles.js';
 import { decodeWav as engineDecode } from '../engine/wav.js';
 import { defaultVoiceId, ingest, planVoice } from './voice.ts';
@@ -18,6 +18,11 @@ export interface Cue { id: string, scene: string, sceneIndex: number, index: num
 // The engine is untyped JS: give its exports the shapes this module relies on.
 const kit = engineKit as unknown;
 const specCues = engineCues as (spec: unknown) => Cue[];
+/** One narrated scene's script weight (engine/narration.js scriptCover). */
+export interface SceneCover { scene: string, dur: number, speech: number, words: number }
+const scriptCover = engineCover as (spec: unknown) => SceneCover[];
+/** The `voice plan` lines for a script's cover: one per narrated scene, THIN under half its authored dur. */
+export const formatCover = engineFormatCover as (cover: SceneCover[]) => string[];
 const detectLang = engineLang as (texts: (string | undefined)[]) => string;
 const decodeWav = engineDecode as (bytes: Uint8Array) => { sampleRate: number, channels: Float32Array[] };
 
@@ -96,14 +101,15 @@ export function narrationLang(spec: { title?: string, lang?: string }, cues: { t
 }
 
 /** Every audio setting of one build. */
-export async function resolveAudio(scenePath: string, flags: Flags, cfg: AudioConfig, env: Env = process.env): Promise<AudioSettings & { cues: Cue[] }> {
+export async function resolveAudio(scenePath: string, flags: Flags, cfg: AudioConfig, env: Env = process.env): Promise<AudioSettings & { cues: Cue[], cover: SceneCover[] }> {
   const sound = resolveSound(flags, cfg, env);
   const p = resolveProvider(flags, cfg, env);
   const spec = await loadSpec(scenePath);
   const cues = specCues(spec);
+  const cover = scriptCover(spec);
   // Nothing to narrate: no voice to resolve (an ElevenLabs provider without an id is fine then).
-  if (p === 'none' || !cues.length) { return { sound, provider: p, voice: null, cues }; }
-  return { sound, provider: p, voice: resolveVoice(p, flags, cfg, narrationLang(spec, cues), env), cues };
+  if (p === 'none' || !cues.length) { return { sound, provider: p, voice: null, cues, cover }; }
+  return { sound, provider: p, voice: resolveVoice(p, flags, cfg, narrationLang(spec, cues), env), cues, cover };
 }
 
 /** Narration embedded in a page: cue -> clip key and exact seconds, and each clip once as base64 WAV (24 kHz mono). */

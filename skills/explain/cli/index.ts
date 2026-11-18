@@ -17,7 +17,7 @@ import type { PageInfo } from './headless.ts';
 import { existsSync, mkdirSync, readFileSync, statfsSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
-import { AudioUsageError, DEFAULT_ELEVENLABS_MODEL, pageAudio, resolveAudio, resolveProvider, resolveSound, resolveVoice } from './audio.ts';
+import { AudioUsageError, DEFAULT_ELEVENLABS_MODEL, formatCover, pageAudio, resolveAudio, resolveProvider, resolveSound, resolveVoice } from './audio.ts';
 import { buildHash, buildPage, insideSkillDir, PAGE_WARN_BYTES, readBuildHash, scenePreset, SKILL_DIR } from './build.ts';
 import { exportVideo, readPageAudio, sheet, sheetFromMp4, stillName, stills, stillsFromMp4 } from './export.ts';
 import { inspectPage, pageScenes } from './headless.ts';
@@ -615,7 +615,7 @@ async function cmdVoice(p: ParsedArgs): Promise<number> {
   if (sub === 'plan') {
     // The agent saves each take straight at its target path: the cache folder must exist.
     mkdirSync(voiceDir(), { recursive: true });
-    console.log(formatPlan(planVoice(a.cues, a.voice), a.voice));
+    console.log([...formatCover(a.cover), '', formatPlan(planVoice(a.cues, a.voice), a.voice)].join('\n'));
     return 0;
   }
   if (sub === 'kokoro') {

@@ -120,4 +120,15 @@ describe('narration timing', () => {
       expect(e.events().find((x: any) => x.kind === 'pop').t).toBeCloseTo(seen[0].end, 9);
     }
   });
+
+  test('s.cue finds a beat window by key or index, and names the keys on a miss', () => {
+    let got: any;
+    build({ scenes: [{ name: 'a', dur: 8, say: [{ text: 'uno', key: 'tests' }, 'dos'], build(s: any) {
+      got = [s.cue('tests'), s.cue(1)];
+      expect(() => s.cue('nope')).toThrow('keys: tests; 2 beats');
+    } }] });
+    expect(got[0]).toMatchObject({ at: 0.3, key: 'tests', text: 'uno' });
+    expect(got[1]).toMatchObject({ text: 'dos' });
+    expect('key' in got[1]).toBe(false);
+  });
 });

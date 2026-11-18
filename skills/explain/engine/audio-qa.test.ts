@@ -150,6 +150,14 @@ describe('audio qa: warnings', () => {
     expect(w.some((x: any) => x.id === '0.0/2.0')).toBe(true);
   });
 
+  test('narration-sparse: a scene whose voice covers under half of it', () => {
+    const audio = audioOf([{ id: '0.0', pcm: sine(2) }, { id: '1.0', pcm: sine(4) }]);
+    const e = build([scene({ dur: 10 }), { name: 'b', dur: 6, say: LINE, build() {} }], audio);
+    const w = auditAudio(e, audio).warnings.filter((x: any) => x.type === 'narration-sparse');
+    expect(w.map((x: any) => x.scene)).toEqual(['a']);
+    expect(w[0].detail).toContain('2 s of the scene\'s 10 s (20%');
+  });
+
   test('loudness: voice off the -14 LUFS target', () => {
     const audio = audioOf(clipsOf(2));
     const e = build([scene()], audio);

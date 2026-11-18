@@ -1,10 +1,12 @@
 // Audio QA: the checks that run on the page's soundtrack when sound or voice is on (called by runQA in engine/qa.js).
 // Errors: narration-overlap, narration-window, voice-missing, voice-suspect, audio-clipping, audio-nondeterministic.
-// Warnings: loudness, silent-gap, sfx-density, cue-after-end. Issues have the shape runQA uses: { type, scene, id, t, count, detail }.
+// Warnings: loudness, silent-gap, narration-sparse, sfx-density, cue-after-end. Issues have the shape runQA uses: { type, scene, id, t, count, detail }.
 import { blockLoudness, CLIP_SR, coalesce, loudness, mix, resolveSound } from './audio.js';
 import { decodeClips, pageMix } from './page-audio.js';
 
 const EPS = 1e-6;
+/** Under this share of a narrated scene's duration spoken, the voice explains too little of what is on screen. */
+export const MIN_NARRATION_COVER = 0.5;
 const round = x => Math.round(x * 100) / 100;
 /** Silence is -Infinity, which JSON turns into null: the report carries -120 instead. */
 const finite = x => Math.max(-120, x);
@@ -116,7 +118,10 @@ export function auditAudio(engine, audio, deps = {}) {
       if (gap > 3) { add(warnings, 'silent-gap', cues[k].scene, `${cues[k - 1].id}/${cues[k].id}`, cues[k - 1].t + cues[k - 1].seconds, `${round(gap)} s without voice between cues ${cues[k - 1].id} and ${cues[k].id}`); }
     }
     engine.scenes.forEach((sc, i) => {
-      if (!engine.voice.some(v => v.sceneIndex === i)) { add(warnings, 'silent-gap', sc.name, '-', sc.start, `scene "${sc.name}" has no narration cue`); }
+      const mine = engine.voice.filter(v => v.sceneIndex === i);
+      if (!mine.length) { add(warnings, 'silent-gap', sc.name, '-', sc.start, `scene "${sc.name}" has no narration cue`); return; }
+      const spoken = mine.reduce((n, v) => n + v.seconds, 0);
+      if (spoken < MIN_NARRATION_COVER * sc.dur - EPS) { add(warnings, 'narration-sparse', sc.name, '-', sc.start, `the voice speaks ${round(spoken)} s of the scene's ${round(sc.dur)} s (${Math.round(100 * spoken / sc.dur)}%, under ${Math.round(100 * MIN_NARRATION_COVER)}%): explain more of what is on screen, or shorten the scene`); }
     });
   }
 

@@ -1,6 +1,6 @@
 /* eslint-disable ts/no-explicit-any */
 import { describe, expect, test } from 'bun:test';
-import { cueId, estimateSeconds, fitDur, layoutCues, sayOf, specCues } from './narration.js';
+import { cueId, estimateSeconds, fitDur, formatCover, layoutCues, sayOf, scriptCover, specCues } from './narration.js';
 import { decodeWav, encodeWav, wavSeconds } from './wav.js';
 
 describe('narration cues', () => {
@@ -26,6 +26,28 @@ describe('narration cues', () => {
     expect(real[2]).toMatchObject({ at: 7, estimated: true });
     expect(layoutCues(cues)[0]).toMatchObject({ at: 0.3, seconds: 2, estimated: true });
     expect(estimateSeconds('x')).toBe(0.6);
+  });
+
+  test('hold and key: validated, kept only when set, hold widens the gap and the fitted tail', () => {
+    expect(sayOf({ say: [{ text: 'a', hold: 1.2, key: ' tests ' }] })).toEqual([{ text: 'a', spoken: 'a', hold: 1.2, key: 'tests' }]);
+    expect(() => sayOf({ name: 'x', say: [{ text: 'a', hold: 3 }] })).toThrow('hold must be 0 to 2.5');
+    expect(() => sayOf({ name: 'x', say: [{ text: 'a', key: '' }] })).toThrow('key must be');
+    expect(() => sayOf({ name: 'x', say: [{ text: 'a', key: 'k' }, { text: 'b', key: 'k' }] })).toThrow('repeats');
+    const lay = layoutCues([{ id: '0.0', text: 'a', hold: 1 }, { id: '0.1', text: 'b', hold: 2 }], { seconds: () => 2 });
+    expect(lay[0]).toMatchObject({ at: 0.3, end: 2.3, hold: 1 });
+    expect(lay[1].at).toBeCloseTo(2.3 + 1 + 0.25, 9);
+    expect(fitDur(1, lay, 0.5)).toBeCloseTo(lay[1].end + 2 + 0.5 + 0.5, 9);
+  });
+
+  test('scriptCover and formatCover mark a scene whose script is under half its dur', () => {
+    const cover = scriptCover({ scenes: [{ name: 'a', dur: 10, say: 'x'.repeat(30) }, { name: 'b', dur: 4 }, { name: 'c', dur: 4, say: ['y'.repeat(30), { text: 'dos palabras', spoken: 'z'.repeat(30) }] }] });
+    expect(cover.map((c: any) => [c.scene, c.speech, c.words])).toEqual([['a', 2, 1], ['c', 4, 3]]);
+    const lines = formatCover(cover);
+    expect(lines[0]).toContain('2 narrated scenes, about 6 s');
+    expect(lines[1]).toMatch(/^ {2}THIN a:/);
+    expect(lines[2]).toMatch(/^ {2}ok {3}c:.*\(100%\)/);
+    expect(lines.at(-1)).toContain('before generating');
+    expect(formatCover([])).toEqual([]);
   });
 
   test('fitDur stretches only when the narration needs it', () => {

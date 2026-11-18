@@ -44,8 +44,14 @@ function createBuilder({ ctx, style, W, H, pieces, name, lang, title, voice }) {
     lang,
     title,
     sfxList,
-    /** The scene's narration windows in scene-local seconds: [{ at, end, text }] (estimated lengths when voice is off). */
+    /** The scene's narration windows in scene-local seconds: [{ at, end, text, key? }] (estimated lengths when voice is off). */
     voice,
+    /** One narration window by beat `key` (or index): put a reveal where the voice gets to it. Throws on an unknown key. */
+    cue(key) {
+      const found = typeof key === 'number' ? voice[key] : voice.find(v => v.key === key);
+      if (!found) { throw new Error(`s.cue(${JSON.stringify(key)}): no such beat (keys: ${voice.map(v => v.key).filter(Boolean).join(', ') || 'none'}; ${voice.length} beats)`); }
+      return found;
+    },
     camera: createCamera({ W, H, resolve: id => reg.get(id), area }),
     uid(prefix) {
       counters[prefix] = (counters[prefix] ?? 0) + 1;
@@ -161,7 +167,7 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style: pre
     const layout = layoutCues(sayOf(def, name).map((c, n) => ({ ...c, id: cueId(i, n) })), { trIn, seconds: id => clipSeconds.get(id) });
     const trOutNominal = i < spec.scenes.length - 1 ? parseTransition(def.transition).dur : 0;
     const dur = narration && def.fit !== false ? fitDur(def.dur, layout, trOutNominal) : def.dur;
-    const s = createBuilder({ ctx, style, W, H, pieces, name, lang: spec.lang, title: spec.title, voice: layout.map(c => ({ at: c.at, end: c.end, text: c.text })) });
+    const s = createBuilder({ ctx, style, W, H, pieces, name, lang: spec.lang, title: spec.title, voice: layout.map(c => ({ at: c.at, end: c.end, text: c.text, ...(c.key !== undefined ? { key: c.key } : {}) })) });
     try { def.build(s); }
     catch (e) { throw new Error(`Scene "${name}": ${e instanceof Error ? e.message : e}`, { cause: e }); }
     const sorted = s.items.map((it, n) => ({ it, n })).sort((a, b) => (a.it.z ?? 0) - (b.it.z ?? 0) || a.n - b.n).map(x => x.it);
