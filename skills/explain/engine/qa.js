@@ -1,6 +1,6 @@
 // QA gate: runs over a set of sample times and reports problems as JSON.
 // Errors (fail the gate): out-of-bounds, overlap, text-overflow, text-collision, parts-overlap, hud-overlap,
-// opening-punctuation (¿ ¡ on screen), nondeterminism.
+// opening-punctuation (¿ ¡ on screen), nondeterminism; with audio on (opts.audio), the errors of engine/audio-qa.js.
 // Warnings: composition-balance (lopsided, tiny, flat or high/low content once a scene has settled; HUD furniture excluded), widow (a lone short word on a text block's last line).
 // Element rects are scene (world) coordinates; the camera transform at each sample time is applied before any check,
 // so bounds, overlaps and coverage are measured in frame (screen) pixels. HUD items (section tag, heading, caption,
@@ -11,6 +11,8 @@
 // overflow, px }], parts?: [{ id, rect, solid? }], overlap? (legacy blanket exemption), overlapWith? }. A container
 // owns what lies fully inside it; a record that only partly overlaps one is an error unless the container lists it
 // in `contains` or the record is hosted by it (`host` is the container id or `<id>.<sub>`).
+
+import { auditAudio } from './audio-qa.js';
 
 const OPENING = /[¿¡]/;
 const CELL = 40; // px, grid cell of the content-coverage measure
@@ -297,11 +299,18 @@ export function runQA(engine, times, opts = {}) {
   }
 
   const list = [...errors.values()];
+  // Sound or voice on (opts.audio non-null): the audio checks add their issues and an `audio` summary.
+  const sound = opts.audio ? auditAudio(engine, opts.audio) : null;
+  if (sound) {
+    list.push(...sound.errors);
+    warnings.push(...sound.warnings);
+  }
   return {
     ok: list.length === 0,
     errors: list,
     warnings,
     stats: { samples: samples.length, elements, scenes: engine.scenes.map(s => s.name), balance, determinism },
+    ...(sound ? { audio: sound.audio } : {}),
   };
 }
 

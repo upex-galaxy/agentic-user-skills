@@ -12,6 +12,7 @@ export interface SceneInfo {
 }
 
 export interface PageInfo {
+  /** The page's QA report; `qa.audio` (loudness, peak, voice seconds, effect count) is present when the page has sound or voice. */
   qa: QaReport
   scenes: SceneInfo[]
   duration: number
