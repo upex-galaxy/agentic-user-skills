@@ -53,6 +53,16 @@ Rules for scenes that read well on first view. Each rule has a number to hit and
 - **Every factual claim has a `sourceFooter`** naming the document, page or section it came from, one per scene: "Source: docs page, Skill content lifecycle". Facts you cannot source do not go in the video.
 - Numbers on screen come from the source, with the same units. Do not round a limit to a friendlier figure.
 - For a PR: name the PR number and the files or commit the scene is about in the footer.
+- **Illustrative content is marked as such.** A sample script, an invented number of cases or a made-up user that only shows the idea goes in only when the scene says so: end that scene's `sourceFooter` with `(ejemplo ilustrativo)` (`(illustrative example)` in English), for example `skills/blast-radius/SKILL.md (ejemplo ilustrativo)`. Never present it as a sourced fact.
+
+## Layout recipes
+
+Place with the layout helpers, not typed coordinates: a helper registers each rect by id, and pieces take that id (`s.icon({ id })`, `rect: s.reg.get(id)`, `in: '<id>'`). Leave `area` out and the group fills the content area. All four run in `examples/skill.scene.js`.
+
+- **Hero plus side chips.** `s.row([{ id: 'heroBox', w: 640, h: 520 }, { id: 'side', w: 860, h: 520 }], { gap: 140 })`; the hero goes `in: 'heroBox'`; then `s.stack(items, { area: s.reg.get('side'), gap: 40 })` and one `s.chip({ rect: s.reg.get('use0'), ... })` per stacked id.
+- **Diagram left, text right.** `s.row([{ id: 'diagram', w: 980, h: 600 }, { id: 'point', w: 620, h: 600 }], { gap: 100 })`; the diagram fills `area: s.reg.get('diagram')` (or a `stack` of nodes inside it); `s.kineticText({ rect: s.reg.get('point'), text: '...' })`.
+- **Before and after.** `s.splitScreen({ id: 'split', left: { label: 'Antes' }, right: { label: 'Después' } })` registers `split.left` and `split.right`; place each side's piece `in:` its half, or in a sub-rect of `s.reg.get('split.left')` when a verdict (a stamp, a chip) needs the bottom of the half.
+- **Ladder or steps.** Four to six ordered steps: `s.flow({ steps, layout: 'snake', cols: 3 })` (six steps in one row come out thin); levels of a scale: `s.stack(levels.map(...), { area, gap: 20 })` and one `s.node` per level, the important one in `accent` with a `pulse` (motion helpers take a flow step id such as `'pasos-2'`).
 
 ## Transitions
 

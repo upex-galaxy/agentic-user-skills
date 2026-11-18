@@ -13,6 +13,19 @@ metadata:
 
 You write one `scene.js`; the bundled CLI turns it into a self-contained `index.html` (a player) and a 1920x1080, 30 fps, H.264 MP4. A QA gate checks the layout before anything is delivered. Everything lands under `~/explainers/<yyyy-mm-dd>-<slug>/` (override with `EXPLAIN_HOME`), never the cwd.
 
+## Read this first
+
+Open only the reference the step needs:
+
+| You need | Open |
+|---|---|
+| A starting scene to copy | `examples/skill.scene.js` (explain a skill), `examples/gallery.scene.js` (every family), `examples/pieces/<family>.scene.js` |
+| A piece's options and a runnable call | [references/pieces.md](references/pieces.md), searched by piece name |
+| Where to place things without typing coordinates | [references/direction.md](references/direction.md), "Layout recipes" |
+| Rhythm, hierarchy, text and source rules | [references/direction.md](references/direction.md) |
+| Camera, transitions, layouts, raw drawing, QA error types | [references/scene-api.md](references/scene-api.md) |
+| Choosing or making a preset | [references/presets.md](references/presets.md) |
+
 ## Setup (first run)
 
 Nothing to install. Needs Bun and a Chrome or Chromium. The search order is: `EXPLAIN_CHROME=<binary>` (an error when it does not exist), system Chrome, the newest Playwright browser (Chrome for Testing or Chromium under `PLAYWRIGHT_BROWSERS_PATH`, `~/Library/Caches/ms-playwright` or `~/.cache/ms-playwright`), `google-chrome` or `chromium` on PATH, and last the Playwright headless shell, which can run `check`, `stills` and `sheet` but not `export` (it writes full-range video). `ffprobe` is optional: when present, `export` verifies the MP4. `ffmpeg` is needed only for `--from-mp4`. All commands run as `bun <skill-dir>/cli/index.ts <command>`; `--help` lists them.
@@ -24,8 +37,8 @@ Nothing to install. Needs Bun and a Chrome or Chromium. The search order is: `EX
 3. **`new <slug> --preset <name>`** creates `scene.js` from a template and prints its path.
 4. **Write `scene.js`** from the arsenal below. File shape, layouts, camera, transitions, raw escape hatch, QA types: [references/scene-api.md](references/scene-api.md). Composition rules: [references/direction.md](references/direction.md); read it before the first scene.
 5. **`build <dir>`, then `check <dir>`** until it exits 0 with no errors. Each error names the scene, the element id and the time; fix the scene, not the gate. Warnings (`composition-balance`, `widow`) do not block the export; resolve each by rebalancing, or keep it and justify it in the delivery message, scene by scene.
-6. **`stills <dir>`** writes PNGs named `NN-<scene>@<seconds>.png` to `<dir>/stills/` (2 per scene; `--scene <name>` gives 4 of one scene). Aim at a moment with `--at scene:t`, for example `--at ci:3.5,git:5.2` (scene-local seconds; plain numbers are global). Then **`sheet <dir>`** writes one contact sheet `<dir>/sheet.png` without ffmpeg. Look at every still and the sheet: QA cannot see a wrong arrow, a hidden hero or an unreadable scene. Fix and re-run steps 5 and 6.
-7. **`export <dir>`** runs the gate again and writes `<dir>/<slug>.mp4`. Bitrate: `--bitrate <Mbps>`, else the preset's (`sketch` 4 Mbps, the others 2), else 2. `stills <dir> --from-mp4` reviews the encoded frames.
+6. **`stills <dir>`** writes PNGs named `NN-<scene>@<seconds>.png` to `<dir>/stills/` (2 per scene; `--scene <name>` gives 4 of one scene). Aim at a moment with `--at scene:t`, for example `--at ci:3.5,git:5.2` (scene-local seconds; plain numbers are global). Then **`sheet <dir>`** writes one contact sheet `<dir>/sheet.png` without ffmpeg, each frame at a scene's settled time (after its last caption or typing finishes). Look at every still and the sheet: QA cannot see a wrong arrow, a hidden hero or an unreadable scene. Fix and re-run steps 5 and 6.
+7. **`export <dir>`** checks for about 1 GB of free disk, runs the gate again and writes `<dir>/<slug>.mp4`. Bitrate: `--bitrate <Mbps>`, else the preset's (`sketch` 4 Mbps, the others 2), else 2. `stills <dir> --from-mp4` reviews the encoded frames.
 8. **Deliver** the MP4 path and the `index.html` path (the preview has play, scrub and export in the video's language), plus one line per warning you kept and why. Offer to publish the HTML as a claude.ai Artifact: it is self-contained and works offline.
 
 `preview <dir>` opens the page. `build`, `check`, `stills`, `sheet` and `export` rebuild it when the scene, the preset or the engine changed. A target is an explainer folder or a scene file; a scene file not named `scene.js` builds into `~/explainers/<yyyy-mm-dd>-<name>/`. Nothing is written inside the skill folder. `--preset` (alias `--style`) on any command is a one-off build in `<dir>/presets/<name>/`; only `new` and `preset use` write `explain.json`.
@@ -59,7 +72,8 @@ Nothing to install. Needs Bun and a Chrome or Chromium. The search order is: `EX
 - On-screen text never starts with the Spanish opening marks (the characters that open a question or an exclamation). Close with `?` or `!` only. `check` fails on them.
 - Colors are palette tokens (`ink`, `dim`, `accent`, `accent2`, `good`, `warn`, `bad`, `panel`, `onPanel`, `onAccent`, syntax tokens), never hex values, so one scene file works in every preset.
 - Never branch on the preset name. Size text from `s.style.defaults`, never a fixed small pixel count.
-- Text is written in the language of the user's request. Every scene that states a fact carries `s.sourceFooter` naming the document it came from.
+- Text is written in the language of the user's request. Every scene that states a fact carries `s.sourceFooter` naming the document it came from; illustrative content says `(ejemplo ilustrativo)` in that footer.
+- Spanish on screen is neutral and uses tú, never voseo ("Pruébalo", not "Probalo"); labels are infinitives or short noun phrases ("Leer el cambio", "Riesgos honestos").
 - Use `s.heading({ text })` and leave `area` out: pieces default to the content area `s.area` (1760x636), and layouts grow to fill it. HUD items (heading, tag, caption, footer, rail) are never moved by the camera.
 - A camera `focus` fits the target into the content area: do not zoom past it, and keep the target clear of the HUD.
 
@@ -69,7 +83,7 @@ Nothing to install. Needs Bun and a Chrome or Chromium. The search order is: `EX
 - [references/scene-api.md](references/scene-api.md): scene file, kit, transitions, camera, layout, raw, QA report.
 - [references/presets.md](references/presets.md): the three presets, the contract, the user workflow.
 - [references/direction.md](references/direction.md): the visual rules, with numbers.
-- `examples/gallery.scene.js` (every family in 7 scenes) and `examples/pieces/*.scene.js` (one runnable scene per family): copy from them.
+- `examples/skill.scene.js` (explain a skill, built from the layout recipes), `examples/gallery.scene.js` (every family in 7 scenes) and `examples/pieces/*.scene.js` (one runnable scene per family): copy from them.
 
 ## With nobody at the keyboard
 
