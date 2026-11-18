@@ -94,6 +94,19 @@ describe('display options', () => {
     expect(page).toContain('<span class="mkd-opt__just">Costs more.</span>');
   });
 
+  it('keeps Previous / Skip / Next in the sticky bar only, never inside a card', () => {
+    expect(page).toContain('<nav class="mkd-bar__nav" aria-label="Deck navigation">');
+    expect(page).toContain('id="mkd-next">Next &#8594;</button>');
+    expect(page).not.toContain('mkd-card__nav');
+    expect(page).toContain('id="mkd-auto-advance" role="switch">');
+  });
+
+  it('switches a decision with 4+ options to the compact layout', () => {
+    const wide = validateSpec({ ...RAW_SPEC, items: [{ ...RAW_SPEC.items[0], options: ['A', 'B', 'C', 'D', 'E'].map(key => ({ key, label: key, justification: key })) }] });
+    expect(render(wide, { mode: 'copy' })).toContain('<div class="mkd-opts is-dense">');
+    expect(page).toContain('<div class="mkd-opts">');
+  });
+
   it('omits the display options on a deck without decisions', () => {
     const noDecisions = validateSpec({ ...RAW_SPEC, items: RAW_SPEC.items.slice(1) });
     expect(render(noDecisions, { mode: 'copy' })).not.toContain('class="mkd-view"');
@@ -105,8 +118,10 @@ describe('render: copy and wait modes are unchanged', () => {
   // placeholder. Every other byte - markup, CSS, embedded spec, globals -
   // must match. Re-pinned for the W1 UI redesign: navy/pastel theme tokens,
   // progress footer (replaces the five counters), send-confirmation dialog,
-  // the Hide recommended switch, the Shuffle / Original order buttons, SVG
-  // header icons,
+  // the Hide recommended and Auto-advance switches, the Shuffle / Original
+  // order buttons, SVG header icons, the sticky action bar (Previous / Skip /
+  // Next moved out of the cards, More overflow on phones), compact 4+ option
+  // decisions, viewport-fit=cover,
   // and the color-mix guard on the translucent header.
   // Update these only for an intentional change to the copy/wait markup.
   const shellHash = (html: string): string =>
@@ -114,12 +129,12 @@ describe('render: copy and wait modes are unchanged', () => {
 
   it('copy mode', () => {
     expect(shellHash(render(spec, { mode: 'copy' })))
-      .toBe('17a7ad2c4684bfed68fa8cf84b5df341c1ce6af74a5629559385711301ecee50');
+      .toBe('7c2cdb5af1aac259a9f2362019ff1262163cc8a55b7f9126e0251e894d71267b');
   });
 
   it('wait mode', () => {
     expect(shellHash(render(spec, { mode: 'wait', submitToken: 'tok-123' })))
-      .toBe('fd63ba06d3bc985a7ddd1d8029f8f9ac6f0308b37b6cb0ccd55159d286a36a17');
+      .toBe('5c6a6b41c19be8c64190952d57e8dc62240fc40b4c4d7eddf589409b739ab33a');
   });
 
   it('never leaks the artifact globals into copy or wait pages', () => {

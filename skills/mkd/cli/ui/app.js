@@ -320,6 +320,12 @@
   const confirmSend = byId('mkd-confirm-send');
   const hideRecToggle = byId('mkd-hide-rec');
   const shuffleBtn = byId('mkd-shuffle');
+  const autoAdvanceToggle = byId('mkd-auto-advance');
+  const barEl = byId('mkd-bar');
+  const moreBtn = byId('mkd-more');
+  const prevBtn = byId('mkd-prev');
+  const skipBtn = byId('mkd-skip');
+  const nextBtn = byId('mkd-next');
   const unshuffleBtn = byId('mkd-unshuffle');
   const jsonToggle = byId('mkd-json-toggle');
   const jsonPanel = byId('mkd-json-panel');
@@ -635,8 +641,22 @@
   // DECK NAVIGATION
   // --------------------------------------------------------------------------
 
-  function go(target) {
+  /**
+   * `fromKeyboard`: keyboard-driven moves skip the card entrance animation
+   * (a keystroke repeated many times must feel instant).
+   */
+  function go(target, fromKeyboard) {
     const clamped = Math.max(-1, Math.min(target, items.length));
+    cancelAutoAdvance();
+    closeMore();
+    if (appRoot) {
+      if (fromKeyboard) {
+        appRoot.setAttribute('data-nav', 'key');
+      }
+      else {
+        appRoot.removeAttribute('data-nav');
+      }
+    }
     idx = clamped;
     closeRowPop();
     hideQuoteButton();
@@ -666,6 +686,38 @@
     }
     renderRail();
     refreshAll();
+    measureClamps();
+  }
+
+  /**
+   * Compact decisions clamp each justification; when any of them actually
+   * overflows on the current card, offer one "Show full justifications" switch
+   * (a button cannot live inside the option button itself).
+   */
+  function measureClamps() {
+    const card = document.querySelector('.mkd-card.is-current');
+    const list = card ? card.querySelector('.mkd-opts.is-dense') : null;
+    if (!list) {
+      return;
+    }
+    let toggle = card.querySelector('.mkd-opts__expand');
+    if (!toggle) {
+      toggle = el('button', 'mkd-opts__expand', { 'type': 'button', 'aria-expanded': 'false' });
+      toggle.textContent = 'Show full justifications';
+      toggle.addEventListener('click', () => {
+        const open = list.classList.toggle('is-expanded');
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        toggle.textContent = open ? 'Shorten justifications' : 'Show full justifications';
+      });
+      list.parentNode.insertBefore(toggle, list);
+    }
+    if (list.classList.contains('is-expanded')) {
+      toggle.hidden = false;
+      return;
+    }
+    const clipped = [...list.querySelectorAll('.mkd-opt__just')]
+      .some(just => just.scrollHeight > just.clientHeight + 1);
+    toggle.hidden = !clipped;
   }
 
   function setCardVisible(card, visible) {
@@ -714,76 +766,76 @@
     rail.appendChild(end);
   }
 
-  /** Per-card navigation row: Prev / (Skip) / Next. */
-  function buildNav(item, index) {
-    const section = itemSection(item.id);
-    const nav = section ? section.querySelector('.mkd-card__nav') : null;
-    if (!nav) {
+  // --------------------------------------------------------------------------
+  // ACTION BAR — Previous / Skip / Next live in the sticky footer, always in
+  // reach; the per-card duplicates are gone.
+  // --------------------------------------------------------------------------
+
+  function skipCurrent(fromKeyboard) {
+    const item = items[idx];
+    if (!item) {
       return;
     }
-    nav.textContent = '';
-
-    const prev = el('button', 'mkd-btn mkd-btn--ghost', { type: 'button' });
-    prev.textContent = '\u2190 Previous';
-    prev.addEventListener('click', () => go(index - 1));
-    nav.appendChild(prev);
-
-    nav.appendChild(el('span', 'mkd-card__nav-spacer'));
-
-    const skip = el('button', 'mkd-btn', { type: 'button', title: 'Skip for now = decide later, not a rejection' });
-    skip.textContent = 'Skip for now';
-    skip.addEventListener('click', () => {
-      const entry = state[item.id];
-      entry.skipped = true;
-      if (item.type === 'decision') {
-        entry.chosen = null;
-      }
-      go(index + 1);
-    });
-    nav.appendChild(skip);
-
-    const next = el('button', 'mkd-btn mkd-btn--primary', {
-      'type': 'button',
-      'data-nav-next': item.id,
-    });
-    next.textContent = index === items.length - 1 ? 'Finish \u2192' : 'Next \u2192';
-    next.addEventListener('click', () => go(index + 1));
-    nav.appendChild(next);
+    const entry = state[item.id];
+    entry.skipped = true;
+    if (item.type === 'decision') {
+      entry.chosen = null;
+      syncDecisionUI(item);
+    }
+    go(idx + 1, fromKeyboard);
   }
 
-  /** A decision's Next stays disabled until an option (or skip) is picked. */
-  function refreshNavButtons() {
-    for (const item of items) {
-      if (item.type !== 'decision') {
-        continue;
-      }
-      const btn = document.querySelector(
-        `[data-nav-next="${cssAttrEscape(item.id)}"]`,
-      );
-      if (btn) {
-        btn.disabled = state[item.id].chosen === null && !state[item.id].skipped;
-      }
+  /** A decision cannot move on until it has an option (or is skipped). */
+  function nextBlocked() {
+    const item = items[idx];
+    return Boolean(item && item.type === 'decision' && state[item.id].chosen === null && !state[item.id].skipped);
+  }
+
+  function goNext(fromKeyboard) {
+    if (idx === items.length) {
+      requestSend();
+      return;
     }
+    if (nextBlocked()) {
+      return;
+    }
+    go(idx + 1, fromKeyboard);
+  }
+
+  function renderBarNav() {
+    if (!nextBtn || !prevBtn || !skipBtn) {
+      return;
+    }
+    const onIntro = idx === -1;
+    const onSummary = idx === items.length;
+    prevBtn.hidden = onIntro;
+    skipBtn.hidden = onIntro || onSummary;
+    const blocked = nextBlocked();
+    nextBtn.disabled = blocked || (onSummary && submitting);
+    let label = 'Next \u2192';
+    if (onIntro) {
+      label = 'Start \u2192';
+    }
+    else if (onSummary) {
+      label = canSubmit ? spec.submitLabel : 'Copy JSON';
+    }
+    else if (idx === items.length - 1) {
+      label = 'Finish \u2192';
+    }
+    nextBtn.textContent = label;
+    // Idle until the current item has an answer, then the primary call to action.
+    const item = items[idx];
+    const ready = onIntro || onSummary || (item && itemStatus(item) === 'answered');
+    nextBtn.classList.toggle('is-idle', !ready);
   }
 
   function buildIntroNav() {
-    const nav = introCard ? introCard.querySelector('[data-intro-nav]') : null;
-    if (!nav) {
-      return;
-    }
-    nav.classList.add('mkd-card__nav');
-    nav.appendChild(el('span', 'mkd-card__nav-spacer'));
-    const start = el('button', 'mkd-btn mkd-btn--primary', { type: 'button' });
-    start.textContent = 'Start \u2192';
-    start.addEventListener('click', () => go(0));
-    nav.appendChild(start);
-
     // In --wait / artifact mode the intro's closing line should point at the
     // submit button rather than copy-paste.
     if (canSubmit) {
       const finishLine = byId('mkd-legend-finish');
       if (finishLine) {
-        finishLine.textContent = `When you are done, press "${spec.submitLabel}" in the footer to send your answers back.`;
+        finishLine.textContent = `When you are done, press "${spec.submitLabel}" on the last screen to send your answers back.`;
       }
     }
   }
@@ -843,35 +895,9 @@
 
     const legend = el('p', 'mkd-legend');
     legend.textContent = canSubmit
-      ? `Last step: press "${spec.submitLabel}" in the footer. Skipped items stay as "skipped": decide later, not a rejection.`
-      : 'Last step: press "Copy JSON" in the footer and paste it into the chat. Skipped items stay as "skipped": decide later, not a rejection.';
+      ? `Last step: press "${spec.submitLabel}" below. Skipped items stay as "skipped": decide later, not a rejection.`
+      : 'Last step: press "Copy JSON" below and paste it into the chat. Skipped items stay as "skipped": decide later, not a rejection.';
     summaryCard.appendChild(legend);
-
-    const nav = el('div', 'mkd-card__nav');
-    const back = el('button', 'mkd-btn mkd-btn--ghost', { type: 'button' });
-    back.textContent = '\u2190 Back';
-    back.addEventListener('click', () => go(items.length - 1));
-    nav.appendChild(back);
-    nav.appendChild(el('span', 'mkd-card__nav-spacer'));
-    const cta = el('button', 'mkd-btn mkd-btn--primary', { type: 'button' });
-    if (canSubmit) {
-      cta.textContent = spec.submitLabel;
-      cta.addEventListener('click', () => {
-        if (submitBtn) {
-          submitBtn.click();
-        }
-      });
-    }
-    else {
-      cta.textContent = 'Copy JSON';
-      cta.addEventListener('click', () => {
-        if (copyBtn) {
-          copyBtn.click();
-        }
-      });
-    }
-    nav.appendChild(cta);
-    summaryCard.appendChild(nav);
   }
 
   /** The summary chip describing an item's outcome. */
@@ -915,7 +941,7 @@
   // BUILD: per-type interactive parts
   // --------------------------------------------------------------------------
 
-  function buildItem(item, index) {
+  function buildItem(item) {
     const section = itemSection(item.id);
     if (!section) {
       return;
@@ -934,7 +960,6 @@
     else {
       buildAnswerable(item, host);
     }
-    buildNav(item, index);
   }
 
   // ---- decision ----
@@ -962,6 +987,7 @@
     );
     if (customInput) {
       customInput.value = entry.customText;
+      customInput.addEventListener('focus', cancelAutoAdvance);
       customInput.addEventListener('input', () => {
         entry.customText = customInput.value;
         refreshAll();
@@ -986,6 +1012,45 @@
     syncDecisionUI(item);
     refreshAll();
     saveState();
+    cancelAutoAdvance();
+    if (autoAdvance && entry.chosen !== null && entry.chosen !== CUSTOM_KEY) {
+      scheduleAutoAdvance();
+    }
+  }
+
+  // ---- auto-advance (optional, off by default) ----
+
+  const AUTO_ADVANCE_KEY = 'mkd-view-auto-advance';
+  const AUTO_ADVANCE_MS = 900;
+  let autoAdvance = false;
+  let autoTimer = null;
+
+  /** The pending move shows as a fill sweeping across Next; any edit cancels it. */
+  function scheduleAutoAdvance() {
+    const from = idx;
+    if (nextBtn) {
+      nextBtn.style.setProperty('--mkd-auto-ms', `${AUTO_ADVANCE_MS}ms`);
+      nextBtn.classList.add('is-advancing');
+    }
+    autoTimer = window.setTimeout(() => {
+      autoTimer = null;
+      if (nextBtn) {
+        nextBtn.classList.remove('is-advancing');
+      }
+      if (idx === from && !nextBlocked()) {
+        go(idx + 1);
+      }
+    }, AUTO_ADVANCE_MS);
+  }
+
+  function cancelAutoAdvance() {
+    if (autoTimer !== null) {
+      window.clearTimeout(autoTimer);
+      autoTimer = null;
+    }
+    if (nextBtn) {
+      nextBtn.classList.remove('is-advancing');
+    }
   }
 
   /** Reflect a decision's chosen state onto its option buttons + custom box. */
@@ -1018,7 +1083,9 @@
       rows: '3',
     });
     input.value = entry.note;
+    input.addEventListener('focus', cancelAutoAdvance);
     input.addEventListener('input', () => {
+      cancelAutoAdvance();
       entry.note = input.value;
       refreshAll();
       saveState();
@@ -2237,7 +2304,7 @@
     for (const key of Object.keys(answerButtons)) {
       updateAnswerButton(key);
     }
-    refreshNavButtons();
+    renderBarNav();
     renderRail();
   }
 
@@ -2535,13 +2602,50 @@
     };
   }
 
+  function isInteractiveTarget(target) {
+    return Boolean(target && target.closest && target.closest('button, a[href], summary, select, label'));
+  }
+
+  /**
+   * Digits pick the option at that SCREEN position on the current card (the
+   * custom option is the last slot), so they follow a shuffle. Questions map
+   * digits onto their choice inputs the same way.
+   */
+  function pickByPosition(n) {
+    const card = document.querySelector('.mkd-card.is-current');
+    if (!card || idx < 0 || idx >= items.length) {
+      return false;
+    }
+    const item = items[idx];
+    if (item.type === 'decision') {
+      const slot = card.querySelectorAll('.mkd-opt[data-opt-key]')[n - 1];
+      if (!slot) {
+        return false;
+      }
+      selectOption(item, slot.getAttribute('data-opt-key'));
+      return true;
+    }
+    if (item.type === 'question') {
+      const input = card.querySelectorAll('.mkd-controls input[type="radio"], .mkd-controls input[type="checkbox"]')[n - 1];
+      if (!input) {
+        return false;
+      }
+      input.click();
+      return true;
+    }
+    return false;
+  }
+
   /** True when the target is a field where keystrokes must not navigate. */
   function isTypingTarget(target) {
     if (!target || !target.tagName) {
       return false;
     }
     const tag = target.tagName;
-    return tag === 'TEXTAREA' || tag === 'INPUT' || target.isContentEditable === true;
+    if (tag === 'INPUT') {
+      return !/^(checkbox|radio|button|submit|reset|range|color|file)$/i.test(target.type || '');
+    }
+    return tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable === true;
   }
 
   function wireGlobals() {
@@ -2610,6 +2714,40 @@
     if (themeToggle) {
       themeToggle.addEventListener('click', toggleTheme);
     }
+    if (prevBtn) {
+      prevBtn.addEventListener('click', () => go(idx - 1));
+    }
+    if (skipBtn) {
+      skipBtn.addEventListener('click', () => skipCurrent(false));
+    }
+    if (nextBtn) {
+      nextBtn.addEventListener('click', () => goNext(false));
+    }
+    if (autoAdvanceToggle) {
+      autoAdvanceToggle.addEventListener('change', () => {
+        autoAdvance = autoAdvanceToggle.checked;
+        writeFlag(AUTO_ADVANCE_KEY, autoAdvance);
+        if (!autoAdvance) {
+          cancelAutoAdvance();
+        }
+      });
+    }
+    if (moreBtn) {
+      moreBtn.addEventListener('click', () => {
+        if (barEl && barEl.classList.contains('is-more-open')) {
+          closeMore();
+        }
+        else {
+          openMore();
+        }
+      });
+      document.addEventListener('click', (event) => {
+        if (barEl && barEl.classList.contains('is-more-open') && !barEl.contains(event.target)) {
+          closeMore();
+        }
+      });
+    }
+    watchOnScreenKeyboard();
 
     if (expandInput) {
       expandInput.addEventListener('input', () => {
@@ -2681,6 +2819,14 @@
         return;
       }
       if (event.key === 'Escape') {
+        cancelAutoAdvance();
+        if (barEl && barEl.classList.contains('is-more-open')) {
+          closeMore();
+          if (moreBtn) {
+            moreBtn.focus();
+          }
+          return;
+        }
         if (currentRowPopKey) {
           closeRowPop();
           return;
@@ -2698,16 +2844,37 @@
         requestSend();
         return;
       }
-      // Arrow keys navigate the deck (ignored while typing or in a modal).
+      // Deck keys: never while typing, inside a popover/panel, or with a modifier.
       if (isTypingTarget(event.target) || currentRowPopKey || (expand && !expand.hidden)) {
         return;
       }
+      if (event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
       if (event.key === 'ArrowRight' && idx < items.length) {
-        go(idx + 1);
+        goNext(true);
+        return;
+      }
+      // Enter on a focused control keeps its native meaning (press that control),
+      // except on the option already chosen: there it means "next", not "unpick".
+      const onChosen = event.target && event.target.classList
+        && event.target.classList.contains('mkd-opt') && event.target.classList.contains('is-selected');
+      if (event.key === 'Enter' && (onChosen || !isInteractiveTarget(event.target)) && idx < items.length) {
+        event.preventDefault();
+        goNext(true);
         return;
       }
       if (event.key === 'ArrowLeft' && idx > -1) {
-        go(idx - 1);
+        go(idx - 1, true);
+        return;
+      }
+      if ((event.key === 's' || event.key === 'S') && idx >= 0 && idx < items.length) {
+        event.preventDefault();
+        skipCurrent(true);
+        return;
+      }
+      if (/^[1-9]$/.test(event.key) && pickByPosition(Number(event.key))) {
+        event.preventDefault();
         return;
       }
       if (event.key === '?' && !event.metaKey && !event.ctrlKey && !event.altKey) {
@@ -2715,6 +2882,42 @@
         toggleKbd();
       }
     });
+  }
+
+  // ---- mobile overflow ("More actions") + on-screen keyboard ----
+
+  function openMore() {
+    if (barEl && moreBtn) {
+      barEl.classList.add('is-more-open');
+      moreBtn.setAttribute('aria-expanded', 'true');
+    }
+  }
+
+  function closeMore() {
+    if (barEl && moreBtn) {
+      barEl.classList.remove('is-more-open');
+      moreBtn.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  /**
+   * While the on-screen keyboard is up (visual viewport much shorter than the
+   * layout viewport, with a field focused) the fixed bar would float over the
+   * text being typed, so it steps aside instead of jumping around.
+   */
+  function watchOnScreenKeyboard() {
+    const vv = window.visualViewport;
+    if (!vv || !appRoot) {
+      return;
+    }
+    const check = () => {
+      const typing = isTypingTarget(document.activeElement);
+      const open = typing && vv.height < window.innerHeight * 0.8;
+      appRoot.classList.toggle('is-kb-open', open);
+    };
+    vv.addEventListener('resize', check);
+    document.addEventListener('focusin', check);
+    document.addEventListener('focusout', () => window.setTimeout(check, 0));
   }
 
   // --------------------------------------------------------------------------
@@ -2733,7 +2936,10 @@
     }
     const modKey = isMacPlatform() ? '\u2318' : 'Ctrl';
     const rows = [
+      { action: 'Pick option by position (A = 1)', keys: ['1', '\u2026', '6'] },
+      { action: 'Next screen', keys: ['Enter'] },
       { action: 'Previous / next screen', keys: ['\u2190', '\u2192'] },
+      { action: 'Skip for now', keys: ['S'] },
       { action: canSubmit ? 'Submit answers' : 'Copy the result JSON', keys: [modKey, 'Enter'] },
       { action: 'Close panel / popover / legend', keys: ['Esc'] },
       { action: 'Quote selected text', keys: ['select', 'quote'] },
@@ -2802,12 +3008,16 @@
 
     loadState();
 
-    items.forEach((item, index) => {
+    items.forEach((item) => {
       if (state[item.id]) {
-        buildItem(item, index);
+        buildItem(item);
       }
     });
     applyHideRec(readFlag(VIEW_HIDE_REC_KEY));
+    autoAdvance = readFlag(AUTO_ADVANCE_KEY);
+    if (autoAdvanceToggle) {
+      autoAdvanceToggle.checked = autoAdvance;
+    }
     lastShuffle = loadShuffleOrder();
     if (lastShuffle && readFlag(SHUFFLE_ACTIVE_KEY)) {
       shuffleOrder = lastShuffle;

@@ -159,7 +159,6 @@ function renderItemCard(item: NormalizedItem, index: number, total: number): str
   return `      <section class="mkd-card mkd-card--${item.type}" data-item-id="${id}" data-item-index="${index}" hidden>
         ${head}${body}
         <div class="mkd-card__interactive" data-item-id="${id}"></div>
-        <div class="mkd-card__nav" data-item-id="${id}"></div>
       </section>`;
 }
 
@@ -203,7 +202,10 @@ function renderDecisionOptions(item: NormalizedItem & { type: 'decision' }): str
           <textarea class="mkd-text__input mkd-text__input--compact mkd-custom-input" data-custom-for="${escapeHtml(item.id)}" placeholder="Describe your custom decision…" rows="3"></textarea>`
     : '';
 
-  return `<div class="mkd-opts">${options}${custom}
+  // Four or more real options switch the list to its compact layout:
+  // clamped justifications, two columns on wide screens.
+  const dense = item.options.length >= 4 ? ' is-dense' : '';
+  return `<div class="mkd-opts${dense}">${options}${custom}
         </div>`;
 }
 
@@ -267,10 +269,9 @@ function renderIntroCard(spec: NormalizedSpec): string {
         <div class="mkd-card__eyebrow">${escapeHtml(spec.session)}</div>
         <h2 class="mkd-card__title">${escapeHtml(headline)}</h2>${body}${stats}
         <div class="mkd-legend">
-          <p>One screen per item. Navigate with the rail above or the <b>&#8592; &#8594;</b> arrow keys. Skipping means "decide later", not a rejection.</p>
+          <p>One screen per item. Move with the bar at the bottom, the rail above, or the keyboard: <b>1-6</b> picks an option, <b>Enter</b> goes on, <b>S</b> skips. Skipping means "decide later", not a rejection.</p>
           <p id="mkd-legend-finish">When you are done, copy the JSON from the footer and paste it back into the chat.</p>
         </div>
-        <div class="mkd-card__nav" data-intro-nav></div>
       </section>`;
 }
 
@@ -306,12 +307,17 @@ export function render(spec: NormalizedSpec, opts: RenderOptions): string {
         </label>
         <button type="button" class="mkd-view__btn" id="mkd-shuffle" title="Show every decision's options in a new random order (press again to reshuffle)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>Shuffle options</button>
         <button type="button" class="mkd-view__btn mkd-view__btn--reset" id="mkd-unshuffle" title="Back to the author's order and letters" hidden>Original order</button>
+        <label class="mkd-switch mkd-switch--sm" title="After you pick an option, move to the next item on its own (typing a note cancels it)">
+          <input type="checkbox" class="mkd-switch__input" id="mkd-auto-advance" role="switch">
+          <span class="mkd-switch__track" aria-hidden="true"></span>
+          <span class="mkd-switch__label">Auto-advance</span>
+        </label>
       </div>`
     : '';
 
   const submitButton
     = mode !== 'copy'
-      ? `\n        <button type="button" class="mkd-bar__btn mkd-bar__btn--primary" id="mkd-submit" disabled>${escapeHtml(spec.submitLabel)}</button>`
+      ? `\n          <button type="button" class="mkd-bar__btn" id="mkd-submit" disabled>${escapeHtml(spec.submitLabel)}</button>`
       : '';
 
   // The artifact page learns the db document it writes to; the copy/wait
@@ -346,17 +352,22 @@ ${renderIntroCard(spec)}
 ${cards}
       <section class="mkd-card mkd-card--summary" id="mkd-summary" hidden></section>
     </div>
-    <footer class="mkd-bar">
+    <footer class="mkd-bar" id="mkd-bar">
+      <progress class="mkd-progress" id="mkd-progress" max="${total}" value="0" aria-labelledby="mkd-progress-label"></progress>
       <div class="mkd-bar__row">
-        <div class="mkd-bar__progress">
-          <progress class="mkd-progress" id="mkd-progress" max="${total}" value="0" aria-labelledby="mkd-progress-label"></progress>
-          <span class="mkd-bar__count" id="mkd-progress-label"><b id="mkd-count-done">0</b>/${total} done · <span class="mkd-bar__pending" id="mkd-count-pending">${total} pending</span></span>
+        <span class="mkd-bar__count" id="mkd-progress-label"><b id="mkd-count-done">0</b>/${total} done<span class="mkd-bar__sep"> · </span><span class="mkd-bar__pending" id="mkd-count-pending">${total} pending</span></span>
+        <button type="button" class="mkd-bar__more" id="mkd-more" aria-expanded="false" aria-controls="mkd-bar-secondary" aria-label="More actions" title="More actions"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
+        <div class="mkd-bar__secondary" id="mkd-bar-secondary">
+          <button type="button" class="mkd-bar__btn mkd-bar__btn--jump" id="mkd-jump">First pending &#8594;</button>
+          <span class="mkd-bar__error" id="mkd-submit-error" hidden></span>
+          <button type="button" class="mkd-bar__btn" id="mkd-json-toggle">View JSON</button>
+          <button type="button" class="mkd-bar__btn" id="mkd-copy">Copy JSON</button>${submitButton}
         </div>
-        <button type="button" class="mkd-bar__btn mkd-bar__btn--jump" id="mkd-jump">First pending &#8594;</button>
-        <span class="mkd-bar__spacer"></span>
-        <span class="mkd-bar__error" id="mkd-submit-error" hidden></span>
-        <button type="button" class="mkd-bar__btn" id="mkd-json-toggle">View JSON</button>
-        <button type="button" class="mkd-bar__btn${mode === 'copy' ? ' mkd-bar__btn--primary' : ''}" id="mkd-copy">Copy JSON</button>${submitButton}
+        <nav class="mkd-bar__nav" aria-label="Deck navigation">
+          <button type="button" class="mkd-btn mkd-btn--ghost" id="mkd-prev" aria-label="Previous"><span aria-hidden="true">&#8592;</span><span class="mkd-bar__label"> Previous</span></button>
+          <button type="button" class="mkd-btn" id="mkd-skip" title="Skip for now = decide later, not a rejection">Skip<span class="mkd-bar__label"> for now</span></button>
+          <button type="button" class="mkd-btn mkd-btn--primary" id="mkd-next">Next &#8594;</button>
+        </nav>
       </div>
       <div class="mkd-json" id="mkd-json-panel" hidden><pre class="mkd-json__out" id="mkd-json-out"></pre></div>
     </footer>
@@ -417,7 +428,7 @@ ${app}
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>${title}</title>
 ${assets}
 </head>
