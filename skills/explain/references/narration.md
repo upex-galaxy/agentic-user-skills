@@ -56,6 +56,7 @@ Speech-only rules:
 ## Pauses and holds
 
 - **The picture waits for the voice.** With a voice on, a scene lasts as long as its narration plus a short tail ([audio.md](audio.md), "The scene stretches"). Author `dur` close to the estimate from `voice plan`, so the stretch is small and the motion stays spread across the scene.
+- **Once the clips exist, trim each `dur` to the voice.** The plan estimates 15 characters per second; `eleven_flash_v2_5` measured 16.2 in Spanish, so a `dur` set from the estimate leaves several seconds of silence at the end of each scene (`silent-gap` warns over 3 s). Set each scene's `dur` at or just under its fitted length, and the stretch closes the rest.
 - **`hold` gives the picture a pause.** A beat's `hold: 1.2` adds 1.2 s of silence after that clip, before the next beat (0 to 2.5 s). Use it after a beat that triggers a big reveal (a diagram drawing, a stamp, a counter) so the viewer sees it settle before the voice goes on, and on the last beat of a scene whose final picture needs a moment.
 - **Reveal on the cue, not before.** A piece that appears before the voice names it steals attention; one that appears three seconds after feels late. Start it 0.2 to 0.6 s after its beat's `at`.
 - **Keep it moving while the voice explains.** A long beat over a still picture reads as a slide: give it a slow motion (a `travelDot`, `packets`, a `highlight` on the part being named, a gentle camera `focus`).
