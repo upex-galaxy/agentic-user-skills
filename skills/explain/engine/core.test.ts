@@ -180,3 +180,49 @@ test('core engine can be built without pieces', () => {
   engine.render(0.5);
   expect(engine.duration).toBe(1);
 });
+
+describe('layer contract (presets merge U0a)', () => {
+  const two = (transition: any, hudBuild?: (s: any) => void) => build(hologram, {
+    scenes: [
+      { name: 'a', dur: 3, transition, build: (s: any) => {
+        s.label({ text: 'a', rect: { x: 100, y: 300, w: 400, h: 100 } });
+        hudBuild?.(s);
+      } },
+      { name: 'b', dur: 3, build: (s: any) => s.label({ text: 'b', rect: { x: 100, y: 300, w: 400, h: 100 } }) },
+    ],
+  });
+
+  test('api.fade nests: alpha multiplies through every level', () => {
+    const seen: number[] = [];
+    const { engine, ctx } = build(hologram, {
+      scenes: [{ name: 'a', dur: 2, build: (s: any) => s.raw((_c: any, _t: number, api: any) => {
+        const inner = api.fade(0.5).fade(0.5);
+        inner.alpha(0.8);
+        seen.push(ctx.globalAlpha, inner.sa);
+      }) }],
+    });
+    engine.render(1);
+    expect(seen[0]).toBeCloseTo(0.2, 6);
+    expect(seen[1]).toBeCloseTo(0.25, 6);
+  });
+
+  test('the HUD is not scaled or shifted by the layer look', () => {
+    const { engine, log } = two('push-zoom', (s: any) => s.heading({ text: 'Heading', at: 0 }));
+    log.length = 0;
+    engine.render(2.8);
+    const calls = log.map(c => c[0]);
+    // The world of the leaving layer is scaled; the heading text is drawn after that scale was restored.
+    const scaleAt = calls.indexOf('scale');
+    expect(scaleAt).toBeGreaterThan(-1);
+    const fill = log.findIndex(c => c[0] === 'fillText' && c[1] === 'Heading');
+    const restoresBetween = calls.slice(scaleAt, fill).filter(c => c === 'restore').length;
+    expect(restoresBetween).toBeGreaterThan(0);
+  });
+
+  test('the leaving world scales around a registered origin, the fx gets it in frame pixels', () => {
+    const { engine } = two({ type: 'light-sweep', origin: [400, 300] });
+    const st = engine.state(2.8);
+    expect(st.fx[0].name).toBe('sweep');
+    expect(st.fx[0].spec.origin).toEqual([400, 300]);
+  });
+});

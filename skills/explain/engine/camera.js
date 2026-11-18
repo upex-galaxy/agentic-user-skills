@@ -3,10 +3,13 @@
 import { clamp, lerp, prog, resolveEase } from './math.js';
 
 /**
- * createCamera({ W, H, resolve }) where resolve(id) returns the element rect.
+ * createCamera({ W, H, resolve, area }) where resolve(id) returns the element rect and `area` is the content band
+ * between the heading and the caption (frame pixels). With an area, focus fits the target plus its padding INTO the
+ * area and centers it there, so the caption, the footer and the rail never cover it and the zoom never crops it.
+ * Without one (or with focus option frame: 'full') the target fills the whole frame, centered.
  * Moves should not overlap in time; each move starts from the previous move's end state.
  */
-export function createCamera({ W, H, resolve }) {
+export function createCamera({ W, H, resolve, area }) {
   const home = { x: W / 2, y: H / 2, z: 1 };
   const moves = [];
   const add = (at, dur, to, e, target) => {
@@ -16,13 +19,23 @@ export function createCamera({ W, H, resolve }) {
   const cam = {
     moves,
     home,
-    /** Zoom and pan so the element (id or rect) fills the frame. opts: zoom, pad (default 120), maxZoom (2.5), ease. */
+    /**
+     * Zoom and pan to an element (id or rect). opts: zoom (a wish: capped so the padded target still fits unless
+     * crop: true), pad (24 in the area, 120 full frame), maxZoom (2.5), frame ('area' default when the camera has one,
+     * 'full' for the whole frame), ease.
+     */
     focus(target, at, dur = 1, opts = {}) {
       const r = typeof target === 'string' ? resolve(target) : target;
-      const pad = opts.pad ?? 120;
-      const fit = Math.min(W / (r.w + pad * 2), H / (r.h + pad * 2));
-      const z = opts.zoom ?? clamp(fit, 1, opts.maxZoom ?? 2.5);
-      add(at, dur, { x: r.x + r.w / 2, y: r.y + r.h / 2, z }, opts.ease, typeof target === 'string' ? target : null);
+      const useArea = area && opts.frame !== 'full';
+      const box = useArea ? area : { x: 0, y: 0, w: W, h: H };
+      const pad = opts.pad ?? (useArea ? 24 : 120);
+      const fit = Math.min(box.w / (r.w + pad * 2), box.h / (r.h + pad * 2));
+      const wish = opts.zoom ?? clamp(fit, 1, opts.maxZoom ?? 2.5);
+      const z = useArea && opts.crop !== true ? Math.max(1, Math.min(wish, fit)) : wish;
+      // The target center lands on the box center: (c - cam) * z + W / 2 = box center.
+      const cx = r.x + r.w / 2 - (box.x + box.w / 2 - W / 2) / z;
+      const cy = r.y + r.h / 2 - (box.y + box.h / 2 - H / 2) / z;
+      add(at, dur, { x: cx, y: cy, z }, opts.ease, typeof target === 'string' ? target : null);
       return this;
     },
     pan(x, y, at, dur = 1, opts = {}) {

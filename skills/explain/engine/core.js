@@ -3,44 +3,20 @@
 // No wall-clock is read anywhere in this file.
 import { bands, fillScale } from './bands.js';
 import { createCamera } from './camera.js';
-import { createRegistry, grid, radial, row, stack, tree, union } from './layout.js';
-import { clamp, ease, lerp } from './math.js';
+import { createRegistry, grid, radial, rectCenter, row, stack, tree, union } from './layout.js';
+import { clamp } from './math.js';
+import { definePreset } from './preset.js';
+import { drawFx, parseTransition, transitionFx, transitionLook, TRANSITIONS } from './transitions.js';
 
 export * from './math.js';
 
 const LAYOUTS = { row, stack, grid, radial, tree };
-const DEFAULT_TR = 0.6;
 // Pieces that lay out many items by themselves: without an explicit area they are scaled to fill the default area.
 const FILL_PIECES = new Set(['flow', 'stateMachine', 'architecture', 'timeline']);
+// HUD items flagged zoomFade (the heading) fade out between camera zoom 1 and 1 + ZOOM_FADE.
+const ZOOM_FADE = 0.15;
 
-/** Per-transition behavior. `out` / `in` map progress p (0..1) to the layer look of the leaving / entering scene. */
-export const TRANSITIONS = {
-  'crossfade': {
-    out: p => ({ sa: 1 - ease.inOut(p) }),
-    in: p => ({ sa: ease.inOut(p) }),
-  },
-  'push-zoom': {
-    out: p => ({ sa: 1 - ease.inOut(p), scale: lerp(1, 0.94, ease.inOut(p)) }),
-    in: p => ({ sa: ease.out(p), scale: lerp(1.06, 1, ease.out(p)) }),
-  },
-  'light-sweep': {
-    out: p => ({ sa: 1 - ease.inOut(p) }),
-    in: p => ({ sa: ease.inOut(p) }),
-    sweep: true,
-  },
-  'wipe': {
-    out: () => ({ sa: 1 }),
-    in: p => ({ sa: 1, wipe: ease.inOut(p) }),
-    edge: true,
-  },
-};
-
-function parseTransition(def) {
-  const spec = typeof def === 'string' ? { type: def } : (def ?? { type: 'crossfade' });
-  const type = spec.type ?? 'crossfade';
-  if (!TRANSITIONS[type]) { throw new Error(`Unknown transition "${type}" (use ${Object.keys(TRANSITIONS).join(', ')})`); }
-  return { type, dur: spec.dur ?? DEFAULT_TR };
-}
+export { TRANSITIONS };
 
 /** Identity helper that marks a scene definition (kept for readable scene files). */
 export function scene(def) {
@@ -51,6 +27,7 @@ function createBuilder({ ctx, style, W, H, pieces, name, lang, title }) {
   const reg = createRegistry();
   const items = [];
   const counters = {};
+  const area = bands(W, H).area;
   const s = {
     name,
     W,
@@ -59,10 +36,10 @@ function createBuilder({ ctx, style, W, H, pieces, name, lang, title }) {
     style,
     reg,
     items,
-    area: bands(W, H).area,
+    area,
     lang,
     title,
-    camera: createCamera({ W, H, resolve: id => reg.get(id) }),
+    camera: createCamera({ W, H, resolve: id => reg.get(id), area }),
     uid(prefix) {
       counters[prefix] = (counters[prefix] ?? 0) + 1;
       return `${prefix}-${counters[prefix]}`;
@@ -140,10 +117,12 @@ function createBuilder({ ctx, style, W, H, pieces, name, lang, title }) {
 
 /**
  * Build the engine from a scene spec: { width?, height?, fps?, scenes: [{ name, dur, transition?, build(s) }] }.
- * `transition` is the transition INTO the next scene: 'crossfade' | 'push-zoom' | 'light-sweep' | 'wipe',
- * or { type, dur }. Call it after fonts are loaded: text is fitted at build time.
+ * `transition` is the transition INTO the next scene: a type name (engine/transitions.js) or { type, dur, ...params }.
+ * `style` is a preset factory or a resolved preset (engine/preset.js). Call it after fonts are loaded: text is fitted
+ * at build time.
  */
-export function createEngine({ canvas, ctx = canvas.getContext('2d'), style, spec, pieces = {} }) {
+export function createEngine({ canvas, ctx = canvas.getContext('2d'), style: preset, spec, pieces = {} }) {
+  const style = definePreset(preset);
   const W = spec.width ?? 1920;
   const H = spec.height ?? 1080;
   const fps = spec.fps ?? 30;
@@ -185,6 +164,11 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style, spe
   });
   const duration = cursor;
 
+  /**
+   * Drawing api of one layer at scene-local time t. Alpha is a stack: renderers set ctx.globalAlpha only through
+   * api.alpha(a), which multiplies by api.sa, and api.fade(k) returns the same api with sa multiplied by k, so fades
+   * nest (a faded composite inside a fading scene inside a transition).
+   */
   const makeApi = (t, sa) => ({
     ctx,
     style,
@@ -196,6 +180,9 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style, spe
     color: tok => style.color(tok),
     alpha(a) {
       ctx.globalAlpha = clamp(a * sa);
+    },
+    fade(k) {
+      return makeApi(t, sa * clamp(k));
     },
   });
 
@@ -213,33 +200,54 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style, spe
       if (entering) {
         const prev = scenes[sc.index - 1];
         const p = lt / sc.trIn;
-        look = { ...look, ...TRANSITIONS[prev.trOut.type].in(p) };
-        fx.push({ type: prev.trOut.type, p });
+        look = { ...look, ...transitionLook(prev.trOut, 'in', p, W, H) };
+        for (const name of transitionFx(prev.trOut)) { fx.push({ name, type: prev.trOut.type, p, spec: prev.trOut, from: prev.index }); }
       }
       if (leaving) {
         const p = (lt - (sc.dur - sc.tr)) / sc.tr;
-        look = { ...look, ...TRANSITIONS[sc.trOut.type].out(p) };
+        look = { ...look, ...transitionLook(sc.trOut, 'out', p, W, H) };
       }
       layers.push({ index: sc.index, name: sc.name, lt, ...look });
     }
     return { t: tt, layers, fx };
   }
 
+  /** A transition origin (registered id of scene `sc`, [x, y], or nothing) in frame pixels at scene-local time lt. */
+  function originOf(sc, origin, lt) {
+    if (Array.isArray(origin)) { return origin; }
+    if (typeof origin === 'string' && sc?.reg.has(origin)) {
+      const [x, y] = rectCenter(sc.reg.get(origin));
+      const c = sc.camera.at(lt);
+      return [(x - c.x) * c.z + W / 2, (y - c.y) * c.z + H / 2];
+    }
+    return [W / 2, H / 2];
+  }
+
   function drawLayer(layer) {
     const sc = scenes[layer.index];
     const api = makeApi(layer.lt, layer.sa);
+    const [ox, oy] = originOf(sc, layer.origin, layer.lt);
     ctx.save();
+    // Clips apply to the whole layer, HUD included.
     if (layer.wipe !== undefined) {
       ctx.beginPath();
       ctx.rect(0, 0, W * layer.wipe, H);
       ctx.clip();
     }
-    if (layer.scale && layer.scale !== 1) {
-      ctx.translate(W / 2, H / 2);
-      ctx.scale(layer.scale, layer.scale);
-      ctx.translate(-W / 2, -H / 2);
+    if (layer.iris !== undefined) {
+      ctx.beginPath();
+      ctx.arc(ox, oy, Math.max(0, Math.hypot(W, H) * layer.iris), 0, Math.PI * 2);
+      ctx.clip();
     }
+    // Moves (shift, rotation, scale) apply to the world only: the HUD stays where it is and just fades.
     ctx.save();
+    if (layer.dx || layer.dy) { ctx.translate((layer.dx ?? 0) * W, (layer.dy ?? 0) * H); }
+    if (layer.rot || (layer.scale && layer.scale !== 1)) {
+      ctx.translate(ox, oy);
+      if (layer.rot) { ctx.rotate(layer.rot); }
+      if (layer.scale && layer.scale !== 1) { ctx.scale(layer.scale, layer.scale); }
+      ctx.translate(-ox, -oy);
+    }
     sc.camera.apply(ctx, layer.lt);
     for (const it of sc.items) {
       ctx.save();
@@ -247,12 +255,12 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style, spe
       ctx.restore();
     }
     ctx.restore();
-    // HUD furniture (section tag, heading, caption, footer) is screen space: the camera never moves it.
-    // The heading fades out while the camera zooms in, so it never sits on top of the magnified part.
-    const zoomOut = clamp((sc.camera.at(layer.lt).z - 1) / 0.35);
+    // HUD furniture (section tag, heading, caption, footer, rail) is screen space: the camera never moves it.
+    // zoomFade items (the heading) fade out while the camera zooms in, so they never sit over the magnified part.
+    const zoomOut = clamp((sc.camera.at(layer.lt).z - 1) / ZOOM_FADE);
     for (const it of sc.hud) {
       ctx.save();
-      it.draw(it.zoomFade && zoomOut > 0 ? makeApi(layer.lt, layer.sa * (1 - zoomOut)) : api, layer.lt);
+      it.draw(it.zoomFade && zoomOut > 0 ? api.fade(1 - zoomOut) : api, layer.lt);
       ctx.restore();
     }
     ctx.restore();
@@ -270,19 +278,10 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style, spe
     style.background(makeApi(st.t, 1));
     for (const layer of st.layers) { drawLayer(layer); }
     for (const f of st.fx) {
-      const api = makeApi(st.t, 1);
-      ctx.save();
-      ctx.globalAlpha = 1;
-      if (TRANSITIONS[f.type].sweep) { style.sweep(api, f.p); }
-      if (TRANSITIONS[f.type].edge) {
-        const x = W * ease.inOut(f.p);
-        ctx.fillStyle = style.color('accent');
-        ctx.globalAlpha = 1 - Math.abs(f.p - 0.5) * 0.6;
-        ctx.fillRect(x - 3, 0, 6, H);
-      }
-      ctx.restore();
+      const src = scenes[f.from];
+      drawFx(makeApi(st.t, 1), f.name, f.p, f.spec, originOf(src, f.spec.origin, src.dur));
     }
-    style.overlay?.(makeApi(st.t, 1));
+    style.overlay(makeApi(st.t, 1));
   }
 
   /** QA sample: per visible scene, the records of every element that reports bounds and text. */

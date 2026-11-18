@@ -115,6 +115,24 @@ export default {
     ctx.restore();
   },
 
+  /** Free polygon or polyline. o: p (draw-on), stroke (token | null), fill (token | null), fillAlpha, lw, alpha, closed. */
+  poly(api, pts, o = {}) {
+    const { p = 1, stroke = 'ink', fill = null, fillAlpha = 0.18, lw = 3, alpha = 1, closed = true } = o;
+    if (p <= 0 || alpha <= 0 || pts.length < 2) { return; }
+    const { ctx } = api;
+    if (fill && closed) {
+      ctx.save();
+      api.alpha(alpha * fillAlpha * p);
+      ctx.fillStyle = color(fill);
+      ctx.beginPath();
+      pts.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])));
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    if (stroke !== null) { this.line(api, closed ? [...pts, pts[0]] : pts, { ...o, p, color: stroke, lw, alpha, head: false }); }
+  },
+
   /** Single line of text. o: px, role, weight, color, align, alpha. */
   text(api, str, x, y, o = {}) {
     const { px = 46, role = 'body', weight, color: c = 'ink', align = 'left', alpha = 1 } = o;
