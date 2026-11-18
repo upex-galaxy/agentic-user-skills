@@ -151,6 +151,7 @@ export function label(s, o) {
     id,
     z: o.z ?? 1,
     rect,
+    end: o.type ? typeAt + td : at + dur,
     texts: () => [text],
     draw(api, t) {
       const v = vis(t);

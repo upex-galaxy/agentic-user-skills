@@ -272,6 +272,17 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style: pre
     ctx.restore();
   }
 
+  /**
+   * Scene-local time when a scene has settled: 0.3 s after the last piece that reports an `end` (typing, a caption,
+   * a pipeline) finishes, at least half the scene, and before the outgoing transition starts. Contact sheets sample it.
+   */
+  function settleOf(sc) {
+    const last = sc.dur - sc.tr - 0.05;
+    const ends = [...sc.items, ...sc.hud].map(it => it.end).filter(e => Number.isFinite(e) && e <= last);
+    const done = ends.length ? Math.max(...ends) + 0.3 : sc.dur * 0.7;
+    return Math.round(Math.min(last, Math.max(done, sc.dur * 0.5)) * 100) / 100;
+  }
+
   /** Draw the frame at time t (seconds). Deterministic: same t, same pixels. */
   function render(t) {
     globalThis.__explainClock?.seek(t * 1000);
@@ -323,7 +334,7 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style: pre
     H,
     fps,
     duration,
-    scenes: scenes.map(sc => ({ name: sc.name, start: sc.start, dur: sc.dur, end: sc.start + sc.dur })),
+    scenes: scenes.map(sc => ({ name: sc.name, start: sc.start, dur: sc.dur, end: sc.start + sc.dur, settle: settleOf(sc) })),
     style,
     ctx,
     canvas,

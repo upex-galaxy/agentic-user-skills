@@ -354,7 +354,8 @@ export function chart(s, o) {
 
 /**
  * Grid of dots that fill one by one (tests passing, hosts updated). o: rect, rows, cols, at, dur (2), fail (indices
- * that turn out bad), color (good), until.
+ * that turn out bad), color (good), label (a line under the dots, inside the rect), labelPx, until. Registers its id,
+ * so edges, packets and callouts can target the grid as a whole.
  */
 export function dotGrid(s, o) {
   const rect = resolveRect(s, o, 'dotGrid');
@@ -363,21 +364,29 @@ export function dotGrid(s, o) {
   const at = o.at ?? 0;
   const dur = o.dur ?? 2;
   const total = rows * cols;
-  const cw = rect.w / cols;
-  const ch = rect.h / rows;
+  // Optional label in a band under the dots, inside the rect (the rect keeps its registered id for edges and packets).
+  const tk = textKit(s);
+  const labelPx = o.labelPx ?? size(s, 'label', 0.7);
+  const labelH = o.label ? Math.round(labelPx * 1.5) : 0;
+  if (o.label) { tk.make(o.label, rect.x + rect.w / 2, rect.y + rect.h - labelH / 2, rect.w, { px: labelPx, align: 'center', color: 'dim' }); }
+  const grid = { ...rect, h: rect.h - labelH };
+  const cw = grid.w / cols;
+  const ch = grid.h / rows;
   const rad = Math.min(cw, ch) * 0.34;
   const fail = new Set(o.fail ?? []);
   const vis = t => fadeIn(t, at - 0.3, 0.3) * fadeOut(o, t);
   return piece(s, o, {
     kind: 'dotGrid',
     rect,
+    tk,
     vis,
     end: at + dur,
     draw(api, t) {
+      for (const sp of tk.list) { drawT(api, sp); }
       const done = prog(t, at, dur) * total;
       for (let i = 0; i < total; i++) {
-        const x = rect.x + cw * ((i % cols) + 0.5);
-        const y = rect.y + ch * (Math.floor(i / cols) + 0.5);
+        const x = grid.x + cw * ((i % cols) + 0.5);
+        const y = grid.y + ch * (Math.floor(i / cols) + 0.5);
         const k = clamp(done - i);
         if (k <= 0) { ring(api, x, y, rad * 0.7, { color: 'dim', lw: 2, alpha: 0.55, glow: 0 }); }
         else { dot(api, x, y, rad * (0.8 + 0.4 * Math.sin(Math.PI * k) + 0.2 * k), fail.has(i) ? 'bad' : (o.color ?? 'good'), { glow: 8 }); }
