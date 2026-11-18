@@ -18,7 +18,7 @@ afterAll(() => { for (const d of temps) { rmSync(d, { recursive: true, force: tr
 const cli = join(import.meta.dir, 'index.ts');
 
 async function run(args: string[], home: string) {
-  const p = Bun.spawn(['bun', cli, ...args], { stdout: 'pipe', stderr: 'pipe', env: { ...process.env, EXPLAIN_HOME: home } });
+  const p = Bun.spawn(['bun', cli, ...args], { stdout: 'pipe', stderr: 'pipe', env: { ...process.env, EXPLAIN_HOME: home, TZ: Intl.DateTimeFormat().resolvedOptions().timeZone } });
   const [stdout, stderr] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
   return { code: await p.exited, stdout, stderr };
 }
