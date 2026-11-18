@@ -172,31 +172,76 @@ export function gitGraph(s, o) {
   need(o.lanes?.length && o.commits?.length, 'gitGraph needs lanes and commits');
   const at = o.at ?? 0;
   const { pad } = s.style.defaults;
-  const lanes = o.lanes.map((l, i) => ({ ...l, name: String(l.name ?? l.id), i, y: rect.y + (rect.h * (i + 0.5)) / o.lanes.length }));
+  const lanes = o.lanes.map((l, i) => ({ ...l, name: String(l.name ?? l.id), i }));
   const laneOf = Object.fromEntries(lanes.map(l => [l.name, l]));
   const cols = o.cols ?? Math.max(...o.commits.map(c => c.col)) + 1;
   const tk = textKit(s);
   const R = Math.round(o.r ?? clamp(size(s, 'label', 0.55), 14, 30));
+  const cpx = size(s, 'label', 0.62);
+  const sideOf = lane => (lanes.length > 1 && lane.i < (lanes.length - 1) / 2 ? -1 : 1);
+  // Label and tag band: how far a commit's text reaches past its lane. The top and bottom lanes reserve it inside the rect.
+  const reach = c => R + 6 + (c.label ? cpx * 1.2 : 0) + (c.tag ? (c.label ? 10 : 0) + cpx * 1.35 + 10 : 0);
+  const need0 = (laneI, side) => Math.max(0, ...o.commits.filter((c) => {
+    const lane = laneOf[c.lane];
+    return lane && lane.i === laneI && sideOf(lane) === side && (c.label || c.tag);
+  }).map(c => reach(c) + 4));
+  const needTop = need0(0, -1);
+  const needBot = need0(lanes.length - 1, 1);
+  // The edge lanes sit half a lane height inside the band; the band makes up the rest of the reach (a few passes settle it).
+  let bandTop = 0;
+  let bandBot = 0;
+  for (let k = 0; k < 6; k++) {
+    const half = (rect.h - bandTop - bandBot) / (lanes.length * 2);
+    bandTop = needTop ? clamp(needTop - half, 0, rect.h * 0.35) : 0;
+    bandBot = needBot ? clamp(needBot - half, 0, rect.h * 0.35) : 0;
+  }
+  const area = { y: rect.y + bandTop, h: rect.h - bandTop - bandBot };
+  for (const l of lanes) { l.y = area.y + (area.h * (l.i + 0.5)) / lanes.length; }
   const lpx = Math.min(size(s, 'label', 0.8), ...lanes.map(l => fitPx(s, l.name, rect.w * 0.27, size(s, 'label', 0.8), { role: 'mono', weight: 700 })));
   const gutter = Math.max(...lanes.map(l => textW(s, l.name, lpx, 'mono', 700))) + pad * 1.5;
   const colW = (rect.w - gutter - pad) / cols;
   const colX = c => rect.x + gutter + colW * (c + 0.5);
-  const cpx = size(s, 'label', 0.62);
+  // A text fitted to maxW: shrunk to the minimum size, then shortened with an ellipsis instead of overflowing.
+  const fitText = (str, maxW, o2) => {
+    const px = fitPx(s, str, maxW, o2.px, o2);
+    if (textW(s, str, px, o2.role, o2.weight) <= maxW) { return str; }
+    let core = str;
+    while (core.length > 1 && textW(s, `${core.trimEnd()}…`, px, o2.role, o2.weight) > maxW) { core = core.slice(0, -1); }
+    return `${core.trimEnd()}…`;
+  };
+  // Where a centered text of width w can sit: inside the rect, `m` px from each edge.
+  const clampX = (x, w, m) => clamp(x, rect.x + 3 + m + w / 2, rect.x + rect.w - 3 - m - w / 2);
   for (const l of lanes) { l.spec = tk.make(l.name, rect.x + 4, l.y, gutter - 8, { px: lpx, role: 'mono', weight: 700, color: l.color ?? 'accent', at: at + l.i * 0.15 }); }
   const defaultAt = i => at + 0.5 + i * 0.6;
+  // A text may be as wide as the gap to the nearest commit with text on its lane (a lone commit gets its own column and more).
+  const roomOf = (c) => {
+    const near = o.commits.filter(x => x !== c && x.lane === c.lane && (x.label || x.tag) && x.col !== c.col).map(x => Math.abs(x.col - c.col));
+    return Math.max(1, Math.min(...near, 3)) * colW;
+  };
   const commits = o.commits.map((c, i) => {
     const lane = laneOf[c.lane];
     need(lane, `gitGraph: commit "${c.id}" names unknown lane "${c.lane}"`);
     const x = colX(c.col);
-    const side = lanes.length > 1 && lane.i < (lanes.length - 1) / 2 ? -1 : 1;
+    const side = sideOf(lane);
     const cm = { ...c, id: String(c.id), x, y: lane.y, lane, at: c.at ?? defaultAt(i), color: c.color ?? lane.color ?? 'accent', side };
     s.reg.add(`${id}.${cm.id}`, { x: x - R - 6, y: lane.y - R - 6, w: R * 2 + 12, h: R * 2 + 12 });
     cm.rect = s.reg.get(`${id}.${cm.id}`);
-    cm.lab = c.label ? tk.make(c.label, x, lane.y + side * (R + 6 + cpx * 0.6), colW * 0.92, { px: cpx, role: 'mono', align: 'center', color: 'dim', at: cm.at + 0.1 }) : null;
+    if (c.label) {
+      const lo = { px: cpx, role: 'mono' };
+      const room = roomOf(c) * 0.92;
+      const str = fitText(String(c.label), room, lo);
+      const w = textW(s, str, fitPx(s, str, room, cpx, lo), 'mono');
+      cm.lab = tk.make(str, clampX(x, w, 0), lane.y + side * (R + 6 + cpx * 0.6), room, { px: cpx, role: 'mono', align: 'center', color: 'dim', at: cm.at + 0.1 });
+    }
+    else { cm.lab = null; }
     if (c.tag) {
       const tpx = cpx;
       const ty = lane.y + side * (R + 6 + (c.label ? cpx * 1.2 + 10 : 0) + tpx * 0.75 + 8);
-      cm.tagSpec = tk.make(c.tag, x, ty, colW * 0.92 - 24, { px: tpx, role: 'mono', weight: 700, align: 'center', color: 'onPanel', at: cm.at + 0.25 });
+      const to = { px: tpx, role: 'mono', weight: 700 };
+      const maxW = roomOf(c) * 0.92 - 24;
+      const str = fitText(String(c.tag), maxW, to);
+      const w = textW(s, str, fitPx(s, str, maxW, tpx, to), 'mono', 700);
+      cm.tagSpec = tk.make(str, clampX(x, w, 12), ty, maxW, { px: tpx, role: 'mono', weight: 700, align: 'center', color: 'onPanel', at: cm.at + 0.25 });
     }
     return cm;
   });

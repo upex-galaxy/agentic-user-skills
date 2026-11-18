@@ -1,6 +1,7 @@
 /* eslint-disable ts/no-explicit-any */
 import { describe, expect, test } from 'bun:test';
 import demo from '../../examples/pieces/state.scene.js';
+import { runQA } from '../qa.js';
 import { buildScene, qaOfDemo, records, STYLES } from './harness-b.ts';
 import { activeAt, autoStatePlan, pieces, routeTransitions, stateLayout, transitionPath } from './state.js';
 
@@ -134,4 +135,20 @@ describe('auto layout fills the content area', () => {
     const b = rects.B;
     expect(arc.pts.some((q: number[]) => q[0] > b.x && q[0] < b.x + b.w && q[1] > b.y && q[1] < b.y + b.h)).toBe(false);
   });
+});
+
+describe('auto layout keeps the transition labels apart', () => {
+  const states = [{ id: 'draft', text: 'Borrador' }, { id: 'built', text: 'Construido' }, { id: 'checked', text: 'Revisado' }, { id: 'exported', text: 'Exportado' }];
+  const cases: [string, string[][]][] = [
+    ['back edge between neighbors', [['draft', 'built', 'build'], ['built', 'checked', 'check'], ['checked', 'exported', 'export'], ['built', 'draft', 'errores de QA']]],
+    ['long loop-back label', [['draft', 'built', 'construir'], ['built', 'checked', 'revisar'], ['checked', 'exported', 'exportar'], ['checked', 'draft', 'errores de QA y reinicio']]],
+  ];
+  for (const [name, transitions] of cases) {
+    test(`the QA gate passes in sketch (${name})`, () => {
+      const { engine } = buildScene((s: any) => { s.stateMachine({ area: { x: 80, y: 244, w: 1280, h: 620 }, states, transitions, at: 0.5 }); }, pieces, 12, STYLES[1][1]);
+      const times = Array.from({ length: 16 }, (_, i) => 0.5 + i * 0.7);
+      const res = runQA(engine, times, { determinism: false });
+      expect(res.errors.filter((e: any) => /overlap|collision/.test(e.type))).toEqual([]);
+    });
+  }
 });

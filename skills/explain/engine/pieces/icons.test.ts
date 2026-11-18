@@ -60,3 +60,34 @@ describe('icons', () => {
     expect(() => drawIcon(makeApi(hologram, makeStubCtx().ctx), 'nope', { x: 0, y: 0, w: 10, h: 10 })).toThrow(/laptop/);
   });
 });
+
+describe('icon labelW', () => {
+  const LABEL = '2. PR con checks y revisión';
+  const narrowRect = { x: 600, y: 300, w: 160, h: 220 };
+
+  for (const side of ['bottom', 'top'] as const) {
+    test(`a label wider than the icon fits and the rect grows to hold it, centered on the icon (${side})`, () => {
+      const { engine } = build(sketch, (s: any) => { s.icon({ id: 'i', kind: 'branch', rect: narrowRect, label: LABEL, labelSide: side, labelW: 520, at: 0.2 }); });
+      const r = engine.sample(3)[0].records.find((x: any) => x.id === 'i');
+      expect(r.rect.w).toBeGreaterThanOrEqual(520 - 0.5);
+      expect(r.rect.x + r.rect.w / 2).toBeCloseTo(narrowRect.x + narrowRect.w / 2, 3);
+      const tx = r.texts[0];
+      expect(tx.overflow).toBe(false);
+      expect(tx.rect.x).toBeGreaterThanOrEqual(r.rect.x - 0.5);
+      expect(tx.rect.x + tx.rect.w).toBeLessThanOrEqual(r.rect.x + r.rect.w + 0.5);
+    });
+  }
+
+  test('a side label ignores labelW', () => {
+    const { engine } = build(sketch, (s: any) => { s.icon({ id: 'i', kind: 'branch', x: 300, y: 400, size: 120, label: 'Título', labelSide: 'right', labelW: 900, at: 0.2 }); });
+    expect(engine.sample(3)[0].records.find((x: any) => x.id === 'i').rect.w).toBeLessThan(600);
+  });
+
+  test('x, y, size keeps the icon where it was and centers a bottom label on it', () => {
+    const { engine } = build(sketch, (s: any) => { s.icon({ id: 'i', kind: 'branch', x: 300, y: 400, size: 120, label: LABEL, labelW: 480, at: 0.2 }); });
+    const r = engine.sample(3)[0].records.find((x: any) => x.id === 'i');
+    expect(r.rect.x + r.rect.w / 2).toBeCloseTo(300 + 120 / 2, -1);
+    expect(r.rect.w).toBeGreaterThanOrEqual(480 - 0.5);
+    expect(runQA(engine, [1, 3], { determinism: false }).ok).toBe(true);
+  });
+});

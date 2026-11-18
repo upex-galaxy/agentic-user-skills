@@ -202,3 +202,59 @@ describe('end and demo', () => {
     });
   }
 });
+
+// Regression: sketch at the wide end of the handwriting face (the stub measures 0.6 of the size per glyph).
+function buildWide(fn: (s: any) => void, dur = 10) {
+  const stub = makeStubCtx(0.6);
+  installRoughStub(stub.log);
+  const engine = createEngine({ canvas: stub.canvas, style: sketch, pieces: { ...basePieces, ...pieces }, spec: { scenes: [{ name: 't', dur, build: fn }] } } as any);
+  return { engine, ...stub };
+}
+const inRect = (r: any, o: any) => o.x >= r.x - 0.5 && o.y >= r.y - 0.5 && o.x + o.w <= r.x + r.w + 0.5 && o.y + o.h <= r.y + r.h + 0.5;
+
+describe('progress in a short rect', () => {
+  test('the label and the percent fit the rect height and the bar keeps its room', () => {
+    for (const h of [40, 60, 90]) {
+      const rect = { x: 200, y: 300, w: 500, h };
+      const { engine } = buildWide((s) => { s.progress({ id: 'p', rect, label: 'Descargando', pct: true, at: 0.2 }); });
+      const r = recs(engine, 4).p;
+      expect(r.texts.length).toBe(2);
+      for (const tx of r.texts) { expect(inRect(rect, tx.rect)).toBe(true); }
+      expect(runQA(engine, [1, 4], { determinism: false }).ok).toBe(true);
+    }
+  });
+});
+
+describe('chart text stays inside the rect', () => {
+  const labels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Dic'];
+
+  test('first and last x labels do not leave the rect', () => {
+    const rect = { x: 900, y: 250, w: 800, h: 300 };
+    const { engine } = buildWide((s) => { s.chart({ id: 'c', rect, type: 'line', data: [3, 5, 4, 8], labels: ['Diciembre', 'Febrero', 'Marzo', 'Noviembre'], title: 'Ventas', at: 0.2 }); });
+    const r = recs(engine, 6).c;
+    for (const tx of r.texts) { expect(inRect(rect, tx.rect)).toBe(true); }
+    expect(runQA(engine, [1, 3, 6], { determinism: false }).ok).toBe(true);
+  });
+
+  test('the mark sits inside the plot, with or without x labels, clear of the labels', () => {
+    for (const withLabels of [true, false]) {
+      const rect = { x: 900, y: 250, w: 800, h: 300 };
+      const { engine } = buildWide((s) => { s.chart({ id: 'c', rect, type: 'line', data: [1, 9, 8, 7, 6, 5], ...(withLabels && { labels }), mark: { i: 0, text: 'Lanzamiento' }, at: 0.2 }); });
+      const r = recs(engine, 8).c;
+      const mark = r.texts.find((x: any) => x.text === 'Lanzamiento');
+      expect(inRect(rect, mark.rect)).toBe(true);
+      const xLabelTop = rect.y + rect.h - (withLabels ? 2 * 0.72 * 60 : 0);
+      expect(mark.rect.y + mark.rect.h).toBeLessThan(xLabelTop);
+      expect(runQA(engine, [2, 4, 6, 8], { determinism: false }).ok).toBe(true);
+    }
+  });
+
+  test('a bar value label stays under the title', () => {
+    const rect = { x: 200, y: 600, w: 600, h: 280 };
+    const { engine } = buildWide((s) => { s.chart({ id: 'c', rect, type: 'bars', data: [3, 5, 9, 8], labels: ['Uno', 'Dos', 'Tres', 'Cuatro'], title: 'Barras del mes', at: 0.2 }); });
+    const r = recs(engine, 8).c;
+    const title = r.texts.find((x: any) => x.text === 'Barras del mes');
+    for (const tx of r.texts.filter((x: any) => /^\d/.test(x.text))) { expect(tx.rect.y).toBeGreaterThanOrEqual(title.rect.y + title.rect.h); }
+    expect(runQA(engine, [2, 4, 6, 8], { determinism: false }).ok).toBe(true);
+  });
+});

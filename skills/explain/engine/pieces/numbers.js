@@ -84,8 +84,9 @@ export function progress(s, o) {
   const to = o.to ?? 1;
   const showPct = o.pct !== false;
   const hasHead = Boolean(o.label) || showPct;
-  const headPx = size(s, 'label', 0.85);
-  const headH = hasHead ? Math.min(rect.h * 0.6, headPx * 1.5) : 0;
+  // The header text fits the rect height: a short rect shrinks the label and the percent so the bar keeps at least 12 px.
+  const headPx = hasHead ? clamp((rect.h - 16) / 1.5, 8, size(s, 'label', 0.85)) : size(s, 'label', 0.85);
+  const headH = hasHead ? headPx * 1.5 : 0;
   const bar = { x: rect.x, y: rect.y + headH + (hasHead ? 4 : 0), w: rect.w, h: Math.max(12, rect.h - headH - (hasHead ? 4 : 0)) };
   const pctW = showPct ? textW(s, '100 %', headPx, 'mono') + 12 : 0;
   const tk = textKit(s);
@@ -197,7 +198,6 @@ export function chart(s, o) {
   const series = Array.isArray(o.data?.[0]) ? o.data : [o.data ?? []];
   const n = Math.max(...series.map(x => x.length));
   if (!n || !Number.isFinite(n)) { throw new Error('chart needs data'); }
-  const yMax = o.yMax ?? Math.max(...series.flat()) * 1.18;
   const textPx = size(s, 'label', 0.72);
   const tk = textKit(s);
   const titlePx = o.title ? fitPx(s, o.title, rect.w - 16, size(s, 'label', 0.9), { weight: 700 }) : 0;
@@ -206,6 +206,9 @@ export function chart(s, o) {
   const labelH = o.labels?.length ? textPx * 2 : 0;
   const plot = { x: rect.x + 14, y: rect.y + titleH + 14, w: rect.w - 28, h: rect.h - titleH - labelH - 28 };
   const base = plot.y + plot.h;
+  // Bars keep room above the tallest one for its value label (it must not reach the title).
+  const headroom = bars ? Math.max(1.18, 1 / Math.max(0.3, 1 - (textPx * 2) / Math.max(1, plot.h))) : 1.18;
+  const yMax = o.yMax ?? Math.max(...series.flat()) * headroom;
   const xs = i => (bars ? plot.x + (plot.w / n) * (i + 0.5) : plot.x + 24 + ((plot.w - 48) * i) / Math.max(1, n - 1));
   const ys = v => base - (v / yMax) * plot.h;
   const palette = ['accent', 'accent2', 'good', 'warn'];
@@ -220,10 +223,12 @@ export function chart(s, o) {
   labs.forEach((l, i) => {
     const idx = labs.length === n || bars ? i : Math.round((i * (n - 1)) / Math.max(1, labs.length - 1));
     const slot = Math.min(plot.w / labs.length, 420);
-    tk.make(l, xs(idx), rect.y + rect.h - labelH / 2 - 2, slot, { px: textPx, align: 'center', color: 'dim', at: at + 0.2 });
+    // The first and last labels slide in so their text stays inside the rect.
+    const lw = textW(s, l, fitPx(s, l, slot, textPx), 'body');
+    tk.make(l, clamp(xs(idx), rect.x + 4 + lw / 2, rect.x + rect.w - 4 - lw / 2), rect.y + rect.h - labelH / 2 - 2, slot, { px: textPx, align: 'center', color: 'dim', at: at + 0.2 });
   });
   // bars: one value label per bar, visible once the bar has grown
-  if (bars) { series[0].forEach((v, i) => tk.make(fmtVal(v), xs(i), ys(v) - textPx * 0.95, (plot.w / n) * 0.9, { px: textPx, weight: 700, align: 'center', role: 'mono', color: 'ink', at: barAt(i) + barDur * 0.6 })); }
+  if (bars) { series[0].forEach((v, i) => tk.make(fmtVal(v), xs(i), Math.max(ys(v) - textPx * 0.95, plot.y + textPx * 0.6), (plot.w / n) * 0.9, { px: textPx, weight: 700, align: 'center', role: 'mono', color: 'ink', at: barAt(i) + barDur * 0.6 })); }
   // line / area: fraction of the path length at which the marker point is reached, then the time it takes
   const draw0 = t0;
   const lineP = t => ease.inOut(prog(t, draw0, dur));
@@ -243,15 +248,31 @@ export function chart(s, o) {
     markAt = draw0 + hi * dur;
     const [px0, py0] = sp[mk.i];
     const mpx = textPx * 1.05;
-    const next = sp[mk.i + 1];
     const mw = Math.min(textW(s, mk.text, mpx, 'body', 700) + 4, 420);
-    // Keep the label clear of the line: beside the point, on the side the line leaves from.
-    const room = rect.x + rect.w - 6 - (px0 + 22);
-    const side = next && room >= mw ? 'right' : 'center';
-    const below = Boolean(next) && next[1] < py0;
-    const my = below ? py0 + 40 : py0 - 40;
-    if (side === 'right') { tk.make(mk.text, px0 + 22, my, Math.min(420, room), { px: mpx, weight: 700, align: 'left', color: mk.color ?? 'good', at: markAt }); }
-    else { tk.make(mk.text, clamp(px0, rect.x + mw / 2 + 6, rect.x + rect.w - mw / 2 - 6), py0 - 44, 420, { px: mpx, weight: 700, align: 'center', color: mk.color ?? 'good', at: markAt }); }
+    const mh = mpx * 1.2;
+    // The mark goes beside its point, inside the rect and clear of every line and of the title and x labels: the four spots
+    // around the point (right and centered, above and below), then a second ring, then the top corner of the rect.
+    const lines = pts.map(q => q.flatMap((p, i) => (i ? Array.from({ length: 12 }, (_, k) => [p[0] + ((q[i - 1][0] - p[0]) * k) / 11, p[1] + ((q[i - 1][1] - p[1]) * k) / 11]) : [p])));
+    const dy = mh / 2 + 18;
+    const spots = [];
+    for (const ring of [0, mh + 8]) {
+      for (const [side, cx] of [['right', px0 + 22 + mw / 2], ['center', px0]]) {
+        for (const cy of [py0 - dy - ring - (side === 'right' ? 6 : 14), py0 + dy + ring + (side === 'right' ? 6 : 14)]) { spots.push({ cx: clamp(cx, rect.x + 6 + mw / 2, rect.x + rect.w - 6 - mw / 2), cy }); }
+      }
+    }
+    spots.push({ cx: rect.x + rect.w - 6 - mw / 2, cy: rect.y + 4 + mh / 2 });
+    const others = tk.list.map(sp => sp.rect);
+    const penalty = (sp) => {
+      const r = { x: sp.cx - mw / 2, y: sp.cy - mh / 2, w: mw, h: mh };
+      let n = 0;
+      if (r.y < rect.y + 2 || r.y + r.h > rect.y + rect.h - 2 || r.x < rect.x + 4 || r.x + r.w > rect.x + rect.w - 4) { n += 1000; }
+      if (r.y < plot.y + 2 || r.y + r.h > base - 2) { n += 20; }
+      n += 200 * others.filter(o2 => r.x < o2.x + o2.w && o2.x < r.x + r.w && r.y < o2.y + o2.h && o2.y < r.y + r.h).length;
+      for (const l of lines) { n += l.filter(p => p[0] > r.x - 6 && p[0] < r.x + r.w + 6 && p[1] > r.y - 6 && p[1] < r.y + r.h + 6).length; }
+      return n;
+    };
+    const pick = spots.reduce((a, b2) => (penalty(b2) < penalty(a) ? b2 : a));
+    tk.make(mk.text, pick.cx, pick.cy, 420, { px: mpx, weight: 700, align: 'center', color: mk.color ?? 'good', at: markAt });
   }
   const endT = bars ? barAt(n - 1) + barDur : Math.max(draw0 + dur, markAt + (mk ? 0.4 : 0));
   const vis = t => fadeIn(t, at, 0.5) * fadeOut(o, t);

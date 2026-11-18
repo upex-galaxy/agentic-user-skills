@@ -1,6 +1,7 @@
 /* eslint-disable ts/no-explicit-any */
 import { describe, expect, test } from 'bun:test';
 import demo from '../../examples/pieces/architecture.scene.js';
+import { runQA } from '../qa.js';
 import { architectureLayout, pieces } from './architecture.js';
 import { buildScene, qaOfDemo, records, STYLES } from './harness-b.ts';
 
@@ -66,6 +67,32 @@ describe('architecture piece', () => {
   for (const [name, style] of STYLES) {
     test(`demo passes the QA gate (${name})`, () => {
       expect(qaOfDemo(demo, pieces, style).errors).toEqual([]);
+    });
+  }
+});
+
+describe('columns link labels', () => {
+  const zones = [
+    { id: 'cli', title: 'Cliente', nodes: [{ id: 'web', text: 'App web' }, { id: 'mob', text: 'Móvil' }] },
+    { id: 'srv', title: 'Servidor', nodes: [{ id: 'api', text: 'API' }, { id: 'auth', text: 'Auth' }] },
+    { id: 'dat', title: 'Datos', nodes: [{ id: 'db', text: 'Base de datos' }] },
+  ];
+  const links = [['web', 'api', 'HTTPS seguro'], ['mob', 'auth', 'token'], ['api', 'db', 'consulta SQL'], ['web', 'db', 'caché directa']];
+
+  for (const [name, style] of STYLES) {
+    test(`no link label overlaps a node (${name})`, () => {
+      const { engine } = buildScene((s: any) => { s.architecture({ layout: 'columns', zones, links, at: 0.3 }); }, pieces, 12, style);
+      const rs = records(engine, 9);
+      const labels = Object.values(rs).filter((r: any) => /-link-\d+-label$/.test(r.id));
+      expect(labels).toHaveLength(4);
+      for (const l of labels) {
+        for (const id of ['web', 'mob', 'api', 'auth', 'db']) {
+          const n = rs[id].rect;
+          const hit = l.rect.x < n.x + n.w && n.x < l.rect.x + l.rect.w && l.rect.y < n.y + n.h && n.y < l.rect.y + l.rect.h;
+          expect(hit).toBe(false);
+        }
+      }
+      expect(runQA(engine, [3, 6, 9], { determinism: false }).errors).toEqual([]);
     });
   }
 });

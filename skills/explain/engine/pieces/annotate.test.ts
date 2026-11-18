@@ -256,3 +256,43 @@ describe('demo', () => {
     });
   }
 });
+
+describe('chip position and host', () => {
+  const rectOf = (engine: any, id: string) => rec(engine, 3, id).rect;
+
+  test('any mix of x | cx and y | cy places the chip', () => {
+    const { engine } = build(hologram, (s: any) => {
+      s.chip({ id: 'a', text: 'hola', cx: 600, y: 300, at: 0.5 });
+      s.chip({ id: 'b', text: 'mundo', x: 900, cy: 400, at: 0.5 });
+    });
+    const a = rectOf(engine, 'a');
+    const b = rectOf(engine, 'b');
+    expect(a.x + a.w / 2).toBeCloseTo(600, 3);
+    expect(a.y).toBeCloseTo(300, 3);
+    expect(b.x).toBeCloseTo(900, 3);
+    expect(b.y + b.h / 2).toBeCloseTo(400, 3);
+  });
+
+  test('a lone coordinate still throws "no position"', () => {
+    expect(() => build(hologram, (s: any) => s.chip({ text: 'x', cx: 100 }))).toThrow(/no position/);
+  });
+
+  test('`px` shrinks the chip', () => {
+    const { engine } = build(sketch, (s: any) => {
+      s.chip({ id: 'big', text: 'estado', cx: 400, cy: 300, at: 0.5 });
+      s.chip({ id: 'small', text: 'estado', cx: 800, cy: 300, px: 22, at: 0.5 });
+    });
+    expect(rectOf(engine, 'small').h).toBeLessThan(rectOf(engine, 'big').h);
+    expect(rectOf(engine, 'small').w).toBeLessThan(rectOf(engine, 'big').w);
+  });
+
+  test('`in` names the QA host and does not move a chip that has coordinates', () => {
+    const { engine } = build(sketch, (s: any) => {
+      s.chip({ id: 'c', text: 'en la mitad', in: 'split.left', cx: 500, cy: 600, at: 0.5 });
+    });
+    const r = rec(engine, 3, 'c');
+    expect(r.host).toBe('split.left');
+    expect(r.rect.x + r.rect.w / 2).toBeCloseTo(500, 3);
+    expect(r.rect.y + r.rect.h / 2).toBeCloseTo(600, 3);
+  });
+});

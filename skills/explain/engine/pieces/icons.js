@@ -277,7 +277,8 @@ const IDLE = {
 /**
  * Icon with an optional label. opts: id, kind (one of KINDS), rect | x, y, size (top-left of the piece, icon `size`
  * px) | in | a registered id, at, dur (draw-on, 0.6), color, label, labelSide ('bottom' | 'top' | 'left' | 'right'),
- * labelPx, labelColor, idle ('float' | 'bob' | 'sway' | 'pulse'), spin (rad/s: gear, clock), until (fades out), z.
+ * labelPx, labelColor, labelW (label width for a 'bottom' | 'top' label, wider than the icon: the label is centered on the
+ * icon and the piece rect grows to include it; a side label ignores it, its width is the rect beside the icon), idle ('float' | 'bob' | 'sway' | 'pulse'), spin (rad/s: gear, clock), until (fades out), z.
  * The registered rect covers the icon, the label and the idle motion.
  */
 export function icon(s, o) {
@@ -292,18 +293,25 @@ export function icon(s, o) {
   const px = o.labelPx ?? size(s, 'label', 0.7);
   const lab = o.label ? { h: px * 1.5, gap: px * 0.25, tw: textW(s, o.label, px, 'body', 600) } : null;
 
-  let rect;
+  let rect0;
   if (o.rect || o.in || (Number.isFinite(o.w) && Number.isFinite(o.h)) || (o.id && s.reg.has(o.id))) {
-    rect = resolveRect(s, { ...o, id }, 'icon');
+    rect0 = resolveRect(s, { ...o, id }, 'icon');
   }
   else if (Number.isFinite(o.x) && Number.isFinite(o.y)) {
     const sd = (o.size ?? 160) / (1 - mg * 2);
     const left = labelSide === 'left' || labelSide === 'right';
-    rect = { x: o.x, y: o.y, w: lab && left ? sd + lab.gap + Math.min(lab.tw, sd * 2.2) : sd, h: lab && !left ? sd + lab.gap + lab.h : sd };
+    rect0 = { x: o.x, y: o.y, w: lab && left ? sd + lab.gap + Math.min(lab.tw, sd * 2.2) : sd, h: lab && !left ? sd + lab.gap + lab.h : sd };
   }
   else { throw new TypeError(`icon "${id}" has no position: pass rect, in, x/y/size or a layout id`); }
 
-  const { art, at: place } = arrange(rect, labelSide, lab, mg);
+  const { art, at: place } = arrange(rect0, labelSide, lab, mg);
+  let rect = rect0;
+  if (lab && place && Number.isFinite(o.labelW) && (labelSide === 'bottom' || labelSide === 'top')) {
+    // A label wider than the icon: centered on it, and the piece rect grows to hold it.
+    const extra = Math.max(0, o.labelW - rect0.w);
+    rect = { ...rect0, x: rect0.x - extra / 2, w: rect0.w + extra };
+    place.maxW = Math.max(place.maxW, o.labelW);
+  }
   const tk = textKit(s);
   const spec = lab && tk.make(o.label, place.x, place.y, place.maxW, { px, role: 'body', weight: 600, align: place.align, color: o.labelColor ?? 'ink', at, until: o.until });
   const ph = (hash(id) % 7) * 0.9;

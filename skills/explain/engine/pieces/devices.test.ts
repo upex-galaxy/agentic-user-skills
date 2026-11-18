@@ -240,3 +240,20 @@ describe('example scene', () => {
     });
   }
 });
+
+describe('appScreen in a phone', () => {
+  test('a narrow screen with two rows, a feature with a badge, a total and a cta fits at sketch size', () => {
+    const { engine } = build(sketch, (s) => {
+      s.phone({ id: 'ph', rect: { x: 100, y: 200, w: 340, h: 680 }, at: 0.2 });
+      s.appScreen({ id: 'app', in: 'ph.screen', at: 0.6, title: 'Ajustes', rows: [{ label: 'Notificaciones', on: true }, { label: 'Privacidad', value: 'Alta' }], total: { label: 'Total', from: 37, to: 49, prefix: '$ ', at: 2, dur: 1 }, cta: 'Guardar', feature: { label: 'Notificaciones', at: 3, badge: 'Nuevo' } });
+    });
+    const times = [0.8, 1.5, 2.5, 3.2, 4, 6, 9];
+    for (const t of times) {
+      for (const tx of recs(engine, t).app.texts) { expect(tx.overflow).toBe(false); }
+    }
+    expect(runQA(engine, times, { determinism: false }).ok).toBe(true);
+    // every text inside the screen rect
+    const app = recs(engine, 9).app;
+    for (const tx of app.texts) { expect(tx.rect.x).toBeGreaterThanOrEqual(app.rect.x); expect(tx.rect.x + tx.rect.w).toBeLessThanOrEqual(app.rect.x + app.rect.w); }
+  });
+});

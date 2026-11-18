@@ -85,7 +85,7 @@ s.table({ columns: ['Mode', 'You', 'Claude'], rows: [['default', 'yes', 'yes'], 
 s.sequence({ actors: ['Client', 'API'], messages: [{ from: 'Client', to: 'API', text: 'POST /login' }, { from: 'API', to: 'Client', text: '200 OK', kind: 'return' }] });
 ```
 
-**`architecture`**: `zones` (`{ id, title, color, nodes: [text | { id, text, color, shape }] }`), `links` (`[from, to, label]` or `{ from, to, label, color, dash }`), `layout` (`layers`, `columns`), `area`, `at`, `zoneStep` (0.5), `nodeStep` (0.2), `linkStep` (0.5).
+**`architecture`**: `zones` (`{ id, title, color, nodes: [text | { id, text, color, shape }] }`), `links` (`[from, to, label]` or `{ from, to, label, color, dash }`), `layout` (`layers`, `columns`; in `columns` the gaps grow to hold the link labels, which sit clear of the nodes), `area`, `at`, `zoneStep` (0.5), `nodeStep` (0.2), `linkStep` (0.5).
 ```js
 s.architecture({ layout: 'layers', zones: [{ id: 'client', title: 'Client', nodes: [{ id: 'web', text: 'Web app' }] }, { id: 'server', title: 'Server', nodes: [{ id: 'api', text: 'API' }] }], links: [['web', 'api', 'HTTPS']] });
 ```
@@ -100,7 +100,7 @@ s.codeBlock({ title: 'login.ts', lines: ['const user = await find(email);', 'if 
 s.anatomy({ id: 'phone', aspect: 0.5, parts: [{ id: 'body', x: 0, y: 0, w: 1, h: 1, color: 'dim' }, { id: 'screen', shape: 'rect', x: 0.08, y: 0.1, w: 0.84, h: 0.7, color: 'accent2' }], labels: [{ part: 'screen', text: 'Touch screen' }] });
 ```
 
-**`stateMachine`**: `states` (text or `{ id, text, color }`), `transitions` (`[from, to, label]` or `{ from, to, label, color, flip }`), `layout` (`row`, `ring`, `grid`), `positions` (`{ id: [fx, fy] }`), `gap`, `path` (ids to walk), `pathAt`, `pathStep` (1.4), `activeColor` (`warn`), `at`, `nodeStep` (0.25), `transitionStep` (0.5), `area`.
+**`stateMachine`**: `states` (text or `{ id, text, color }`), `transitions` (`[from, to, label]` or `{ from, to, label, color, flip }`), `layout` (`row`, `ring`, `grid`; the default picks the layout whose labels clear the states and each other), `positions` (`{ id: [fx, fy] }`), `gap`, `path` (ids to walk), `pathAt`, `pathStep` (1.4), `activeColor` (`warn`), `at`, `nodeStep` (0.25), `transitionStep` (0.5), `area`.
 ```js
 s.stateMachine({ states: ['Draft', 'Review', 'Published'], transitions: [['Draft', 'Review', 'submit'], ['Review', 'Published', 'approve']], path: ['Draft', 'Review', 'Published'] });
 ```
@@ -129,7 +129,7 @@ s.sourceFooter({ text: 'Claude Code docs, Skills' });
 
 ## Icons
 
-`icon`: `kind` (required, one of 22: `laptop`, `server`, `database`, `cloud`, `package`, `container`, `user`, `gear`, `doc`, `rocket`, `globe`, `shield`, `lock`, `heart`, `clock`, `bolt`, `branch`, `check`, `cross`, `phone`, `bug`, `eye`; an unknown kind lists them), `id`, position (`rect`, `in`, a layout id, or `x`, `y`, `size` (160)), `at`, `dur` (0.6 draw-on), `color`, `label`, `labelSide` (`bottom`, `top`, `left`, `right`), `labelPx`, `labelColor`, `idle` (`float`, `bob`, `sway`, `pulse`), `spin` (rad/s, gear and clock), `until`. The registered rect covers icon, label and idle motion.
+`icon`: `kind` (required, one of 22: `laptop`, `server`, `database`, `cloud`, `package`, `container`, `user`, `gear`, `doc`, `rocket`, `globe`, `shield`, `lock`, `heart`, `clock`, `bolt`, `branch`, `check`, `cross`, `phone`, `bug`, `eye`; an unknown kind lists them), `id`, position (`rect`, `in`, a layout id, or `x`, `y`, `size` (160)), `at`, `dur` (0.6 draw-on), `color`, `label`, `labelSide` (`bottom`, `top`, `left`, `right`), `labelPx`, `labelColor`, `labelW` (width of a `bottom` or `top` label that is wider than the icon: centered on it, the piece rect grows to hold it; a side label ignores it), `idle` (`float`, `bob`, `sway`, `pulse`), `spin` (rad/s, gear and clock), `until`. The registered rect covers icon, label and idle motion.
 ```js
 s.row(['a', 'b'].map(id => ({ id, w: 300, h: 360 })), { gap: 80 });
 s.icon({ id: 'a', kind: 'laptop', label: 'Your laptop', at: 0.4 });
@@ -161,7 +161,7 @@ s.diffView({ id: 'diff', rect: s.area, file: 'src/auth.ts', stat: '+1 -1', lines
 |---|---|
 | `browser` | `rect | in`, `url`, `typeUrl` (true), `at`, `dur` (0.7), `color`, `until`. Registers `<id>.body` |
 | `phone` | `rect | in`, `at`, `dur` (0.7), `tilt` (0, degrees it settles from), `color`, `until`. Kept 1:2; registers `<id>.screen` |
-| `appScreen` | `rect | in`, `at`, `title`, `rows` (`[{ label, value?, on? }]`), `total` (`{ label, from, to, at, dur (1.2), prefix, suffix, decimals }`), `cta`, `banner` (text or `{ text, at, color }`), `feature` (`{ label, at, badge }`), `color`, `until`. Registers `<id>.total`, `.cta`, `.feature` |
+| `appScreen` | `rect | in`, `at`, `title`, `rows` (`[{ label, value?, on? }]`), `total` (`{ label, from, to, at, dur (1.2), prefix, suffix, decimals }`), `cta`, `banner` (text or `{ text, at, color }`), `feature` (`{ label, at, badge }`), `color`, `until`. A narrow screen (a phone at video scale) packs tighter: slim padding and rows, text down to 0.7 of the minimum, the badge left out when it would take over half a row. Registers `<id>.total`, `.cta`, `.feature` |
 | `prPage` | `rect | in`, `at`, `title`, `number`, `from`, `to`, `author`, `stats` (`{ add, del }`), `labels`, `checks` (`[{ name, start, end, ok }]`), `reviewers` (`[{ name, initials, approveAt }]`), `button` (call-to-action text: the page starts as a draft and `openAt` opens it), `openAt`, `mergeAt`. Merge unlocks when every check passed and every reviewer approved. Registers `<id>.badge`, `.checks`, `.reviewers`, `.merge` (alias `.button`). Exposes `end`, `marks { open, ready, merge }` |
 | `cursor` | `path` (`[[t, x, y] | [t, id | { id, anchor }]]`, eased), `clicks` (`[t]`), `color`, `until`. Exposes `pos(t)`, `end` |
 
@@ -181,9 +181,9 @@ All take `rect | in`, `at`, `until`.
 | Piece | Options (defaults) |
 |---|---|
 | `counter` | `from` (0), `to`, `dur` (1.5) or `keys` (`[[t, value]]`), `decimals`, `prefix`, `suffix`, `sep`, `label`, `ease`, `color`, `px`, `font`. Fitted for its widest value; bumps when it lands |
-| `progress` | `dur` (2), `from` (0), `to` (1), `label`, `pct` (true), `segments`, `color`, `doneColor` (`good`), `linear` |
+| `progress` | (label and percent fit the rect height) `dur` (2), `from` (0), `to` (1), `label`, `pct` (true), `segments`, `color`, `doneColor` (`good`), `linear` |
 | `gauge` | `to` (1), `dur` (1.5), `label`, `suffix` (` %`), `scale` (100), `color` |
-| `chart` | `type` (`line`, `area`, `bars`), `data` (numbers, or arrays for several lines), `labels`, `colors`, `title`, `yMax`, `dur` (2), `step` (bars one by one), `mark` (`{ i, text, color }` on a line or area point) |
+| `chart` | `type` (`line`, `area`, `bars`), `data` (numbers, or arrays for several lines), `labels`, `colors`, `title`, `yMax`, `dur` (2), `step` (bars one by one), `mark` (`{ i, text, color }` on a line or area point; the text sits inside the plot, clear of the lines). Every chart text stays inside the rect: end labels slide in, bars keep headroom for their value |
 | `dotGrid` | `rows`, `cols`, `dur` (2), `fail` (indices that turn bad), `color` (`good`) |
 
 ```js
@@ -202,7 +202,7 @@ s.dotGrid({ rect: { x: 760, y: 680, w: 500, h: 200 }, rows: 3, cols: 10, fail: [
 | `callout` | `target` (id, `[x, y]`, `{ id, anchor }` or rect), `text`, `side` (`right`, `left`, `top`, `bottom`), `dist`, `w`, `h`, `rect`, `bend`, `color` (`warn`), `px`, `at`, `until`. Exposes `arrow` |
 | `stamp` | `text`, `rect` or `cx`, `cy`, `color` (`good`), `rot` (-0.14 rad), `px`, `at`, `until` |
 | `bubble` | `rect | in`, `text`, `initials`, `side` (`left`, `right`: avatar), `tail` (`left`, `right`, `top`, `bottom`, `none`), `tailAt` (0..1), `typing` (0.6 s of dots), `color` (`accent2`), `px`, `at`, `until` |
-| `chip` | `text`, `x`, `y` or `cx`, `cy` or `rect`, `color` (`accent`), `solid`, `mono`, `icon` (`check`, `cross`, `spinner`, `dot` or an icon kind), `px`, `at`, `until`, `states` (`[{ at, text, color, icon, solid }]`: flips at `at`; each state inherits what it omits) |
+| `chip` | `text`, `x` (left) or `cx` (center) with `y` (top) or `cy` (center), in any mix, or `rect`; `in: '<id>'` names the QA host and does not move a chip that has coordinates (a chip inside `split.left`), `color` (`accent`), `solid`, `mono`, `icon` (`check`, `cross`, `spinner`, `dot` or an icon kind), `px`, `at`, `until`, `states` (`[{ at, text, color, icon, solid }]`: flips at `at`; each state inherits what it omits) |
 | `scribble` | `target` (id or rect), `kind` (`circle`, `underline`, `box`), `at`, `dur` (0.6), `until`, `color`, `pad`, `lw` |
 
 ```js
@@ -247,7 +247,7 @@ All take `rect | in`, `at`, and are composites (QA sees their inner texts).
 s.pipeline({ id: 'ci', rect: s.area, stages: [{ name: 'Build', jobs: [{ name: 'Compile', dur: 1.4 }] }, { name: 'Test', jobs: [{ name: 'E2E', dur: 2, ok: false }] }] });
 ```
 
-**`gitGraph`**: `lanes` (`[{ name, color }]` top to bottom), `cols`, `r`, `commits` (`[{ id, lane, col, at, parents, label, tag }]`). Registers `<id>.<commit id>`; exposes `end`, `marks.<commit id>`.
+**`gitGraph`**: `lanes` (`[{ name, color }]` top to bottom), `cols`, `r`, `commits` (`[{ id, lane, col, at, parents, label, tag }]`). The label and tag band of the top and bottom lanes is reserved inside the rect; labels are clamped inside it and shortened with an ellipsis when wider than their column. Registers `<id>.<commit id>`; exposes `end`, `marks.<commit id>`.
 ```js
 s.gitGraph({ id: 'g', rect: s.area, lanes: [{ name: 'main' }, { name: 'feat', color: 'accent2' }], commits: [{ id: 'c1', lane: 'main', col: 0, at: 1 }, { id: 'f1', lane: 'feat', col: 1, at: 2, parents: ['c1'] }, { id: 'm', lane: 'main', col: 2, at: 3, parents: ['c1', 'f1'], tag: 'v1' }] });
 ```

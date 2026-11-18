@@ -184,3 +184,46 @@ describe('demo', () => {
     });
   }
 });
+
+// Regression: the handwriting face is wide (the stub measures 0.7 of the size per glyph).
+function buildWide(fn: (s: any) => void, dur = 10) {
+  const stub = makeStubCtx(0.7);
+  installRoughStub(stub.log);
+  const engine = createEngine({ canvas: stub.canvas, style: sketch, pieces: { ...basePieces, ...pieces }, spec: { scenes: [{ name: 't', dur, build: fn }] } } as any);
+  return { engine, ...stub };
+}
+
+describe('gitGraph label band', () => {
+  const rect = { x: 160, y: 250, w: 1600, h: 500 };
+  const commits = [
+    { id: 'a', lane: 'main', col: 0, label: 'init proyecto', tag: 'v1.0' },
+    { id: 'b', lane: 'feat', col: 1, parents: ['a'], label: 'agrega cupón de descuento' },
+    { id: 'c', lane: 'feat', col: 2, parents: ['b'], label: 'pruebas del cupón' },
+    { id: 'd', lane: 'main', col: 3, parents: ['a', 'c'], label: 'merge de la rama', tag: 'v1.1-release' },
+    { id: 'e', lane: 'main', col: 4, parents: ['d'], label: 'despliegue final', tag: 'prod' },
+    { id: 'f', lane: 'feat', col: 4, parents: ['c'], label: 'limpieza', tag: 'fin' },
+  ];
+
+  test('labels and tags on the top lane, the bottom lane and the last column stay inside the rect and clear of each other', () => {
+    const { engine } = buildWide((s) => { s.gitGraph({ id: 'g', rect, lanes: [{ name: 'main' }, { name: 'feat' }], commits }); });
+    const r = engine.sample(8)[0].records.find((x: any) => x.id === 'g');
+    expect(r.texts.length).toBeGreaterThanOrEqual(8);
+    for (const tx of r.texts) {
+      expect(tx.overflow).toBe(false);
+      expect(tx.rect.x).toBeGreaterThanOrEqual(rect.x);
+      expect(tx.rect.y).toBeGreaterThanOrEqual(rect.y);
+      expect(tx.rect.x + tx.rect.w).toBeLessThanOrEqual(rect.x + rect.w);
+      expect(tx.rect.y + tx.rect.h).toBeLessThanOrEqual(rect.y + rect.h);
+    }
+    expect(gate(engine, [2, 4, 6, 8]).ok).toBe(true);
+  });
+
+  test('a label wider than its column is shortened with an ellipsis instead of overflowing', () => {
+    const { engine } = buildWide((s) => {
+      s.gitGraph({ id: 'g', rect, cols: 12, lanes: [{ name: 'main' }], commits: [{ id: 'a', lane: 'main', col: 0, label: 'un mensaje de commit larguísimo' }, { id: 'b', lane: 'main', col: 11, label: 'otro mensaje muy largo', tag: 'etiqueta-larga' }] });
+    });
+    const r = engine.sample(8)[0].records.find((x: any) => x.id === 'g');
+    expect(r.texts.some((x: any) => x.text.endsWith('…'))).toBe(true);
+    expect(r.texts.every((x: any) => !x.overflow && x.rect.x >= rect.x && x.rect.x + x.rect.w <= rect.x + rect.w)).toBe(true);
+  });
+});

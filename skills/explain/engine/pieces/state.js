@@ -61,32 +61,53 @@ const LABEL_STEPS = [0.5, 0.38, 0.62, 0.28, 0.72, 0.2, 0.8, 0.12, 0.88];
 
 /**
  * Pure: a center for every transition label, slid along its own curve until its pill clears the labels already
- * placed and every state. `arcs` is [{ pts, mid, size: { w, h }, fixed }] (a fixed arc, such as a self-loop, keeps its
- * apex). Returns one [x, y] per arc; when nothing is free the least-crowded spot on the curve wins.
+ * placed and every state; when no spot on the curve is free, the pill steps off the curve (along its normal, either
+ * side) before giving up. `arcs` is [{ pts, mid, size: { w, h }, fixed }] (a fixed arc, such as a self-loop, keeps its
+ * apex). Returns { centers, hits } (hits: how many labels still clash with a label or a state).
  */
-export function placeTransitionLabels(arcs, states, bounds) {
+export function placeLabels(arcs, states, bounds) {
   const placed = [];
+  let hits = 0;
   const rectAt = (c, size) => ({ x: c[0] - size.w / 2, y: c[1] - size.h / 2, w: size.w, h: size.h });
   const clash = (a, b, m) => a.x < b.x + b.w + m && b.x < a.x + a.w + m && a.y < b.y + b.h + m && b.y < a.y + a.h + m;
-  return arcs.map((arc) => {
+  const centers = arcs.map((arc) => {
     if (!arc.size) { return arc.mid; }
-    const cands = arc.fixed
+    const onCurve = arc.fixed
       ? [arc.mid]
       : LABEL_STEPS.map((p) => {
           const q = pointAt(arc.pts, p);
           return [q.x, q.y];
         });
+    // Off the curve: beside it on either side (the label still sits next to its arrow), then further out.
+    const off = [];
+    for (const k of [1, 1.7]) {
+      for (const sign of [1, -1]) {
+        if (arc.fixed) { off.push([arc.mid[0], arc.mid[1] + sign * (arc.size.h * k + 8)]); }
+        else {
+          for (const p of LABEL_STEPS) {
+            const q = pointAt(arc.pts, p);
+            const d = arc.size.h * 0.5 * k + 14;
+            off.push([q.x + Math.cos(q.angle + Math.PI / 2) * d * sign, q.y + Math.sin(q.angle + Math.PI / 2) * d * sign]);
+          }
+        }
+      }
+    }
     let best = null;
-    for (const c of cands) {
+    for (const c of [...onCurve, ...off]) {
       const r = rectAt([clamp(c[0], bounds.x + arc.size.w / 2, bounds.x + bounds.w - arc.size.w / 2), clamp(c[1], bounds.y + arc.size.h / 2, bounds.y + bounds.h - arc.size.h / 2)], arc.size);
-      const hits = placed.filter(p => clash(r, p, 8)).length * 2 + states.filter(st => clash(r, st, 4)).length;
-      if (!best || hits < best.hits) { best = { hits, c, r }; }
-      if (!hits) { break; }
+      const n = placed.filter(p => clash(r, p, 8)).length * 2 + states.filter(st => clash(r, st, 4)).length;
+      if (!best || n < best.hits) { best = { hits: n, c, r }; }
+      if (!n) { break; }
     }
     placed.push(best.r);
+    hits += best.hits;
     return best.c;
   });
+  return { centers, hits };
 }
+
+/** Pure: a center for every transition label (see placeLabels). */
+export const placeTransitionLabels = (arcs, states, bounds) => placeLabels(arcs, states, bounds).centers;
 
 /** Pure: state layout. Returns { rects, bounds }. */
 export function stateLayout(states, { area, layout, gap, positions, cols, size: boxSize }) {
@@ -220,8 +241,13 @@ export function autoStatePlan(states, trs, area, o = {}) {
   const plans = cands.map(c => ({ ...c, ...planStates(states, trs, area, c.mode, { ...o, cols: c.cols, size, gap: c.mode === 'row' ? 200 : o.gap }) }));
   // Nodes size and height share together: a layout that is big but a thin strip does not win.
   const score = p => p.f * Math.min(1, p.bounds.h / (area.h * 0.6));
-  const best = plans.reduce((x, p) => (score(p) > score(x) ? p : x));
-  return score(plans[0]) >= score(best) * 0.9 ? plans[0] : best;
+  // A layout whose labels cannot all sit clear of the states and of each other loses to one that can.
+  const sizes = o.sizes ?? [];
+  const clean = plans.map(p => ({ p, hits: placeLabels(p.arcs.map((a, i) => ({ ...a, fixed: trs[i].from === trs[i].to, size: sizes[i] ?? null })), Object.values(p.rects), area).hits }));
+  const least = Math.min(...clean.map(c => c.hits));
+  const pool = clean.filter(c => c.hits === least).map(c => c.p);
+  const best = pool.reduce((x, p) => (score(p) > score(x) ? p : x));
+  return pool[0] === plans[0] && score(plans[0]) >= score(best) * 0.9 ? plans[0] : best;
 }
 
 /** Pure: which states are lit at time t and where the traveling dot is. `legs[k]` is the arc into path[k] (k >= 1). */

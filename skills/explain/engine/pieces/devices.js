@@ -128,16 +128,21 @@ export function appScreen(s, o) {
   const total = o.total;
   const banner = typeof o.banner === 'string' ? { text: o.banner } : o.banner;
   const nRows = rows.length + (feat ? 1 : 0);
-  const rowK = tall ? 2.6 : 2.3;
+  // A narrow screen (a phone at video scale) packs tighter: slim padding, a smaller toggle and rows, text allowed a little under the minimum.
+  const narrow = tall && rect.w < size(s, 'min') * 11.5;
+  const rowK = narrow ? 2.1 : tall ? 2.6 : 2.3;
+  const minTxt = narrow ? Math.round(size(s, 'min') * 0.72) : undefined;
   const pxFor = lift => Math.round(Math.max(size(s, 'min'), Math.min(uiPx(s, tall ? 0.8 : 0.85), rect.h / (2.5 + nRows * rowK + lift + (total ? 3.4 : 0) + (o.cta ? 3.3 : 0) + (banner && tall ? 2.9 : 0) + 1.4))));
   const bpxFor = p => Math.round(Math.max(size(s, 'min'), p * 0.62));
   // The badge sits inside the feature row when its label still fits; otherwise it straddles the row's top edge.
-  const inlineFor = p => !feat?.badge || textW(s, feat.label, p) <= rect.w - p * 0.9 - p * 1.2 - (p * 1.6 + p * 0.5) - (textW(s, feat.badge, bpxFor(p), 'body', 700) + p * 0.6) - p * 0.4;
+  const inlineFor = p => !feat?.badge || textW(s, feat.label, p) <= rect.w - p * (narrow ? 0.45 : 0.9) - p * (narrow ? 0.7 : 1.2) - (p * (narrow ? 1.25 : 1.6) + p * 0.5) - (textW(s, feat.badge, bpxFor(p), 'body', 700) + p * 0.6) - p * 0.4;
   let px = pxFor(0);
   const inline = inlineFor(px) || inlineFor(pxFor(1));
   const lift = inline ? 0 : 1;
   px = pxFor(lift);
-  const padX = px * 0.9;
+  const padX = px * (narrow ? 0.45 : 0.9);
+  const ins = narrow ? 0.35 : 0.6;
+  const rin = narrow ? 0.5 : 0.8;
   const headH = px * 2.5;
   const tk = textKit(s);
   const sep = s.lang === 'en' ? ',' : '.';
@@ -152,21 +157,23 @@ export function appScreen(s, o) {
 
   const rowH = rowK * px;
   const rowTop = rect.y + headH + px * 0.5;
-  const toggleW = px * 1.6;
+  const toggleW = px * (narrow ? 1.25 : 1.6);
   const R0 = [...rows, ...(feat ? [{ ...feat, feature: true }] : [])].map((r, i) => {
     const rr = { x: rect.x + padX * 0.5, y: rowTop + i * rowH + (r.feature ? px * lift : 0), w: rect.w - padX, h: rowH - px * 0.4 };
     const start = r.feature ? feat.at : at + 0.2 + i * 0.1;
     if (r.feature) { s.reg.add(`${id}.feature`, rr); }
     const hasToggle = r.feature || r.on !== undefined;
-    const badgeW = r.feature && feat.badge ? textW(s, feat.badge, bpx, 'body', 700) + px * 0.6 : 0;
+    // The badge is left out when it would take more than half the row.
+    const badgeFull = r.feature && feat.badge ? textW(s, feat.badge, bpx, 'body', 700) + px * 0.6 : 0;
+    const badgeW = badgeFull && badgeFull <= rr.w * 0.5 ? badgeFull : 0;
     const right = hasToggle ? toggleW + px * 0.5 : 0;
     const vstr = String(r.value);
     const valueW = r.value === undefined ? 0 : Math.min(textW(s, vstr, Math.max(size(s, 'min'), Math.round(px * 0.95)), 'mono') + px * 0.5, Math.max(rr.w * 0.32, textW(s, vstr, size(s, 'min'), 'mono') + px * 0.5));
-    const label = tk.make(r.label, rr.x + px * 0.6, rr.y + rr.h / 2, rr.w - px * 1.2 - right - (inline ? badgeW + px * 0.4 : 0) - valueW, { px, color: 'onPanel', at: start + 0.05 });
-    const value = r.value !== undefined ? tk.make(String(r.value), rr.x + rr.w - px * 0.8 - right, rr.y + rr.h / 2, valueW - px * 0.5, { px: px * 0.95, role: 'mono', color: 'dim', align: 'right', at: start + 0.05 }) : null;
+    const label = tk.make(r.label, rr.x + px * ins, rr.y + rr.h / 2, rr.w - px * ins * 2 - right - (inline ? badgeW + px * 0.4 : 0) - valueW, { px, minPx: minTxt, color: 'onPanel', at: start + 0.05 });
+    const value = r.value !== undefined ? tk.make(String(r.value), rr.x + rr.w - px * rin - right, rr.y + rr.h / 2, valueW - px * 0.5, { px: px * 0.95, minPx: minTxt, role: 'mono', color: 'dim', align: 'right', at: start + 0.05 }) : null;
     const badge = badgeW ? tk.make(feat.badge, 0, 0, badgeW, { px: bpx, weight: 700, color: 'warn', align: 'center', at: feat.at + 0.5, track: false }) : null;
     const badgeR = badgeW
-      ? { x: rr.x + rr.w - px * 0.8 - (inline ? toggleW + px * 0.5 : 0) - badgeW, y: inline ? rr.y + (rr.h - bpx * 1.6) / 2 : rr.y - bpx, w: badgeW, h: bpx * 1.6 }
+      ? { x: rr.x + rr.w - px * rin - (inline ? toggleW + px * 0.5 : 0) - badgeW, y: inline ? rr.y + (rr.h - bpx * 1.6) / 2 : rr.y - bpx, w: badgeW, h: bpx * 1.6 }
       : null;
     if (badge) {
       Object.assign(badge, { x: badgeR.x + badgeW / 2, y: badgeR.y + badgeR.h / 2, rect: { x: badgeR.x + (badgeW - badge.w) / 2, y: badgeR.y + badgeR.h / 2 - badge.px * 0.6, w: badge.w, h: badge.px * 1.2 } });
@@ -250,7 +257,7 @@ export function appScreen(s, o) {
           box(f, r.rr, { stroke: r.feature ? 'good' : 'dim', fill: null, lw: r.feature ? 2.5 : 1.5, glow: r.feature ? 12 : 0, alpha: r.feature ? 1 : 0.7 });
           drawT(f, r.label);
           if (r.value) { drawT(f, r.value); }
-          if (r.hasToggle) { toggle(f, r.rr.x + r.rr.w - px * 0.8, r.rr.y + r.rr.h / 2, r.feature ? prog(t, feat.at + 0.9, 0.35) : (r.on ? 1 : 0)); }
+          if (r.hasToggle) { toggle(f, r.rr.x + r.rr.w - px * rin, r.rr.y + r.rr.h / 2, r.feature ? prog(t, feat.at + 0.9, 0.35) : (r.on ? 1 : 0)); }
         });
         if (r.badge) {
           const bk = ease.back(prog(t, feat.at + 0.5, 0.45));

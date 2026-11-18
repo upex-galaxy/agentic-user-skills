@@ -389,10 +389,11 @@ const CHIP_ICONS = ['spinner', 'dot', ...KINDS];
 const FLIP = 0.34;
 
 /**
- * Status pill. o: text, x, y (top-left) | cx, cy (centered) | rect, color (accent), solid (filled with the color), mono,
+ * Status pill. o: text, x (left) | cx (center) with y (top) | cy (center), in any mix | rect | in, color (accent), solid (filled with the color), mono,
  * icon (check | cross | spinner | dot | any icon kind), px, at, until, states ([{ at, text, color, icon, solid }]: the pill
  * flips to the next state at `at` with a small morph; each state inherits what it leaves out from the one before).
- * The pill keeps one size, fitted to the widest state.
+ * The pill keeps one size, fitted to the widest state. `in: '<id>'` names the QA host (a chip inside a splitScreen half:
+ * `in: 'split.left'`) and does not move the chip when a coordinate is given.
  */
 export function chip(s, o) {
   const d = s.style.defaults;
@@ -416,13 +417,16 @@ export function chip(s, o) {
   const h = o.rect?.h ?? Math.round(px * 2);
   const widest = Math.max(...list.map(st => textW(s, st.text, px, role, 600) + slot(st)));
   const w = o.rect?.w ?? Math.ceil(widest + px * 1.6);
-  const rect = o.rect || o.in || (Number.isFinite(o.w) && Number.isFinite(o.h)) || (o.id && s.reg.has(o.id))
+  // Position: any mix of a horizontal (cx | x) and a vertical (cy | y) coordinate; `in` then only names the host.
+  const hx = Number.isFinite(o.cx) ? o.cx - w / 2 : Number.isFinite(o.x) ? o.x : undefined;
+  const vy = Number.isFinite(o.cy) ? o.cy - h / 2 : Number.isFinite(o.y) ? o.y : undefined;
+  const rect = o.rect
     ? resolveRect(s, o, 'chip')
-    : Number.isFinite(o.cx) && Number.isFinite(o.cy)
-      ? { x: o.cx - w / 2, y: o.cy - h / 2, w, h }
-      : Number.isFinite(o.x) && Number.isFinite(o.y)
-        ? { x: o.x, y: o.y, w, h }
-        : (() => { throw new TypeError(`chip "${o.id ?? ''}" has no position: pass x/y, cx/cy, rect or a layout id`); })();
+    : hx !== undefined && vy !== undefined
+      ? { x: hx, y: vy, w, h }
+      : o.in || (Number.isFinite(o.w) && Number.isFinite(o.h)) || (o.id && s.reg.has(o.id))
+        ? resolveRect(s, o, 'chip')
+        : (() => { throw new TypeError(`chip "${o.id ?? ''}" has no position: pass x | cx and y | cy, rect, in or a layout id`); })();
   const [cx, cy] = [rect.x + rect.w / 2, rect.y + rect.h / 2];
   const at = o.at ?? 0;
   const tk = textKit(s);

@@ -4,14 +4,18 @@
 // Reveal order: zones, then nodes, then links. Node ids are registered, so edges and motion helpers can use them.
 import { ease, hash, prog } from '../math.js';
 import { edge, node } from './base.js';
-import { blockRect, chipItem, drawFit, fitIn, TOKENS } from './diagram-kit.js';
+import { blockRect, chipItem, chipSize, drawFit, fitIn, TOKENS } from './diagram-kit.js';
+import { placeLabels } from './state.js';
 
-/** Pure layout. Returns zone rects and node rects. layout 'layers' stacks zones top to bottom, 'columns' puts them side by side. */
-export function architectureLayout({ zones, area, layout = 'layers', titleH = 56, pad = 26 }) {
+/**
+ * Pure layout. Returns zone rects and node rects. layout 'layers' stacks zones top to bottom, 'columns' puts them side by side
+ * (`gap`: the space between columns, `nodeGap`: the space between the nodes of a column; both leave room for link labels).
+ */
+export function architectureLayout({ zones, area, layout = 'layers', titleH = 56, pad = 26, gap: colGap = 120, nodeGap = 36 }) {
   const n = zones.length;
   const out = { zones: {}, nodes: {} };
   if (layout === 'columns') {
-    const gap = 120;
+    const gap = colGap;
     const zw = Math.min(520, (area.w - gap * (n - 1)) / n);
     const zh = Math.min(area.h, 880);
     const x0 = area.x + (area.w - (zw * n + gap * (n - 1))) / 2;
@@ -20,7 +24,7 @@ export function architectureLayout({ zones, area, layout = 'layers', titleH = 56
       const zr = { x: x0 + i * (zw + gap), y: y0, w: zw, h: zh };
       out.zones[z.id] = zr;
       const k = z.nodes.length;
-      const ng = 36;
+      const ng = nodeGap;
       const nh = Math.min(130, (zh - titleH - pad * 2 - ng * (k - 1)) / k);
       const nw = zw - pad * 2;
       const total = nh * k + ng * (k - 1);
@@ -51,7 +55,21 @@ export const architecture = (s, o) => {
   const area = o.area ?? s.area;
   const zones = (o.zones ?? []).map(z => ({ ...z, nodes: (z.nodes ?? []).map(nd => (typeof nd === 'string' ? { id: nd, text: nd } : { text: nd.id, ...nd })) }));
   if (!zones.length) { throw new Error('architecture needs zones'); }
-  const L = architectureLayout({ zones, area, layout: o.layout });
+  const links = (o.links ?? []).map(raw => (Array.isArray(raw) ? { from: raw[0], to: raw[1], label: raw[2] } : raw));
+  // Columns: the gap between zones and between the nodes of a zone grow to hold the link labels that sit there.
+  let room = {};
+  if (o.layout === 'columns') {
+    const zoneOf = id => zones.findIndex(z => z.nodes.some(nd => nd.id === id));
+    const labeled = links.filter(l => l.label && zoneOf(l.from) >= 0 && zoneOf(l.to) >= 0).map(l => ({ same: zoneOf(l.from) === zoneOf(l.to), size: chipSize(s, l.label) }));
+    const across = Math.max(0, ...labeled.filter(l => !l.same).map(l => l.size.w + 32));
+    const within = Math.max(0, ...labeled.filter(l => l.same).map(l => l.size.h + 24));
+    const n = zones.length;
+    room = {
+      gap: n > 1 ? Math.min(Math.max(120, across), Math.max(120, (area.w - 320 * n) / (n - 1))) : 120,
+      nodeGap: Math.max(36, within),
+    };
+  }
+  const L = architectureLayout({ zones, area, layout: o.layout, ...room });
   const at0 = o.at ?? 0;
   const zoneStep = o.zoneStep ?? 0.5;
   const nodesAt = at0 + zoneStep * zones.length + 0.1;
@@ -91,16 +109,21 @@ export const architecture = (s, o) => {
     s.add(node(s, { id: nd.id, text: nd.text, rect: L.nodes[nd.id], at: nodesAt + nodeStep * i, color: nd.color ?? zones[zi].color ?? TOKENS[zi % TOKENS.length], shape: nd.shape }));
   });
 
-  (o.links ?? []).forEach((raw, i) => {
-    const l = Array.isArray(raw) ? { from: raw[0], to: raw[1], label: raw[2] } : raw;
+  const edges = links.map((l, i) => {
     for (const end of [l.from, l.to]) { if (!L.nodes[end]) { throw new Error(`architecture link ${i}: unknown node "${end}"`); } }
     const at = linksAt + linkStep * i;
     const e = edge(s, { from: l.from, to: l.to, id: `${pid}-link-${i}`, at, dur: 0.6, color: l.color ?? 'ink', dash: l.dash, gap: 8 });
     s.add(e);
-    if (l.label) {
-      const [a, b] = [e.conn.pts[0], e.conn.pts[e.conn.pts.length - 1]];
-      s.add(chipItem(s, { id: `${pid}-link-${i}-label`, text: l.label, center: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], at: at + 0.4, color: l.color ?? 'dim', bounds: area, overlapWith: zones.map(z => z.id) }));
-    }
+    return { l, e, at };
+  });
+  // Link labels slide along their edge (then beside it) until they clear every node and each other.
+  const spots = placeLabels(edges.map(({ l, e }) => {
+    const pts = e.conn.pts;
+    const [a, b] = [pts[0], pts[pts.length - 1]];
+    return { pts, mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], size: l.label ? chipSize(s, l.label) : null };
+  }), Object.values(L.nodes), area).centers;
+  edges.forEach(({ l, at }, i) => {
+    if (l.label) { s.add(chipItem(s, { id: `${pid}-link-${i}-label`, text: l.label, center: spots[i], at: at + 0.4, color: l.color ?? 'dim', bounds: area, overlapWith: zones.map(z => z.id) })); }
   });
   return { kind: 'architecture', id: pid, z: -2, rect: area, ...handle, texts: () => [], draw() {} };
 };
