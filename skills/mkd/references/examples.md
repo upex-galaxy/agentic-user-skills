@@ -189,4 +189,4 @@ bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-release-readiness.json --artifact --t
 Publish that path with the `Artifact` tool and `capabilities: {db: {}, comments: {}}`,
 confirm the watch says **auto-replies armed**, and on the wake-up read
 `ArtifactData` `get` (`collection: "results"`, `doc_id`: the spec's `session`).
-Full steps: `SKILL.md`, "Exact invocation — Claude Code (artifact mode)".
+Full steps: `references/flows.md`, "Artifact mode".

@@ -11,7 +11,7 @@ install step, no compiled binary, nothing added to PATH**.
 - **Orca** is optional. When the CLI finds it (`ORCA_TERMINAL_HANDLE` set, or
   `orca status --json` reports a reachable runtime) the default flow opens the
   deck in a worktree-bound Orca tab and blocks until submit. Nothing to
-  configure; `--copy` opts out. See `SKILL.md`, "Which flow runs".
+  configure; `--copy` opts out. See `SKILL.md`, "Pick the flow", and `references/flows.md`.
 - **Claude Code with the `Artifact` tool** is optional too. `--artifact` renders
   a page the agent publishes as a claude.ai artifact; the answers come back
   through the artifact's database and a comment that wakes the session. See

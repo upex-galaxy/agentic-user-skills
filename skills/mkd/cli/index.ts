@@ -288,7 +288,7 @@ async function main(): Promise<void> {
     : await detectOrca(process.env, process.platform);
   const choice = resolveMode({ wait, copy, noOpen }, orca.detected);
   if (process.env.CLAUDECODE === '1') {
-    console.error('[mkd] note: running under Claude Code. If this session has the Artifact tool, --artifact returns the answers through a claude.ai artifact with no copy-paste and no local server (SKILL.md, "Exact invocation — Claude Code (artifact mode)").');
+    console.error('[mkd] note: running under Claude Code. If this session has the Artifact tool, --artifact returns the answers through a claude.ai artifact with no copy-paste and no local server (references/flows.md, "Artifact mode").');
   }
 
   if (backupExists(name)) {
