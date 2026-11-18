@@ -230,7 +230,12 @@ export function resolveTarget(arg: string | undefined): Target {
 /** `--out`: an absolute path stays; a relative one is inside the build folder (a one-off preset has its own), never the cwd. */
 export function resolveOut(out: string | true | undefined, t: Target, b?: { dir: string }): string {
   const dir = b?.dir ?? t.dir;
-  if (typeof out === 'string') { return isAbsolute(out) ? out : join(dir, out); }
+  if (typeof out === 'string') {
+    const file = isAbsolute(out) ? resolve(out) : resolve(dir, out);
+    if (!isAbsolute(out) && !file.startsWith(`${resolve(dir)}/`)) { throw new UsageError(`--out ${out} leaves the explainer folder; pass an absolute path to write elsewhere`); }
+    if (insideSkillDir(file)) { throw new UsageError(`--out ${file} is inside the skill folder; write the video under your explainers folder`); }
+    return file;
+  }
   return join(dir, `${slugify(basename(t.dir).replace(/^\d{4}-\d{2}-\d{2}-/, '')) || 'video'}.mp4`);
 }
 
@@ -448,6 +453,7 @@ async function cmdPreset(p: ParsedArgs): Promise<number> {
       if (!a || !b) { throw new UsageError('usage: preset use <dir> <name>'); }
       const t = resolveTarget(a);
       findPreset(b);
+      mkdirSync(t.dir, { recursive: true });
       writeFileSync(configFile(t.dir), `${JSON.stringify({ ...readConfig(t.dir), preset: b, style: undefined }, null, 2)}\n`);
       console.log(configFile(t.dir));
       return 0;

@@ -89,6 +89,8 @@ function createBuilder({ ctx, style, W, H, pieces, name, lang, title }) {
     for (const it of items.slice(first)) {
       if (typeof it.draw !== 'function') { continue; }
       const { draw, qa } = it;
+      // Keep the item's own rect in the filled space too (wrappers pivot and clip on it).
+      if (it.rect) { it.rect = map(it.rect); }
       it.draw = (api, t) => {
         api.ctx.translate(tx, ty);
         api.ctx.scale(k, k);

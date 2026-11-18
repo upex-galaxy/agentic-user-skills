@@ -160,6 +160,12 @@ export function runQA(engine, times, opts = {}) {
         return { ...r, world: r.rect, rect: place(r.rect), texts };
       });
       elements += recs.length;
+      // A focus target with no record of its own (a sub-rect such as browser.body or fleet.s1) is still the one thing
+      // the camera may not crop: check its registered rect while its parent is visible.
+      if (camBusy && cam.target && cam.targetRect && !recs.some(r => r.id === cam.target) && recs.some(r => !r.hud && (cam.target.startsWith(`${r.id}.`) || cam.target.startsWith(`${r.id}-`)))) {
+        const b = view(cam.targetRect);
+        if (b.x < margin - 0.5 || b.y < margin - 0.5 || b.x + b.w > W - margin + 0.5 || b.y + b.h > H - margin + 0.5) { flag('out-of-bounds', layer.name, cam.target, t, `camera focus target ${fmt(b)} is cropped: it leaves the ${margin}px safe area after the camera`); }
+      }
       for (const r of recs) {
         const b = r.rect;
         // While the camera is off its home view or moving, it may crop everything except its focus target. HUD items

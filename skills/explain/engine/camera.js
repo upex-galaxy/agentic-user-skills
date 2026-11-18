@@ -31,7 +31,8 @@ export function createCamera({ W, H, resolve, area }) {
       const pad = opts.pad ?? (useArea ? 24 : 120);
       const fit = Math.min(box.w / (r.w + pad * 2), box.h / (r.h + pad * 2));
       const wish = opts.zoom ?? clamp(fit, 1, opts.maxZoom ?? 2.5);
-      const z = useArea && opts.crop !== true ? Math.max(1, Math.min(wish, fit)) : wish;
+      // A zoom wish is capped so the padded target still fits (in the area, or the full frame), unless crop: true.
+      const z = opts.crop !== true ? Math.max(1, Math.min(wish, fit)) : wish;
       // The target center lands on the box center: (c - cam) * z + W / 2 = box center.
       const cx = r.x + r.w / 2 - (box.x + box.w / 2 - W / 2) / z;
       const cy = r.y + r.h / 2 - (box.y + box.h / 2 - H / 2) / z;

@@ -90,4 +90,8 @@ describe('transitions', () => {
     expect(fx('crossfade')).toEqual([]);
     for (const n of ['sweep', 'edge', 'flash', 'ring', 'glitch']) { expect(typeof (DEFAULT_FX)[n]).toBe('function'); }
   });
+  test('a negative or non-finite dur is rejected', () => {
+    expect(() => parseTransition({ type: 'crossfade', dur: -1 })).toThrow('finite dur');
+    expect(() => parseTransition({ type: 'crossfade', dur: Number.NaN })).toThrow('finite dur');
+  });
 });

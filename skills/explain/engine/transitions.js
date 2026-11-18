@@ -76,7 +76,9 @@ export function parseTransition(def) {
   const spec = typeof def === 'string' ? { type: def } : (def ?? { type: 'crossfade' });
   const type = spec.type ?? 'crossfade';
   if (!TRANSITIONS[type]) { throw new Error(`Unknown transition "${type}" (use ${TRANSITION_TYPES().join(', ')})`); }
-  return { ...spec, type, dur: spec.dur ?? DEFAULT_TR };
+  const dur = spec.dur ?? DEFAULT_TR;
+  if (!(Number.isFinite(dur) && dur >= 0)) { throw new Error(`Transition "${type}" needs a finite dur of 0 or more seconds, got ${dur}`); }
+  return { ...spec, type, dur };
 }
 
 /** Look of one side ('in' | 'out') of a transition at progress p. */

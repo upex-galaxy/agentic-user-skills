@@ -188,10 +188,13 @@ describe('builds per scene file (fresh by content hash)', () => {
   });
 
   test('a relative --out lands in the explainer folder, never the cwd', () => {
-    const t = { dir: '/home/u/explainers/2026-11-17-demo', scene: '/x/scene.js' };
-    expect(resolveOut('video.mp4', t)).toBe('/home/u/explainers/2026-11-17-demo/video.mp4');
-    expect(resolveOut('/tmp/v.mp4', t)).toBe('/tmp/v.mp4');
-    expect(resolveOut(undefined, t)).toBe('/home/u/explainers/2026-11-17-demo/demo.mp4');
+    const root = temp('explain-out-root-');
+    const t = { dir: join(root, '2026-11-17-demo'), scene: '/x/scene.js' };
+    expect(resolveOut('video.mp4', t)).toBe(join(root, '2026-11-17-demo/video.mp4'));
+    expect(resolveOut(join(root, 'v.mp4'), t)).toBe(join(root, 'v.mp4'));
+    expect(resolveOut(undefined, t)).toBe(join(root, '2026-11-17-demo/demo.mp4'));
+    expect(() => resolveOut('../../x.mp4', t)).toThrow('leaves the explainer folder');
+    expect(() => resolveOut(join(SKILL_DIR, 'x.mp4'), t)).toThrow('skill folder');
   });
 });
 
