@@ -49,3 +49,8 @@ declare module '*/movement.js';
 declare module '*/systems.js';
 declare module '*/wrappers.js';
 declare module '*.scene.js';
+// Audio release: narration, WAV codec, synth and mixer, audio QA.
+declare module '*/narration.js';
+declare module '*/wav.js';
+declare module '*/audio.js';
+declare module '*/audio-qa.js';
