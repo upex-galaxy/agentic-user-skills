@@ -58,6 +58,20 @@ describe('render: artifact mode', () => {
   });
 });
 
+describe('app.js: wake hint after Send', () => {
+  const hint = 'If Claude does not answer within a minute, type "listo" in the chat: your answers are saved.';
+
+  it('ships the hint, gated on artifact mode and a notified Send', () => {
+    expect(APP_JS).toContain(hint);
+    expect(APP_JS).toContain('if (mode === \'artifact\' && wakeHint)');
+  });
+
+  it('keeps the hint out of the copy and wait pages markup', () => {
+    expect(markupOnly(render(spec, { mode: 'copy' }))).not.toContain('listo');
+    expect(markupOnly(render(spec, { mode: 'wait', submitToken: 't' }))).not.toContain('listo');
+  });
+});
+
 describe('render: copy and wait modes are unchanged', () => {
   // SHA-256 of each page with the inlined app.js body replaced by a
   // placeholder, captured from `main` at 97d4e80 (before artifact mode).

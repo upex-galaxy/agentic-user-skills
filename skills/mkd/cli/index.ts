@@ -112,6 +112,10 @@ const HELP = `mkd - MKD (Make Decision) interactive decision-deck CLI
 USAGE
   bun <skill-dir>/cli/index.ts <specPath> [options]
 
+  bun <skill-dir>/cli/index.ts open-artifact <url>
+                      Inside Orca: open a published claude.ai artifact in a tab
+                      bound to the current worktree. stdout: opened | skipped
+
 ARGUMENTS
   specPath            Path to a spec JSON file (required)
 
@@ -157,6 +161,48 @@ const DEFAULT_TIMEOUT_MINUTES = 1440;
 const DONE_SCREEN_MS = 800;
 
 // ============================================================================
+// open-artifact: show a published claude.ai artifact in an Orca tab
+// ============================================================================
+
+/**
+ * `mkd open-artifact <url>`: the agent runs it right after the Artifact tool
+ * returns the URL. Inside Orca the artifact opens in a tab bound to the
+ * current worktree; the system browser is never used. stdout carries one
+ * word: `opened` (the tab exists, loadError null) or `skipped` (no Orca, or
+ * the tab failed; stderr says why and the agent gives the link instead).
+ * Exit 2 only for a URL that is not a claude.ai https link.
+ */
+async function runOpenArtifact(url: string | undefined): Promise<void> {
+  let parsed: URL | null = null;
+  try {
+    parsed = url ? new URL(url) : null;
+  }
+  catch {
+    parsed = null;
+  }
+  if (!parsed || parsed.protocol !== 'https:' || parsed.hostname !== 'claude.ai') {
+    console.error('[mkd] error: open-artifact needs one https://claude.ai/... artifact URL.');
+    process.exit(2);
+  }
+
+  const orca = await detectOrca(process.env, process.platform);
+  if (!orca.detected) {
+    console.error('[mkd] Orca not detected: give the user the artifact link.');
+    console.log('skipped');
+    return;
+  }
+  const selector = await worktreeSelector(process.cwd());
+  const opened = await openOrcaTab({ cmd: orca.cmd, url: parsed.href, selector });
+  if (opened.ok) {
+    console.error(`[mkd] artifact opened in an Orca tab bound to ${selector}.`);
+    console.log('opened');
+    return;
+  }
+  console.error(`[mkd] could not open an Orca tab (${opened.reason}): give the user the artifact link.`);
+  console.log('skipped');
+}
+
+// ============================================================================
 // MAIN
 // ============================================================================
 
@@ -166,6 +212,11 @@ async function main(): Promise<void> {
   if (getBoolFlag(flags, 'help') || getBoolFlag(flags, 'h')) {
     console.error(HELP);
     process.exit(0);
+  }
+
+  if (positional[0] === 'open-artifact') {
+    await runOpenArtifact(positional[1]);
+    return;
   }
 
   const specPath = positional[0];

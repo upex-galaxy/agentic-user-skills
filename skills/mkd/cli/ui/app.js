@@ -2112,7 +2112,7 @@
         const notified = await sendToArtifact(result);
         showDone(notified
           ? 'Sent. Claude has your answers and is picking them up.'
-          : 'Saved, but Claude was not notified. Tell Claude in the chat that the deck is answered.');
+          : 'Saved, but Claude was not notified. Tell Claude in the chat that the deck is answered.', notified);
         return;
       }
       const response = await fetch('/submit', {
@@ -2192,10 +2192,34 @@
     return `Could not save your answers${code ? ` (${code})` : ''}. Try again, or press "Copy JSON" and paste it into the chat.`;
   }
 
-  function showDone(message) {
+  /**
+   * Artifact mode only: the wake-up can be declined unattended, so the page
+   * tells the user the one word that makes Claude read the saved answers.
+   * Inline styles on purpose: the shared CSS is hash-pinned for copy/wait.
+   */
+  function showWakeHint() {
+    if (!doneEl || doneEl.querySelector('.mkd-done__hint')) {
+      return;
+    }
+    const message = doneEl.textContent;
+    doneEl.textContent = '';
+    const line = document.createElement('div');
+    line.textContent = message;
+    const hint = document.createElement('p');
+    hint.className = 'mkd-done__hint';
+    hint.style.cssText = 'margin:0.75rem 0 0;font-size:0.95rem;font-weight:400;opacity:0.8;max-width:34rem';
+    hint.textContent = 'If Claude does not answer within a minute, type "listo" in the chat: your answers are saved.';
+    doneEl.style.flexDirection = 'column';
+    doneEl.append(line, hint);
+  }
+
+  function showDone(message, wakeHint) {
     if (doneEl) {
       if (message) {
         doneEl.textContent = message;
+      }
+      if (mode === 'artifact' && wakeHint) {
+        showWakeHint();
       }
       doneEl.hidden = false;
     }

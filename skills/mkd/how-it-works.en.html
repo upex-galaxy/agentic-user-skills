@@ -488,7 +488,7 @@ h4,.h4{font-size:22px;line-height:1.3;font-weight:600;margin:0 0 8px}
     <h2 class="h2">The flow changes with the <span class="grad">harness</span></h2>
     <table class="tt tight mt-s">
       <tr><th>Environment</th><th>What happens</th></tr>
-      <tr><td style="padding:7px 14px" class="small">Claude Code with the Artifact tool</td><td style="padding:7px 14px" class="small">Artifact mode, only when the agent passes <span class="mono">--artifact</span>: it publishes the page and <b>Send to Claude</b> wakes the session</td></tr>
+      <tr><td style="padding:7px 14px" class="small">Claude Code with the Artifact tool</td><td style="padding:7px 14px" class="small">Artifact mode, only when the agent passes <span class="mono">--artifact</span>: it publishes the page and <b>Send to Claude</b> wakes the session. If Claude does not answer within a minute, type <span class="mono">listo</span> in the chat: the answers are already saved</td></tr>
       <tr><td style="padding:7px 14px" class="small">Inside Orca</td><td style="padding:7px 14px" class="small">Opens a tab bound to the worktree and waits until you press <b>Send to Claude</b>. <span class="mono">--copy</span> goes back to copy mode</td></tr>
       <tr><td style="padding:7px 14px" class="small">No Orca</td><td style="padding:7px 14px" class="small">Copy mode: opens the browser and exits. <span class="mono">--wait</span> blocks until you answer</td></tr>
     </table>
