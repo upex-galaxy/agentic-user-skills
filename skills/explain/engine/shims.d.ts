@@ -36,3 +36,16 @@ declare module '*/state.scene.js';
 declare module '*/motion.scene.js';
 declare module '*/motion2.scene.js';
 declare module '*/bands.js';
+// Presets merge: engine modules, piece families, presets and their scenes.
+declare module '*/preset.js';
+declare module '*/transitions.js';
+declare module '*/kit.js';
+declare module '*/icons.js';
+declare module '*/screens.js';
+declare module '*/devices.js';
+declare module '*/numbers.js';
+declare module '*/annotate.js';
+declare module '*/movement.js';
+declare module '*/systems.js';
+declare module '*/wrappers.js';
+declare module '*.scene.js';
