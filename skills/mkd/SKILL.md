@@ -44,6 +44,9 @@ Deck chrome, always on: intro screen, progress rail, arrow-key navigation, per-i
 3. The `problem` is plain language for someone without the full technical context; jargon and codenames go inside `context` balloons that explain how things work today.
 4. Every real tradeoff the user should know about is written down: an unexplained option list is the failure this tool exists to remove.
 
+5. **Even-handed justifications.** Give every option a justification of similar length (within about 20%), the same structure (value, then cost) and the same tone, so length and warmth do not reveal your pick. The recommendation lives only in the recommended option's own text and its `recommended` flag: the `problem`, the `context` and the other options never name it or lean toward it.
+6. Refer to options by `label`, never by letter: the user can **Shuffle** the options, and the letters then follow the screen position, not the spec `key`. The Result still carries your original `key` in `chosen`.
+
 Write `title`, `problem`, `content` and justifications in the user's language; the UI chrome is English.
 
 ## Pick the flow
