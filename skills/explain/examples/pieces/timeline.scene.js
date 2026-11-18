@@ -1,4 +1,5 @@
-// Timeline demo (8 s): five milestones, a progress fill and a marker that lights each one as it passes.
+// Timeline demo (16 s): a progress fill and a marker that lights each milestone as it passes. Five milestones stay on one row;
+// the second scene has eight, which wrap into two rows joined by a curved turn so the labels stay big.
 export const title = 'Línea de tiempo';
 
 export default ({ scene }) => ({
@@ -24,6 +25,28 @@ export default ({ scene }) => ({
           dur: 4.6,
         });
         s.sourceFooter({ text: 'bitácora del producto', at: 1 });
+      },
+    }),
+    scene({
+      name: 'recorrido',
+      dur: 9,
+      build(s) {
+        s.label({ id: 'heading2', text: 'Un año de producto, mes a mes', rect: { x: 160, y: 120, w: 1600, h: 110 }, px: 90, font: 'display', type: true, at: 0.2 });
+        s.timeline({
+          id: 'anio',
+          milestones: [
+            { label: 'Primera idea', date: 'Enero' },
+            { label: 'Entrevistas con clientes', date: 'Febrero' },
+            { label: 'Prototipo en papel', date: 'Marzo' },
+            { label: 'Versión alfa cerrada', date: 'Mayo' },
+            { label: 'Pruebas con usuarios', date: 'Junio' },
+            { label: 'Beta pública', date: 'Agosto' },
+            { label: 'Lanzamiento', date: 'Octubre' },
+            { label: 'Mil equipos activos', date: 'Diciembre' },
+          ],
+          at: 0.6,
+          dur: 5,
+        });
       },
     }),
   ],
