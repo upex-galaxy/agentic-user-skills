@@ -76,9 +76,13 @@ export function applyPronunciation(text: string, rules: PronunciationRule[]): st
   return text.replace(re, m => map.get(m.toLowerCase()) ?? m);
 }
 
-/** The cache key of a line: sha256 of the voice, model, speed, language and spoken text. */
+/**
+ * The cache key of a line: sha256 of the provider, model, voice, speed and spoken text. The language is left out: no
+ * provider call receives it (it only picks Kokoro's default voice, which the key already holds), so a detected
+ * language that flips never regenerates, or re-bills, a line.
+ */
 export function cueKey(s: VoiceSettings, spokenText: string): string {
-  return createHash('sha256').update(JSON.stringify([s.provider, s.model, s.voiceId, s.speed, s.lang, spokenText, 'wav24k-v1'])).digest('hex');
+  return createHash('sha256').update(JSON.stringify([s.provider, s.model, s.voiceId, s.speed, spokenText, 'wav24k-v1'])).digest('hex');
 }
 
 interface CueLike { id: string, scene: string, text: string, spoken?: string }
@@ -110,12 +114,14 @@ const creditRate = (model: string) => /eleven_v[34]/i.test(model) ? 2 : 1;
 
 /** The text `voice plan` prints: one block per line still to generate, a credits estimate and the agent's steps. */
 export function formatPlan(entries: PlanEntry[], settings: VoiceSettings): string {
-  const missing = entries.filter(e => !e.cached);
+  // Cues that say the same line share one key, so the agent generates and pays for it once.
+  const unique = [...new Map(entries.map(e => [e.key, e])).values()];
+  const missing = unique.filter(e => !e.cached);
   const todo = missing.filter(e => !(e.source && existsSync(e.source)));
   const waiting = missing.length - todo.length;
   const out: string[] = [];
-  if (!missing.length) { return `Voice plan: all ${entries.length} lines are cached. Nothing to generate.`; }
-  out.push(`Voice plan (${settings.provider}): ${todo.length} of ${entries.length} lines to generate, ${entries.length - missing.length} cached.`, '');
+  if (!missing.length) { return `Voice plan: all ${unique.length} lines are cached. Nothing to generate.`; }
+  out.push(`Voice plan (${settings.provider}): ${todo.length} of ${unique.length} lines to generate, ${unique.length - missing.length} cached.`, '');
   for (const e of todo) {
     out.push(
       `Line ${e.id} (scene "${e.scene}")`,
@@ -190,9 +196,13 @@ const INGEST_PAGE = `<!doctype html><meta charset="utf-8"><title>ingest</title><
 export async function ingest(entries: PlanEntry[], settings: VoiceSettings, opts: { launch?: (url: string) => ChromeHandle, timeoutMs?: number } = {}): Promise<{ ingested: string[], missing: string[] }> {
   const todo: PlanEntry[] = [];
   const missing: string[] = [];
+  const seen = new Set<string>();
   for (const e of entries) {
-    if (existsSync(e.wav)) { continue; }
-    if (e.source && existsSync(e.source)) { todo.push(e); }
+    const source = e.source && existsSync(e.source) ? e.source : null;
+    // A take saved after its clip was made (the agent replaced a bad one) is ingested again.
+    const fresh = existsSync(e.wav) && !(source && statSync(source).mtimeMs > statSync(e.wav).mtimeMs);
+    if (fresh || seen.has(e.key)) { continue; }
+    if (source) { todo.push(e); seen.add(e.key); }
     else { missing.push(e.id); }
   }
   const ingested: string[] = [];
@@ -310,9 +320,21 @@ export async function runKokoro(entries: PlanEntry[], settings: VoiceSettings, o
       });
       result.started = true;
       const child = proc;
+      // Ctrl-C or a kill while Kokoro runs: stop the child for real (TERM, then KILL after 5 s) before exiting, since
+      // process.exit skips the finally below. A second signal kills it at once.
+      let stopping = false;
       onSignal = () => {
+        if (stopping) {
+          child.kill('SIGKILL');
+          process.exit(130);
+        }
+        stopping = true;
         child.kill('SIGTERM');
-        process.exit(130);
+        const force = setTimeout(() => child.kill('SIGKILL'), 5000);
+        void child.exited.then(() => {
+          clearTimeout(force);
+          process.exit(130);
+        });
       };
       process.on('SIGINT', onSignal);
       process.on('SIGTERM', onSignal);

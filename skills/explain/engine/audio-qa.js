@@ -59,7 +59,8 @@ export function auditAudio(engine, audio, deps = {}) {
     hi: sc.dur - (i < engine.scenes.length - 1 ? sc.end - engine.scenes[i + 1].start : 0),
   });
 
-  for (const sc of engine.scenes) {
+  // The window checks judge real clip lengths: with the voice off the cue lengths are only estimates.
+  for (const sc of voiceOn ? engine.scenes : []) {
     const i = engine.scenes.indexOf(sc);
     const cues = engine.voice.filter(v => v.sceneIndex === i).sort((a, b) => a.at - b.at);
     const { lo, hi } = winOf(sc, i);
@@ -77,7 +78,8 @@ export function auditAudio(engine, audio, deps = {}) {
       const pcm = clips.get(v.id);
       if (!pcm) { add(errors, 'voice-missing', v.scene, v.id, v.t, `cue ${v.id} has no clip in the narration manifest`); continue; }
       const secs = pcm.length / CLIP_SR;
-      const chars = v.text.length;
+      // Characters of what was spoken (after `spoken` and the pronunciation rules), as the CLI recorded them.
+      const chars = audio.narration.cues.find(c => c.id === v.id)?.chars ?? v.text.length;
       let sum = 0;
       for (let i = 0; i < pcm.length; i++) { sum += pcm[i] * pcm[i]; }
       const rms = dbOf(Math.sqrt(sum / Math.max(1, pcm.length)));
@@ -120,7 +122,7 @@ export function auditAudio(engine, audio, deps = {}) {
 
   if (audio.sound) {
     for (const d of densityIssues(report.events ?? coalesce(engine.events()))) { add(warnings, 'sfx-density', d.scene, '-', d.t, d.detail); }
-    for (const ev of deps.events ?? engine.events()) {
+    for (const ev of deps.events ?? engine.droppedEvents?.() ?? []) {
       const sc = engine.scenes[ev.sceneIndex];
       if (sc && ev.t > sc.end + EPS) { add(warnings, 'cue-after-end', ev.scene, ev.id, ev.t, `effect "${ev.kind}" at ${round(ev.t)}s is after the scene ends (${round(sc.end)}s)`); }
     }

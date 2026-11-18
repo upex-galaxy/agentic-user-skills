@@ -73,7 +73,9 @@ export function resolveProvider(flags: Flags, cfg: AudioConfig, env: Env = proce
  */
 export function resolveVoice(p: Exclude<Provider, 'none'>, flags: Flags, cfg: AudioConfig, lang: string, env: Env = process.env): VoiceSettings {
   const same = cfg.voice?.provider === p ? cfg.voice : undefined;
-  const voiceId = str(flags['voice-id']) ?? str(same?.id) ?? str(env.EXPLAIN_VOICE_ID) ?? defaultVoiceId(p, lang);
+  // EXPLAIN_VOICE_ID belongs to EXPLAIN_VOICE's provider: an ElevenLabs id never reaches Kokoro (or the reverse).
+  const envId = !str(env.EXPLAIN_VOICE) || str(env.EXPLAIN_VOICE) === p ? str(env.EXPLAIN_VOICE_ID) : undefined;
+  const voiceId = str(flags['voice-id']) ?? str(same?.id) ?? envId ?? defaultVoiceId(p, lang);
   if (!voiceId) {
     throw new AudioUsageError('The ElevenLabs voice needs a voice id: pick one with the ElevenLabs MCP (creative_list_voices) and pass --voice-id <id>, save it with `audio use <dir> --voice elevenlabs --voice-id <id>`, or set EXPLAIN_VOICE_ID.');
   }
@@ -99,7 +101,8 @@ export async function resolveAudio(scenePath: string, flags: Flags, cfg: AudioCo
   const p = resolveProvider(flags, cfg, env);
   const spec = await loadSpec(scenePath);
   const cues = specCues(spec);
-  if (p === 'none') { return { sound, provider: p, voice: null, cues }; }
+  // Nothing to narrate: no voice to resolve (an ElevenLabs provider without an id is fine then).
+  if (p === 'none' || !cues.length) { return { sound, provider: p, voice: null, cues }; }
   return { sound, provider: p, voice: resolveVoice(p, flags, cfg, narrationLang(spec, cues), env), cues };
 }
 
@@ -108,7 +111,7 @@ export interface NarrationBlob {
   provider: Provider
   voice: string
   model: string
-  cues: { id: string, key: string, seconds: number }[]
+  cues: { id: string, key: string, seconds: number, chars: number }[]
   clips: Record<string, string>
 }
 
@@ -148,7 +151,7 @@ export async function pageAudio(a: AudioSettings & { cues: Cue[] }, target: stri
       h.update(e.key);
       h.update(createHash('sha256').update(bytes).digest('hex'));
     }
-    return { id: e.id, key: e.key, seconds: w.channels[0].length / w.sampleRate };
+    return { id: e.id, key: e.key, seconds: w.channels[0].length / w.sampleRate, chars: e.chars };
   });
   return { audio: { sound: a.sound, narration: { provider: a.voice.provider, voice: a.voice.voiceId, model: a.voice.model, cues, clips } }, hash: h.digest('hex').slice(0, 16), entries };
 }

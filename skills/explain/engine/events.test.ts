@@ -69,7 +69,9 @@ describe('engine.events', () => {
     expect(by(':st:cue0')[0].t).toBeCloseTo(1.22, 9);
     expect(by(':quiet:')).toEqual([]);
     expect(by(':loud:').map((x: any) => [x.kind, x.t])).toEqual([['stamp', 3.22], ['blip', 3]].sort((p: any, q: any) => p[1] - q[1]));
-    expect(by(':n:').filter((x: any) => x.kind === 'tick').length).toBe(10);
+    expect(by(':n:').filter((x: any) => x.kind === 'tick').length).toBe(3);
+    // The pop at 99 s is past its scene: dropped from the mix, listed for QA's cue-after-end.
+    expect(build(spec).droppedEvents().map((x: any) => x.kind)).toEqual(['pop']);
     expect(by(':n:').filter((x: any) => x.kind === 'ding').length).toBe(1);
     expect(by(':n:sound')).toMatchObject([{ kind: 'pop', t: 0.5 }]);
     expect(by('sfx')).toMatchObject([{ kind: 'riser', t: 5, gain: 0.5, pan: -0.2 }]);

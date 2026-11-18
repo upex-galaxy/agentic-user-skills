@@ -68,6 +68,17 @@ describe('audio settings precedence', () => {
     expect(el).toMatchObject({ voiceId: 'EL1', model: 'eleven_flash_v2_5' });
     expect(resolveVoice('elevenlabs', { 'voice-model': 'eleven_v3' }, {}, 'es', { EXPLAIN_VOICE_ID: 'X' }).model).toBe('eleven_v3');
     expect(() => resolveVoice('elevenlabs', {}, {}, 'es', {})).toThrow('creative_list_voices');
+    // EXPLAIN_VOICE_ID belongs to EXPLAIN_VOICE's provider: the Kokoro fallback never gets an ElevenLabs id.
+    const env = { EXPLAIN_VOICE: 'elevenlabs', EXPLAIN_VOICE_ID: '21m00Tcm4TlvDq8ikWAM' };
+    expect(resolveVoice('kokoro', {}, {}, 'es', env).voiceId).toBe('ef_dora');
+    expect(resolveVoice('elevenlabs', {}, {}, 'es', env).voiceId).toBe('21m00Tcm4TlvDq8ikWAM');
+  });
+
+  test('nothing to narrate resolves no voice, so ElevenLabs needs no id then', async () => {
+    const dir = temp('explain-nosay-');
+    writeFileSync(join(dir, 'scene.js'), 'export default ({ scene }) => ({ scenes: [scene({ name: \'a\', dur: 2, build() {} })] });\n');
+    const a = await resolveAudio(join(dir, 'scene.js'), { voice: 'elevenlabs' }, {}, {});
+    expect(a.voice).toBeNull();
   });
 
   test('new and audio use write only what a flag or env var chose', () => {
@@ -75,6 +86,8 @@ describe('audio settings precedence', () => {
     expect(audioChoice({}, { EXPLAIN_SOUND: 'on' })).toEqual({ sound: 'on' });
     expect(audioChoice({ voice: 'kokoro' }, { EXPLAIN_SOUND: 'off' })).toEqual({ sound: 'off', voice: { provider: 'kokoro' } });
     expect(audioChoice({ 'voice-id': 'v' }, {}, { voice: { provider: 'elevenlabs', model: 'eleven_v3' } })).toEqual({ voice: { provider: 'elevenlabs', id: 'v', model: 'eleven_v3' } });
+    // The ElevenLabs model is recorded even when it is the default (it is part of every line's key).
+    expect(audioChoice({ 'voice': 'elevenlabs', 'voice-id': 'v' }, {})).toEqual({ voice: { provider: 'elevenlabs', id: 'v', model: 'eleven_flash_v2_5' } });
   });
 });
 
@@ -113,7 +126,7 @@ describe('cli wiring', () => {
     const t = resolveTarget(dir);
     const a = await resolveAudio(t.scene, { voice: 'kokoro' }, {});
     const first = await pageAudio(a, dir);
-    expect(first.audio.narration?.cues).toEqual([{ id: '0.0', key: expect.any(String), seconds: 3 }]);
+    expect(first.audio.narration?.cues).toEqual([{ id: '0.0', key: expect.any(String), seconds: 3, chars: 25 }]);
     const html = readFileSync((await ensureBuilt(t, undefined, false, { voice: 'kokoro' })).index, 'utf8');
     expect(html).toContain('"provider":"kokoro"');
     // A new process (each CLI command is one) reads the edited scene: its new line has no clip yet.

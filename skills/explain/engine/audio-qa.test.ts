@@ -55,6 +55,27 @@ describe('audio qa: one fixture per error', () => {
     expect(hit.detail).toContain('before');
   });
 
+  test('with the voice off, estimated narration never fails the window checks (sound on)', () => {
+    // 110 characters estimate to 7.3 s in a 4 s scene: only real clips are judged.
+    const long = 'x'.repeat(110);
+    const e = build([scene({ dur: 4, say: long }), { name: 'b', dur: 4, build() {} }], undefined);
+    const r = auditAudio(e, { sound: true, narration: null });
+    expect(types(r.errors)).toEqual([]);
+  });
+
+  test('voice-suspect counts the spoken characters the CLI recorded, not the display text', () => {
+    const audio = audioOf(clipsOf(1.5));
+    audio.narration.cues[0] = { ...audio.narration.cues[0], chars: 27 } as any;
+    const e = build([scene({ say: [{ text: 'AWS', spoken: 'Amazon Web Services runs it' }] })], audio);
+    expect(types(auditAudio(e, audio).errors)).not.toContain('voice-suspect');
+  });
+
+  test('cue-after-end: an effect timed past its scene is reported, not silently lost', () => {
+    const e = build([scene({ say: undefined, build(s: any) { s.sfx({ kind: 'stamp', at: 9 }); } })], undefined);
+    const r = auditAudio(e, { sound: true, narration: null });
+    expect(find(r.warnings, 'cue-after-end')).toMatchObject({ scene: 'a' });
+  });
+
   test('voice-missing: a cue has no clip', () => {
     const audio = audioOf(clipsOf(2));
     const e = build([scene({ say: [LINE, LINE] })], audio);

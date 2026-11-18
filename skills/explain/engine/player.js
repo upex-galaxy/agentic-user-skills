@@ -181,7 +181,8 @@ export async function boot({ makeScene, preset, loadExport }) {
     sound.hidden = false;
     renderSound();
     sound.onclick = () => {
-      soundOn = !soundOn;
+      // Sound remembered as on but not started yet (the browser needs this click first): start it, keep it on.
+      if (!(soundOn && !ctx)) { soundOn = !soundOn; }
       writeSound(soundOn);
       renderSound();
       if (soundOn) { ensureAudio(); }

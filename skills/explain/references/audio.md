@@ -16,7 +16,8 @@ Both are optional and off by default. The video is silent unless a build turns s
 - `explain.json`'s `voice.id` and `voice.model` apply only when its `voice.provider` is the provider in use.
 - `audio use <dir> --sound on --voice kokoro [--voice-id <id>] [--voice-model <model>]` saves the choice in `explain.json`. A one-off flag never rewrites it.
 - `new` writes only what a flag or an env var chose. It never pins a default, so a later `EXPLAIN_*` still applies.
-- The language of the voice is the spec's `lang`, else it is detected from the title and the spoken lines.
+- The language of the voice is the spec's `lang`, else it is detected from the title and the spoken lines. Set `lang` when the video has a voice: it picks Kokoro's default voice, and one accented word in an English script would otherwise pick the Spanish one.
+- `audio use --voice elevenlabs` also records the model, the default one included. The model is part of every line's cache key, so a later change of `EXPLAIN_ELEVENLABS_MODEL` does not regenerate a saved video.
 
 ## Narration: `say` on a scene
 
@@ -48,7 +49,7 @@ scene({
 
 ## Voice providers
 
-Builds never synthesize speech. They read the cache (`~/.explain/voice/<hash>.wav`, or `EXPLAIN_VOICE_DIR`) and fail with the exact next command when a line is missing. A line's hash covers the provider, model, voice, speed, language and spoken text, so an unchanged line is never generated twice, and editing one line regenerates only that one. Each clip is a 24 kHz mono WAV with a `.json` sidecar.
+Builds never synthesize speech. They read the cache (`~/.explain/voice/<hash>.wav`, or `EXPLAIN_VOICE_DIR`) and fail with the exact next command when a line is missing. A line's hash covers the provider, model, voice, speed and spoken text, so an unchanged line is never generated twice, a line said twice is generated once, and editing one line regenerates only that one. Each clip is a 24 kHz mono WAV with a `.json` sidecar.
 
 ### Kokoro (local, free)
 
@@ -68,6 +69,7 @@ The CLI reads no ElevenLabs key and calls no ElevenLabs endpoint. The agent gene
    - Poll `creative_get_flow_run_status` until it completes.
    - The connector makes two takes by default: pick one, download its audio URL to the target path, and keep it.
    - Never repeat a generation call to retry: each call is charged.
+   - To replace a bad take, save the new MP3 over the old one. The next build ingests it again, because the newer file wins.
 4. **Run any build command** (`build`, `check`, `export`) with the same voice settings. It ingests each saved MP3 by its hash (decoded in headless Chrome to a 24 kHz WAV; the MP3 stays next to it) and builds.
 
 Cost, measured through the claude.ai connector: `eleven_flash_v2_5` charged 31 credits for one 31-character take, so a two-take line costs about 2 credits per character. A minute of narration is about 900 characters. Its model guide says `eleven_v3` and `eleven_v4` cost twice as much as flash.
@@ -80,7 +82,7 @@ Effects come from the engine, not from the scene author:
 |---|---|
 | A scene transition starts | `whoosh`, `glitch` for `glitch`, `riser` for `zoom-through` |
 | `stamp` lands | `stamp` |
-| `counter` runs, then lands | `tick` (at most 10 per second), then `ding` |
+| `counter` runs, then lands | `tick` (about 3 per second), then `ding` |
 | `kineticText` in `slam` or `drop` mode | `hit` per word |
 | `titleCard` appears | `swell` |
 | `burst`; `particles` in `burst` or `confetti` mode | `sparkle` |

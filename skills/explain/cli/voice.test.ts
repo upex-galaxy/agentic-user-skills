@@ -58,10 +58,12 @@ describe('cue keys and pronunciation', () => {
     const base = cueKey(kokoro, 'hello');
     expect(cueKey(kokoro, 'hello')).toBe(base);
     expect(base).toMatch(/^[0-9a-f]{64}$/);
-    for (const other of [{ ...kokoro, voiceId: 'x' }, { ...kokoro, model: 'm' }, { ...kokoro, speed: 1.1 }, { ...kokoro, lang: 'es' }]) {
+    for (const other of [{ ...kokoro, voiceId: 'x' }, { ...kokoro, model: 'm' }, { ...kokoro, speed: 1.1 }]) {
       expect(cueKey(other, 'hello')).not.toBe(base);
     }
     expect(cueKey(kokoro, 'hello!')).not.toBe(base);
+    // No provider receives the language: a detected language that flips must not regenerate (or re-bill) a line.
+    expect(cueKey({ ...kokoro, lang: 'es' }, 'hello')).toBe(base);
   });
   test('applyPronunciation: longest first, whole words, case-insensitive', () => {
     const rules = [{ pattern: 'API', replacement: 'A P I' }, { pattern: 'API key', replacement: 'ay pee eye key' }];
@@ -99,6 +101,12 @@ describe('plan', () => {
     expect(text).toContain(`Missing characters: ${chars}`);
     expect(text).toMatch(/Estimated credits: about 76 /);
     expect(text).toContain('eleven_flash_v2_5');
+  });
+  test('a line said twice is listed and estimated once', () => {
+    const twice = [{ id: '0.0', scene: 'a', text: 'La misma línea.' }, { id: '1.0', scene: 'b', text: 'La misma línea.' }];
+    const text = formatPlan(planVoice(twice, eleven, []), eleven);
+    expect(text).toContain('1 of 1 lines to generate');
+    expect(text.match(/save to:/g)?.length).toBe(1);
   });
   test('kokoro entries have no source and applied pronunciation', () => {
     const [e] = planVoice([{ id: '0.0', scene: 's', text: 'Use the API' }], kokoro, [{ pattern: 'API', replacement: 'A P I' }]);

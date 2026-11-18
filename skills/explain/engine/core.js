@@ -345,12 +345,22 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style: pre
    * with t in global seconds. Pure: the same scene spec gives the same list. Coalescing and density caps are the mixer's job.
    */
   function events() {
+    return collectEvents().kept;
+  }
+
+  /** Effects timed outside their scene (after its end, or before 0): they never play, and QA warns (cue-after-end). */
+  function droppedEvents() {
+    return collectEvents().dropped;
+  }
+
+  function collectEvents() {
     const out = [];
+    const dropped = [];
     const panOf = it => (it.rect ? (rectCenter(it.rect)[0] / W) * 0.6 - 0.3 : 0);
     for (const sc of scenes) {
       const add = (id, local, kind, gain, pan) => {
-        if (local < 0 || local > sc.dur) { return; }
-        out.push({ t: sc.start + local, scene: sc.name, sceneIndex: sc.index, id, kind, gain, pan });
+        const ev = { t: sc.start + local, scene: sc.name, sceneIndex: sc.index, id, kind, gain, pan };
+        (local < 0 || local > sc.dur ? dropped : out).push(ev);
       };
       if (sc.index < scenes.length - 1 && sc.tr > 0) { out.push({ t: sc.start + sc.dur - sc.tr, scene: sc.name, sceneIndex: sc.index, id: `transition:${sc.name}`, kind: transitionSound(sc.trOut.type), gain: 0.7, pan: 0 }); }
       for (const it of [...sc.items, ...sc.hud]) {
@@ -360,7 +370,8 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style: pre
       }
       sc.sfx.forEach((e, n) => add(`${sc.name}:sfx${n}`, e.at, e.kind, e.gain, e.pan));
     }
-    return out.sort((a, b) => a.t - b.t || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const order = (a, b) => a.t - b.t || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    return { kept: out.sort(order), dropped: dropped.sort(order) };
   }
 
   /** Every text string of every element, regardless of time (for static checks such as the ¿ ¡ rule). */
@@ -388,6 +399,7 @@ export function createEngine({ canvas, ctx = canvas.getContext('2d'), style: pre
     sample,
     texts,
     events,
+    droppedEvents,
     narrated: Boolean(narration),
     voice: scenes.flatMap(sc => sc.layout.map(c => ({ id: c.id, scene: sc.name, sceneIndex: sc.index, t: sc.start + c.at, at: c.at, end: c.end, seconds: c.seconds, text: c.text, estimated: c.estimated }))),
   };

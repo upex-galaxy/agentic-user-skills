@@ -14,9 +14,12 @@ export function formatNumber(v, { decimals = 0, prefix = '', suffix = '', sep = 
   return `${prefix}${neg}${grouped}${dec ? `${sep === '.' ? ',' : '.'}${dec}` : ''}${suffix}`;
 }
 
-/** Sound cues of a counter: a tick at most 10 per second over the count, then a ding when it lands. */
+/**
+ * Sound cues of a counter: about 3 ticks per second over the count (spaced past the mixer's 120 ms merge window and
+ * within its 3-per-second cap, so each one plays), then a ding when it lands.
+ */
 function counterCues(from, to) {
-  const n = Math.max(1, Math.min(Math.floor((to - from) * 10), 40));
+  const n = Math.max(1, Math.min(Math.floor((to - from) * 3), 12));
   const cues = Array.from({ length: n }, (_, i) => ({ t: from + ((to - from) * i) / n, kind: 'tick' }));
   cues.push({ t: to, kind: 'ding' });
   return cues;

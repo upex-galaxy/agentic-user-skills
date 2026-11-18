@@ -17,7 +17,7 @@ import type { PageInfo } from './headless.ts';
 import { existsSync, mkdirSync, readFileSync, statfsSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
-import { AudioUsageError, pageAudio, resolveAudio, resolveProvider, resolveSound, resolveVoice } from './audio.ts';
+import { AudioUsageError, DEFAULT_ELEVENLABS_MODEL, pageAudio, resolveAudio, resolveProvider, resolveSound, resolveVoice } from './audio.ts';
 import { buildHash, buildPage, insideSkillDir, PAGE_WARN_BYTES, readBuildHash, scenePreset, SKILL_DIR } from './build.ts';
 import { exportVideo, readPageAudio, sheet, sheetFromMp4, stillName, stills, stillsFromMp4 } from './export.ts';
 import { inspectPage, pageScenes } from './headless.ts';
@@ -301,7 +301,7 @@ export async function ensureBuilt(t: Target, preset: string | undefined, force =
   if (!force && existsSync(index) && readBuildHash(index) === buildHash(t.scene, chosen, key)) { return { dir, scene: t.scene, preset: chosen, index }; }
   const r = await buildPage({ scenePath: t.scene, preset: chosen, outDir: dir, audio, audioHash: key });
   log(`built ${r.indexHtml} (${(r.bytes / 1024 / 1024).toFixed(1)} MB, preset ${chosen}${audioNote(audio)})`);
-  if (r.bytes > PAGE_WARN_BYTES) { log(`warning: the page is ${(r.bytes / 1024 / 1024).toFixed(1)} MB; a claude.ai Artifact holds 16 MB at most (narration clips take about 48 KB per second)`); }
+  if (r.bytes > PAGE_WARN_BYTES) { log(`warning: the page is ${(r.bytes / 1024 / 1024).toFixed(1)} MB; a claude.ai Artifact holds 16 MB at most (narration clips take about 64 KB per second)`); }
   return { dir, scene: t.scene, preset: chosen, index: r.indexHtml };
 }
 
@@ -330,7 +330,9 @@ export function audioChoice(flags: Record<string, string | true>, env: Record<st
     if (provider) {
       const keep = cfg.voice?.provider === provider ? cfg.voice : {};
       const id = pick('voice-id', 'EXPLAIN_VOICE_ID') ?? keep?.id;
-      const model = provider === 'elevenlabs' ? (pick('voice-model', 'EXPLAIN_ELEVENLABS_MODEL') ?? keep?.model) : undefined;
+      // The ElevenLabs model is recorded even when it is the default: it is part of every line's cache key, so a later
+      // change of EXPLAIN_ELEVENLABS_MODEL never silently regenerates (and re-bills) a saved video.
+      const model = provider === 'elevenlabs' ? (pick('voice-model', 'EXPLAIN_ELEVENLABS_MODEL') ?? keep?.model ?? DEFAULT_ELEVENLABS_MODEL) : undefined;
       out.voice = { provider, ...(id && provider !== 'none' ? { id: String(id) } : {}), ...(model ? { model: String(model) } : {}) };
     }
   }
