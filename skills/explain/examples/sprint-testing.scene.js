@@ -53,12 +53,12 @@ export default ({ scene }) => ({
         s.packets({ id: 'p1', edge: 'e0', shape: 'dot', at: 3.4, until: 4.2, every: 0.4, dur: 0.9, color: 'accent', track: false });
         s.packets({ id: 'p2', edge: 'e1', shape: 'dot', at: 4.2, until: 5.0, every: 0.4, dur: 0.9, color: 'accent2', track: false });
         s.packets({ id: 'p3', edge: 'e2', shape: 'dot', at: 5.0, until: 5.8, every: 0.4, dur: 0.9, color: 'good', track: false, ping: true });
-        s.caption({ text: 'Las etapas 4, 5 y 6 las toman otras skills.', at: 6.2, until: 8.6 });
+        s.caption({ text: 'Las etapas 4, 5 y 6 las toman otras skills.', at: 4.8, typeDur: 1 });
       },
     }),
     scene({
       name: 'planeacion',
-      dur: 10,
+      dur: 9.5,
       transition: { type: 'wipe', dur: 0.6 },
       build(s) {
         furniture(s, 3, 'Etapa 1', 1, 'Planeación: antes de tocar la app');
@@ -81,12 +81,12 @@ export default ({ scene }) => ({
         furniture(s, 4, 'Etapa 2', 2, 'Ejecución: humo primero');
         s.browser({ id: 'web', rect: { x: 80, y: 250, w: 1000, h: 620 }, url: 'app.mi-producto.com', at: 0.4 });
         s.appScreen({ id: 'app', in: 'web.body', at: 1.2, title: 'La historia en la app', rows: [{ label: 'Entrar a la app' }, { label: 'Abrir la historia' }, { label: 'Flujo principal', on: true }], cta: 'Probar', banner: { text: 'Flujo principal funcionando', at: 4.4, color: 'good' } });
-        s.cursor({ path: [[1.4, 1000, 300], [2.6, 'app.cta'], [3.6, 'app.cta'], [6.5, 700, 560]], clicks: [3.0], until: 7.4 });
+        s.cursor({ path: [[1.4, 1000, 300], [2.6, 'app.cta'], [3.6, 'app.cta']], clicks: [3.0], until: 4.6 });
         s.icon({ id: 'smoke', kind: 'gear', rect: { x: 1260, y: 250, w: 200, h: 200 }, at: 0.8, spin: 1.2, color: 'warn' });
         s.node({ id: 'gate', text: 'Humo: Go o No-Go', rect: { x: 1190, y: 480, w: 560, h: 120 }, at: 1.2, color: 'warn', dur: 0.5 });
         s.chip({ id: 'verdict', cx: 1470, cy: 690, text: 'corriendo', color: 'warn', icon: 'spinner', px: 48, at: 2.0, states: [{ at: 4.4, text: 'Go', color: 'good', icon: 'check', solid: true }] });
         s.stamp({ id: 'go', text: 'GO', cx: 1620, cy: 345, at: 4.8, color: 'good' });
-        s.caption({ text: 'Si el humo pasa, se explora a fondo.', at: 5.6, until: 7.6 });
+        s.caption({ text: 'Si el humo pasa, se explora a fondo.', at: 4.4, typeDur: 1 });
       },
     }),
     scene({
@@ -98,15 +98,14 @@ export default ({ scene }) => ({
         s.icon({ id: 'api', kind: 'server', rect: { x: 960, y: 250, w: 300, h: 290 }, label: 'API', at: 0.7, color: 'accent2' });
         s.icon({ id: 'db', kind: 'database', rect: { x: 1440, y: 250, w: 300, h: 290 }, label: 'DB', at: 1.0, color: 'good' });
         s.icon({ id: 'pbi', kind: 'package', rect: { x: 80, y: 250, w: 280, h: 290 }, label: 'Carpeta del PBI', at: 1.3, idle: 'bob' });
-        s.cursor({ path: [[1.6, 300, 700], [2.4, 'ui'], [3.3, 'api'], [4.2, 'api'], [5.4, 'db'], [7.4, 1500, 760]], clicks: [2.6, 3.5, 5.6], until: 8.4 });
+        s.cursor({ path: [[1.6, 300, 700], [2.4, 'ui'], [3.3, 'api'], [4.2, 'api'], [5.4, 'db']], clicks: [2.6, 3.5, 5.6], until: 6.8 });
         s.packets({ id: 'ev0', path: ['ui', 'pbi'], curve: 'arc', bend: -120, shape: 'doc', at: 2.8, dur: 1.2, color: 'accent', track: false, ping: true });
         s.packets({ id: 'ev1', path: ['api', 'pbi'], curve: 'arc', bend: -150, shape: 'doc', at: 3.9, dur: 1.4, color: 'accent2', track: false, ping: true });
         s.packets({ id: 'ev2', path: ['db', 'pbi'], curve: 'arc', bend: -190, shape: 'doc', at: 6.0, dur: 1.8, color: 'good', track: false, ping: true });
         s.callout({ id: 'found', target: 'api', text: 'Aquí aparece un bug', side: 'bottom', w: 460, h: 100, dist: 40, at: 4.4, until: 7.0, color: 'bad' });
         s.dotGrid({ id: 'cases', rect: { x: 420, y: 745, w: 1000, h: 135 }, rows: 3, cols: 14, fail: [17], at: 0.8, dur: 6.5 });
         s.chip({ id: 'run', cx: 1670, cy: 790, text: 'Ejecutando casos', icon: 'spinner', color: 'warn', at: 0.8, states: [{ at: 7.3, text: 'Casos ejecutados', icon: 'check', color: 'good' }] });
-        s.camera.focus('api', 3.4, 0.9, { zoom: 1.35 }).reset(6.6, 0.9);
-        s.caption({ text: 'La evidencia queda guardada en la carpeta del PBI.', at: 7.8, until: 9.3 });
+        s.caption({ text: 'La evidencia queda guardada en la carpeta del PBI.', at: 5.8, typeDur: 1 });
       },
     }),
     scene({
@@ -124,24 +123,27 @@ export default ({ scene }) => ({
           s.node({ id: `a${i}`, text, rect: { x: 440, y, w: 700, h: 120 }, at: 0.8 + i * 0.5, color: colors[i], dur: 0.5 });
           s.packets({ id: `pk${i}`, path: [{ id: `a${i}`, anchor: 'right' }, { id: 'doc', anchor: 'left' }], curve: 's', shape: 'dot', at: 2.4 + i * 1.5, dur: 0.9, color: colors[i], track: false, ping: true });
         });
-        s.stamp({ id: 'closed', text: 'CERRADO', cx: 1560, cy: 770, at: 8.0, color: 'good' });
-        s.caption({ text: 'Si apareció un bug, se reporta con su plantilla.', at: 6.6, until: 9.0 });
+        s.stamp({ id: 'closed', text: 'CERRADO', rect: { x: 1330, y: 690, w: 460, h: 150 }, at: 7.8, color: 'good' });
+        s.caption({ text: 'Si apareció un bug, se reporta con su plantilla.', at: 5.8, typeDur: 1 });
       },
     }),
     scene({
       name: 'salidas',
-      dur: 9,
+      dur: 8,
       build(s) {
         furniture(s, 7, 'Qué produce cada etapa', 3, 'Qué deja cada etapa');
-        s.machine({
+        const mq = s.machine({
           id: 'mq',
           rect: s.area,
           at: 0.4,
           inputs: [{ kind: 'doc', label: '1 ATP y casos' }, { kind: 'package', label: '2 Evidencia', color: 'accent2' }, { kind: 'doc', label: '3 ATR completo', color: 'good' }],
           machine: { label: 'Sprint testing' },
           output: { kind: 'check', label: 'Comentario de QA', color: 'good' },
+          feedStep: 0.7,
+          travel: 1.0,
+          processDur: 1.0,
         });
-        s.caption({ text: 'Cada etapa entrega algo que la siguiente usa.', at: 6.2, until: 8.6 });
+        s.caption({ text: 'Cada etapa entrega algo que la siguiente usa.', at: mq.marks.processStart, typeDur: 1 });
       },
     }),
     scene({
@@ -154,9 +156,9 @@ export default ({ scene }) => ({
         const next = [['doc', 'test-documentation', 'accent', 700], ['gear', 'test-automation', 'accent2', 1070], ['shield', 'regression-testing', 'warn', 1440]];
         next.forEach(([kind, label, color, x], i) => {
           s.icon({ id: `k${i}`, kind, rect: { x, y: 290, w: 340, h: 440 }, label, at: 1.0 + i * 0.6, color, spin: kind === 'gear' ? 1 : undefined });
-          s.packets({ id: `h${i}`, path: ['hub', `k${i}`], curve: 'arc', bend: i === 1 ? 0 : (i - 1) * 130, shape: 'package', at: 2.6 + i * 0.4, until: 5.0 + i * 0.4, every: 0.9, dur: 1.4, color, track: false, ping: true });
+          s.packets({ id: `h${i}`, path: [{ id: 'hub', anchor: 'bottom' }, { id: `k${i}`, anchor: 'bottom' }], curve: 'arc', bend: 50 + i * 40, shape: 'package', at: 2.6 + i * 0.4, until: 5.0 + i * 0.4, every: 0.9, dur: 1.4, color, track: false, ping: true });
         });
-        s.caption({ text: 'Documentación, automatización y regresión.', at: 6.0, until: 8.2 });
+        s.caption({ text: 'Documentación, automatización y regresión.', at: 5.0, typeDur: 1 });
       },
     }),
     scene({

@@ -12,7 +12,7 @@ function frame(s, i, heading) {
   s.heading({ text: heading, at: 0.3 });
   s.journeyRail({ steps: STEPS, active: i, at: 0.2 });
 }
-const cap = (s, text, at, y = 884, w = 1500) => s.caption({ text, at, rect: { x: (1920 - w) / 2, y, w, h: 84 } });
+const cap = (s, text, at, y = 884, w = 1500) => s.caption({ text, at, typeDur: 1, rect: { x: (1920 - w) / 2, y, w, h: 84 } });
 
 export default ({ scene, path }) => ({
   title,
@@ -70,7 +70,7 @@ export default ({ scene, path }) => ({
           total: { label: 'Total', from: 120, to: 108, prefix: '$', at: 6.4, dur: 0.8 },
           feature: { label: 'Descuento 10%', at: 6.0, badge: '-$12' },
         });
-        s.callout({ target: 'ed', text: 'tu cambio', side: 'bottom', dist: 30, w: 300, h: 80, at: 5.0 });
+        s.callout({ target: 'ed', text: 'tu cambio', side: 'bottom', dist: 30, w: 380, h: 100, at: 5.0 });
         s.burst({ origin: [1740, 640], at: 6.9, radius: 110 });
         s.label({ text: 'Lo pruebas en tu máquina', rect: { x: 1220, y: 760, w: 600, h: 90 }, at: 6.6, type: true, color: 'accent2' });
         s.camera.focus('ed', 1.0, 1.0, { zoom: 1.32 });
@@ -114,9 +114,7 @@ export default ({ scene, path }) => ({
         s.packets({ path: ['local', 'remote'], curve: 'arc', bend: -150, at: 6.5, count: 4, every: 0.25, dur: 1.2, shape: 'box', size: 32, color: 'accent' });
         s.burst({ target: 'remote', at: 7.9, radius: 150, colors: ['accent2'] });
         s.chip({ cx: 1430, cy: 545, text: 'origin/descuento', mono: true, color: 'accent', at: 8.0, px: Math.round(s.style.defaults.labelPx * 0.75) });
-        cap(s, 'Commit: una foto con nombre. Push: la copia viaja al remoto.', 7.2, 835);
-        s.camera.focus({ x: 800, y: 250, w: 1000, h: 460 }, 3.9, 0.8, { zoom: 1.2 });
-        s.camera.reset(5.4, 0.8);
+        cap(s, 'Commit: una foto con nombre. Push: la copia viaja al remoto.', 5.0, 835);
       },
     }),
 
@@ -141,16 +139,13 @@ export default ({ scene, path }) => ({
           button: 'Crear pull request',
           openAt: 3.6,
           checks: [{ name: 'CI en cola', start: 4.6, end: 9.2 }, { name: 'Pruebas', start: 5.0, end: 9.3 }],
-          reviewers: [{ name: 'Review pendiente', approveAt: 9.4 }],
+          reviewers: [{ name: 'Leo', approveAt: 9.4 }],
         });
         s.cursor({ path: [[2.3, 720, 600], [3.4, 'pr.button']], clicks: [3.6], until: 4.6 });
         [['doc', 'Qué cambia', 5.3, 'ink'], ['user', 'Quién revisa', 5.7, 'accent2'], ['shield', 'Pruebas ok?', 6.1, 'ink']].forEach(([kind, label, at, color], i) => {
           s.icon({ kind, x: 1480, y: 270 + i * 190, size: 110, at, color, label, labelPx: 44, labelSide: 'left', idle: 'float' });
         });
-        cap(s, 'Un pull request pide sumar tu rama a main, a la vista de todos.', 6.4);
-        const bt = s.reg.get('pr.button');
-        s.camera.focus({ x: bt.x - 260, y: bt.y - 200, w: bt.w + 520, h: bt.h + 300 }, 2.6, 0.8, { zoom: 1.4 });
-        s.camera.reset(4.1, 0.8);
+        cap(s, 'Pides sumar tu rama a main, a la vista de todos.', 5.0);
       },
     }),
 
@@ -163,7 +158,7 @@ export default ({ scene, path }) => ({
         frame(s, 3, 'Las máquinas lo prueban solas');
         s.pipeline({
           id: 'ci',
-          rect: { x: 100, y: 256, w: 1000, h: 340 },
+          rect: { x: 100, y: 256, w: 1000, h: 440 },
           title: 'pipeline #128',
           at: 0.3,
           runAt: 1.0,
@@ -176,9 +171,9 @@ export default ({ scene, path }) => ({
         });
         s.counter({ rect: { x: 1180, y: 250, w: 620, h: 170 }, keys: [[3.2, 0], [6.2, 128]], suffix: ' / 128', label: 'tests en verde', color: 'good', at: 2.8 });
         s.dotGrid({ rect: { x: 1190, y: 440, w: 600, h: 330 }, rows: 8, cols: 16, at: 3.2, dur: 3.0 });
-        s.stamp({ cx: 600, cy: 695, text: 'CI en verde', at: 7.8, color: 'good' });
+        s.stamp({ cx: 600, cy: 790, text: 'CI en verde', at: 7.8, color: 'good' });
         s.particles({ mode: 'confetti', origin: [960, 520], at: 7.95, count: 70, dur: 2.2 });
-        cap(s, 'Si una prueba falla, el cambio no avanza.', 8.3, 800, 1100);
+        cap(s, 'Si una prueba falla, el cambio no avanza.', 6.4);
       },
     }),
 
@@ -212,7 +207,7 @@ export default ({ scene, path }) => ({
         });
         s.burst({ target: 'mg.m', at: 7.1 });
         s.chip({ cx: 455, cy: 562, text: 'Abierto', color: 'good', at: 1.4, states: [{ at: 7.2, text: 'Fusionado', color: 'accent2', solid: true }] });
-        cap(s, 'Aprobado y en verde: tu rama se fusiona con main.', 7.4, 870, 1300);
+        cap(s, 'Aprobado y en verde: tu rama se fusiona con main.', 6.2, 870, 1300);
         s.camera.zoom(1.06, 6.2, 0.8);
         s.camera.reset(8.4, 0.7);
       },
@@ -232,10 +227,10 @@ export default ({ scene, path }) => ({
         s.progress({ rect: { x: 600, y: 700, w: 620, h: 110 }, label: 'Compilando y empaquetando', at: 1.3, dur: 3.8 });
         s.icon({ id: 'pkg', kind: 'package', x: 1340, y: 300, size: 220, at: 3.3, label: 'artefacto', labelSide: 'top', labelPx: 50, idle: 'float' });
         s.packets({ path: ['g1', 'pkg'], curve: 'arc', bend: -120, at: 2.9, until: 5.0, every: 0.5, dur: 1.0, shape: 'box', size: 30, color: 'warn' });
-        s.layers({ rect: { x: 1250, y: 670, w: 400, h: 190 }, layers: [{ text: 'Sistema base', color: 'dim' }, { text: 'Dependencias', color: 'accent2' }, { text: 'Tu código', color: 'accent' }], at: 4.2, step: 0.5 });
+        s.layers({ rect: { x: 1250, y: 640, w: 500, h: 230 }, layers: [{ text: 'Sistema base', color: 'dim' }, { text: 'Dependencias', color: 'accent2' }, { text: 'Tu código', color: 'accent' }], at: 4.2, step: 0.5 });
         s.chip({ cx: 1730, cy: 359, text: 'v2.4.0', mono: true, color: 'accent', at: 5.8 });
         s.burst({ target: 'pkg', at: 5.8, radius: 200 });
-        cap(s, 'Lo mismo que se probó es lo que se despliega.', 6.1, 884, 1200);
+        cap(s, 'Lo mismo que se probó es lo que se despliega.', 5.2, 884, 1200);
         s.camera.focus('g1', 1.6, 0.8, { zoom: 1.3 });
         s.camera.reset(3.0, 0.8);
       },
@@ -262,7 +257,7 @@ export default ({ scene, path }) => ({
           s.burst({ target: `s${i}`, at: U[i] + 1.5, radius: 150, count: 10, colors: ['good'] });
         });
         s.counter({ rect: { x: 1696, y: 400, w: 180, h: 200 }, keys: [[3, 0], [4.3, 0], [4.7, 33], [6.3, 33], [6.7, 67], [8.3, 67], [8.7, 100]], suffix: '%', label: 'tráfico en v2', color: 'good', at: 2.6 });
-        cap(s, 'Un servidor a la vez. Si algo falla, se vuelve a la versión anterior.', 8.8, 880, 1560);
+        cap(s, 'Un servidor a la vez; si falla, se vuelve atrás.', 6.6, 880, 1560);
       },
     }),
 
@@ -289,34 +284,31 @@ export default ({ scene, path }) => ({
         s.icon({ kind: 'check', x: 1560, y: 290, size: 130, at: 5.8, color: 'good', label: 'todo estable', labelPx: 44, idle: 'pulse' });
         s.chart({ rect: { x: 640, y: 540, w: 560, h: 320 }, type: 'area', title: 'Pedidos', data: [3, 4, 4, 6, 7, 9, 12], at: 3.6, colors: ['accent2'] });
         s.chart({ rect: { x: 1260, y: 540, w: 540, h: 320 }, type: 'bars', title: 'Errores', data: [2, 2, 1, 1], labels: ['lun', 'mar', 'mié', 'hoy'], colors: ['dim', 'dim', 'dim', 'good'], yMax: 8, at: 4.3, step: 0.3 });
-        cap(s, 'Y el equipo sigue mirando: errores, tiempos y uso.', 5.6, 884, 1200);
+        cap(s, 'Y el equipo sigue mirando: errores, tiempos y uso.', 4.6, 884, 1200);
         s.camera.focus('ph', 1.2, 0.9, { zoom: 1.3 });
         s.camera.reset(3.2, 0.8);
       },
     }),
 
-    // 9. Recap: the whole trip in one row, a packet hops icon to icon while the camera follows, then the closing line.
+    // 9. Recap: the closing line on top, the whole trip in one row with a packet hopping icon to icon, then the tagline.
     scene({
       name: 'resumen',
-      dur: 8,
+      dur: 8.5,
       build(s) {
         s.parallax({ seed: 11, count: 30 });
         s.sectionTag({ text: 'Resumen', at: 0.1 });
         const kinds = ['laptop', 'branch', 'doc', 'gear', 'user', 'package', 'server', 'heart'];
         const xs = kinds.map((_, i) => 120 + i * 221);
-        const y = 500;
-        kinds.forEach((kind, i) => s.icon({ id: `r${i}`, kind, x: xs[i], y, size: 130, at: 0.3 + i * 0.14, color: i === 7 ? 'accent' : 'ink', label: STEPS[i], labelPx: 40, spin: 1.5 }));
+        const y = 540;
+        kinds.forEach((kind, i) => s.icon({ id: `r${i}`, kind, x: xs[i], y, size: 170, at: 0.3 + i * 0.14, color: i === 7 ? 'accent' : 'ink', label: STEPS[i], labelPx: 40, spin: 1.5 }));
         const T0 = 1.7;
-        const hop = xs.map(x => [x + 65, y - 10]);
+        const hop = xs.map(x => [x + 85, y - 10]);
         const TD = 3.6;
         s.packets({ path: hop, curve: 'arc', bend: -70, at: T0, dur: TD, ease: 'linear', shape: 'box', size: 34, color: 'accent' });
         kinds.forEach((_, i) => i && s.burst({ target: `r${i}`, at: T0 + (TD * i) / 7, radius: 118, count: 10, dur: 0.5 }));
-        s.kineticText({ rect: { x: 160, y: 150, w: 1600, h: 250 }, text: 'De tu laptop a *producción*', underline: ['producción'], at: 5.5, mode: 'slam', step: 0.13, px: 150 });
-        s.particles({ mode: 'confetti', origin: [960, 330], at: 6.2, count: 80, dur: 1.8 });
-        s.label({ text: 'en pasos pequeños, con red de seguridad', rect: { x: 260, y: 790, w: 1400, h: 110 }, at: 6.5, type: true, color: 'accent2' });
-        s.camera.focus({ x: xs[0], y: y - 40, w: 130, h: 200 }, 0.9, 0.8, { zoom: 1.6 });
-        s.camera.pan(xs[7] + 65, y + 60, T0, TD, { ease: 'linear' });
-        s.camera.reset(5.3, 0.8);
+        s.kineticText({ rect: { x: 160, y: 150, w: 1600, h: 250 }, text: 'De tu laptop a *producción*', underline: ['producción'], at: 0.4, mode: 'slam', step: 0.13, px: 150 });
+        s.particles({ mode: 'confetti', origin: [960, 330], at: 5.4, count: 80, dur: 1.8 });
+        s.label({ text: 'en pasos pequeños, con red de seguridad', rect: { x: 260, y: 850, w: 1400, h: 110 }, at: 4.8, type: true, color: 'accent2' });
       },
     }),
   ],

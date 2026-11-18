@@ -32,14 +32,14 @@ export default ({ scene }) => ({
         s.kineticText({ id: 'sub', text: 'El bucle, las *herramientas* y el contexto', rect: { x: 260, y: 640, w: 1400, h: 120 }, mode: 'rise', at: 2.4, px: 80, color: 'dim' });
         const kinds = [['gear', 'Bucle'], ['doc', 'Archivos'], ['globe', 'Web'], ['bolt', 'Acciones']];
         kinds.forEach(([kind, label], i) => {
-          s.icon({ id: `i-${kind}`, kind, rect: { x: 360 + i * 330, y: 790, w: 240, h: 200 }, label, at: 3.2 + i * 0.25, idle: 'float' });
+          s.icon({ id: `i-${kind}`, kind, rect: { x: 360 + i * 330, y: 790, w: 240, h: 200 }, label, labelPx: s.style.defaults.labelPx * 0.9, at: 3.2 + i * 0.25, idle: 'float' });
         });
         s.particles({ mode: 'ambient', at: 0.5, until: 6, count: 14, seed: 3 });
       },
     }),
     scene({
       name: 'bucle',
-      dur: 10.5,
+      dur: 11,
       build(s) {
         furniture(s, 2, 'El bucle', 'Un bucle de tres fases');
         s.stateMachine({
@@ -52,9 +52,9 @@ export default ({ scene }) => ({
           pathStep: 0.9,
           at: 0.6,
         });
-        s.icon({ id: 'you', kind: 'user', rect: { x: 1440, y: 330, w: 320, h: 400 }, label: 'Tú', at: 5.6 });
+        s.icon({ id: 'you', kind: 'user', rect: { x: 1440, y: 330, w: 320, h: 400 }, label: 'Tú', labelPx: s.style.defaults.labelPx * 1.2, at: 3.6 });
         s.packets({ id: 'interrupt', path: ['you', 'act'], curve: 'arc', bend: -90, shape: 'bolt', at: 6.8, until: 8, every: 0.6, dur: 1.2, color: 'warn', ping: true });
-        s.caption({ text: 'Puedes interrumpir y redirigir en cualquier punto.', at: 8.2, until: 10.2 });
+        s.caption({ text: 'Puedes interrumpir y redirigir en cualquier punto.', at: 6.6, typeDur: 1 });
       },
     }),
     scene({
@@ -75,11 +75,11 @@ export default ({ scene }) => ({
           const row = Math.floor(i / 3);
           const x = 640 + col * 400 + (row ? 200 : 0);
           const y = 250 + row * 290;
-          s.icon({ id, kind, rect: { x, y, w: 300, h: 200 }, label, color, at: 1 + i * 0.7 });
+          s.icon({ id, kind, rect: { x, y, w: 300, h: 200 }, label, labelPx: s.style.defaults.labelPx * 0.9, color, at: 1 + i * 0.7 });
           s.chip({ id: `c-${id}`, text: sub, cx: x + 150, cy: y + 245, color, px: s.style.defaults.labelPx * 0.8, at: 1.5 + i * 0.7 });
           s.packets({ id: `p-${id}`, path: ['brain', id], curve: 'arc', bend: i % 2 ? 60 : -60, shape: 'dot', at: 1.2 + i * 0.7, until: 7, every: 1.4, dur: 1.1, color, trail: 3, track: false });
         });
-        s.caption({ text: 'Sin herramientas, Claude solo puede responder con texto.', at: 7, until: 9.6 });
+        s.caption({ text: 'Sin herramientas, Claude solo puede responder con texto.', at: 5.8, typeDur: 1 });
       },
     }),
     scene({
@@ -105,7 +105,6 @@ export default ({ scene }) => ({
           rect: { x: 980, y: 244, w: 860, h: 440 },
           title: 'Editor',
           file: 'auth.ts',
-          sidebar: ['src', '  auth.ts', '  session.ts', 'tests'],
           at: 0.8,
           typeAt: 3,
           cps: 34,
@@ -113,7 +112,7 @@ export default ({ scene }) => ({
             'export function login(user: User) {',
             { text: '  const ok = check(user.pass);', mark: '-', at: 6 },
             { text: '  const ok = verify(user.pass);', mark: '+', at: 6 },
-            '  if (!ok) { throw new Error("bad pass"); }',
+            '  if (!ok) throw new Error("bad pass");',
             '  return openSession(user.id);',
             '}',
           ],
@@ -127,12 +126,12 @@ export default ({ scene }) => ({
           s.chip({ id: `st${i}`, cx: 373 + 587 * (i % 3), cy: i < 3 ? 735 : 835, text, icon: 'dot', color: 'dim', px, at: 0.9 + i * 0.15, states: [{ at: done[i], icon: 'check', color: 'good', solid: true }] });
         });
         s.burst({ target: 'st5', at: 10.5, radius: 220, shape: 'spark' });
-        s.caption({ text: 'Cada resultado decide el paso siguiente.', at: 8, until: 10.6 });
+        s.caption({ text: 'Cada resultado decide el paso siguiente.', at: 7.2, typeDur: 1 });
       },
     }),
     scene({
       name: 'contexto',
-      dur: 14,
+      dur: 13,
       build(s) {
         furniture(s, 5, 'El contexto', 'Qué llena la ventana de contexto');
         const bands = [
@@ -146,14 +145,14 @@ export default ({ scene }) => ({
         ];
         s.layers({ id: 'ctx', rect: { x: 560, y: 250, w: 800, h: 630 }, at: 0.8, step: 1, layers: bands.map(([text, color]) => ({ text, color })) });
         s.gauge({ id: 'fill', rect: { x: 100, y: 250, w: 380, h: 320 }, to: 0.9, at: 0.9, dur: 6.4, label: 'ventana llena', color: 'warn' });
-        s.callout({ id: 'n-rules', target: 'ctx.l4', text: 'Reglas fijas del proyecto', side: 'right', w: 420, at: 7.6, until: 13, color: 'good' });
-        s.callout({ id: 'n-mem', target: 'ctx.l3', text: 'Hasta 200 líneas al iniciar', side: 'left', w: 420, at: 9.2, until: 13, color: 'accent' });
-        s.callout({ id: 'n-skills', target: 'ctx.l2', text: 'Se cargan a demanda', side: 'right', w: 420, at: 10.8, until: 13, color: 'accent2' });
+        s.callout({ id: 'n-rules', target: 'ctx.l4', text: 'Reglas fijas del proyecto', side: 'right', w: 420, at: 7.6, color: 'good' });
+        s.callout({ id: 'n-mem', target: 'ctx.l3', text: 'Hasta 200 líneas al iniciar', side: 'left', w: 420, at: 9.2, color: 'accent' });
+        s.callout({ id: 'n-skills', target: 'ctx.l2', text: 'Se cargan a demanda', side: 'right', w: 420, at: 10.8, color: 'accent2' });
       },
     }),
     scene({
       name: 'lleno',
-      dur: 10.5,
+      dur: 11,
       build(s) {
         furniture(s, 6, 'Contexto lleno', 'Cuando el contexto se llena');
         s.layers({
@@ -164,18 +163,18 @@ export default ({ scene }) => ({
           layers: [{ text: 'Sistema', color: 'dim' }, { text: 'Skills', color: 'accent2' }, { text: 'CLAUDE.md', color: 'good' }, { text: 'Comandos', color: 'warn' }, { text: 'Archivos', color: 'accent2' }, { text: 'Conversación', color: 'accent' }],
         });
         s.animate({ targets: 'pila', x: [[4.4, 0], [5.8, 540]], y: [[4.4, 0], [5.2, 90]], scale: [[4.4, 1], [5.2, 0.3]], origin: [420, 560] });
-        s.counter({ id: 'pct', rect: { x: 760, y: 240, w: 400, h: 200 }, keys: [[0.8, 20], [3.2, 96], [4.6, 96], [6, 30]], suffix: ' %', label: 'contexto usado', color: 'warn', at: 0.8 });
-        s.chip({ id: 'limit', cx: 960, cy: 780, text: 'Se acerca al límite', icon: 'bolt', color: 'warn', at: 3.2, until: 4.3 });
+        s.counter({ id: 'pct', rect: { x: 1380, y: 250, w: 420, h: 200 }, keys: [[0.8, 20], [3.2, 96], [4.6, 96], [6, 30]], suffix: ' %', label: 'contexto usado', color: 'warn', at: 0.8 });
+        s.chip({ id: 'limit', cx: 1590, cy: 520, text: 'Se acerca al límite', icon: 'bolt', color: 'warn', at: 3.2, until: 4.3 });
         s.label({ id: 'summary', text: 'Resumen', rect: { x: 760, y: 450, w: 400, h: 100 }, color: 'accent', font: 'display', at: 5.2 });
         s.chip({ id: 'lost', cx: 960, cy: 820, text: 'Se pueden perder detalles', icon: 'cross', color: 'warn', at: 6.8 });
-        s.icon({ id: 'md', kind: 'doc', rect: { x: 1380, y: 270, w: 320, h: 380 }, label: 'CLAUDE.md', color: 'good', at: 7.2 });
-        s.stamp({ id: 'rules', text: 'REGLAS A SALVO', cx: 1540, cy: 780, at: 8, color: 'good' });
-        s.caption({ text: 'Con /context ves qué ocupa espacio.', at: 8.8, until: 10.4 });
+        s.icon({ id: 'md', kind: 'doc', rect: { x: 260, y: 270, w: 320, h: 380 }, label: 'CLAUDE.md', labelPx: s.style.defaults.labelPx, color: 'good', at: 7.2 });
+        s.stamp({ id: 'rules', text: 'REGLAS A SALVO', cx: 420, cy: 780, at: 8, color: 'good' });
+        s.caption({ text: 'Con /context ves qué ocupa espacio.', at: 7.6, typeDur: 1 });
       },
     }),
     scene({
       name: 'permisos',
-      dur: 11.5,
+      dur: 12,
       build(s) {
         furniture(s, 7, 'Seguridad', 'Deshacer cambios y controlar permisos');
         s.table({
@@ -195,13 +194,13 @@ export default ({ scene }) => ({
         s.node({ id: 'ask', text: 'Claude quiere editar auth.ts', rect: { x: 1140, y: 270, w: 700, h: 190 }, color: 'accent', at: 3 });
         s.node({ id: 'yes', text: 'Permitir', rect: { x: 1140, y: 530, w: 330, h: 130 }, color: 'good', at: 3.4 });
         s.node({ id: 'no', text: 'Rechazar', rect: { x: 1510, y: 530, w: 330, h: 130 }, color: 'bad', at: 3.6 });
-        s.cursor({ path: [[3.4, 1700, 780], [5, 'yes'], [5.6, 'yes'], [6.4, 1500, 800]], clicks: [5.6], until: 7 });
+        s.cursor({ path: [[3.4, 1700, 780], [5, 'yes'], [5.6, 'yes']], clicks: [5.6], until: 6.6 });
         s.stamp({ id: 'ok', text: 'APROBADO', cx: 1480, cy: 780, at: 5.8, color: 'good' });
         s.exit({ targets: ['ask', 'yes', 'no', 'ok'], at: 7.4, to: 'right', dur: 0.7 });
-        s.icon({ id: 'undo', kind: 'clock', rect: { x: 1260, y: 260, w: 320, h: 380 }, label: 'Un estado anterior', at: 8, spin: -1.4 });
+        s.icon({ id: 'undo', kind: 'clock', rect: { x: 1260, y: 260, w: 320, h: 380 }, at: 8, spin: -1.4 });
         s.chip({ id: 'esc1', cx: 1260, cy: 760, text: 'Esc', color: 'accent', solid: true, px: s.style.defaults.labelPx * 1.3, at: 8.6 });
         s.chip({ id: 'esc2', cx: 1580, cy: 760, text: 'Esc', color: 'accent', solid: true, px: s.style.defaults.labelPx * 1.3, at: 9.2 });
-        s.caption({ text: 'Esc dos veces vuelve a un estado anterior.', at: 9, until: 11.2 });
+        s.caption({ text: 'Esc dos veces vuelve a un estado anterior.', at: 8.4, typeDur: 1 });
       },
     }),
     scene({

@@ -19,7 +19,7 @@ export default ({ scene }) => {
     scenes: [
       scene({
         name: 'portada',
-        dur: 5.5,
+        dur: 5,
         transition: { type: 'zoom-through', origin: 'lap', dur: 0.7 },
         build(s) {
           s.parallax({ seed: 3 });
@@ -27,7 +27,7 @@ export default ({ scene }) => {
           s.label({ id: 'sub', text: 'El viaje de un cambio de código, paso a paso', rect: { x: 260, y: 530, w: 1400, h: 100 }, type: true, typeAt: 1.4, color: 'dim', px: 46 });
           s.icon({ id: 'lap', kind: 'laptop', rect: { x: 250, y: 680, w: 240, h: 290 }, label: 'Tu laptop', at: 0.9, idle: 'float' });
           s.icon({ id: 'prod', kind: 'cloud', rect: { x: 1430, y: 680, w: 240, h: 290 }, label: 'Producción', color: 'good', at: 1.2, idle: 'float' });
-          s.packets({ path: [{ id: 'lap', anchor: 'right' }, { id: 'prod', anchor: 'left' }], curve: 'arc', bend: -150, at: 2.0, until: 4.8, every: 0.28, dur: 1.5, colors: ['accent', 'accent2', 'good', 'warn'] });
+          s.packets({ path: [{ id: 'lap', anchor: 'right' }, { id: 'prod', anchor: 'left' }], curve: 'arc', bend: -150, at: 2.0, until: 4.3, every: 0.28, dur: 1.5, colors: ['accent', 'accent2', 'good', 'warn'] });
           s.chip({ cx: 640, cy: 704, text: 'commit', mono: true, at: 2.5, color: 'accent' });
           s.chip({ cx: 960, cy: 704, text: 'pull request', mono: true, at: 2.9, color: 'accent2' });
           s.chip({ cx: 1280, cy: 704, text: 'deploy', mono: true, at: 3.3, color: 'good' });
@@ -53,18 +53,16 @@ export default ({ scene }) => {
             edits: [{ line: 7, to: NEW_LINE, at: 3.5 }],
             cursorLine: 7,
           });
-          s.camera.focus('ed.l7', 2.8, 0.8, { zoom: 1.45 });
-          s.camera.reset(5.5, 0.7);
-          s.callout({ target: 'ed.l7', anchor: 'right', rect: { x: 1320, y: 440, w: 500, h: 150 }, text: 'Una línea nueva: el modo oscuro', at: 6.2, color: 'good' });
-          s.chip({ x: 1320, y: 290, text: 'cambios sin guardar en git', at: 6.7, color: 'warn', px: 28 });
-          s.icon({ id: 'solo', kind: 'laptop', rect: { x: 1430, y: 640, w: 280, h: 230 }, at: 6.5, color: 'dim', idle: 'float' });
-          s.caption({ text: 'El cambio todavía vive solo en tu laptop.', at: 6.6 });
+          s.callout({ target: 'ed.l7', anchor: 'right', rect: { x: 1320, y: 440, w: 500, h: 150 }, text: 'Una línea nueva: el modo oscuro', at: 4.4, color: 'good' });
+          s.chip({ x: 1320, y: 290, text: 'cambios sin guardar en git', at: 4.9, color: 'warn', px: 28 });
+          s.icon({ id: 'solo', kind: 'laptop', rect: { x: 1430, y: 640, w: 280, h: 230 }, at: 4.7, color: 'dim', idle: 'float' });
+          s.caption({ text: 'El cambio todavía vive solo en tu laptop.', at: 5.2, typeDur: 1 });
         },
       }),
 
       scene({
         name: 'commit',
-        dur: 8,
+        dur: 8.5,
         transition: { type: 'light-sweep', dur: 0.6 },
         build(s) {
           base(s, 1, 'Un commit guarda el cambio');
@@ -94,14 +92,14 @@ export default ({ scene }) => {
           });
           s.packets({ path: [[920, 520], 'g.f1'], curve: 's', at: 4.4, dur: 0.65, size: 10, color: 'accent2', track: false });
           s.burst({ origin: 'g.f1', at: 5.0, colors: ['accent2', 'accent', 'ink'], radius: 150 });
-          s.node({ id: 'what', rect: { x: 460, y: 760, w: 1000, h: 110 }, text: 'Commit = foto del cambio + autor + mensaje', at: 5.7, color: 'accent2' });
-          s.caption({ text: 'Sigue en tu máquina: falta compartirlo.', at: 6.3 });
+          s.node({ id: 'what', rect: { x: 460, y: 760, w: 1000, h: 110 }, text: 'Commit = foto del cambio + autor + mensaje', at: 5.4, color: 'accent2' });
+          s.caption({ text: 'Sigue en tu máquina: falta compartirlo.', at: 5.2, typeDur: 1 });
         },
       }),
 
       scene({
         name: 'push',
-        dur: 7,
+        dur: 7.5,
         transition: { type: 'zoom-through', origin: 'remote', dur: 0.7 },
         build(s) {
           base(s, 2, 'El push lo sube al remoto');
@@ -117,7 +115,7 @@ export default ({ scene }) => {
           s.packets({ path: [{ id: 'lap', anchor: 'right' }, { id: 'remote', anchor: 'left' }], curve: 'arc', bend: -120, at: 2.4, until: 4.7, every: 0.2, dur: 1.2, shape: 'box', colors: ['accent', 'accent2', 'good'] });
           s.chip({ cx: 1580, cy: 290, text: BRANCH, mono: true, at: 5.0, color: 'good' });
           s.pulse({ target: 'remote', at: 5.0, times: 1, dur: 0.9, color: 'good' });
-          s.caption({ text: 'Ahora tu rama existe también en el servidor.', at: 5.1 });
+          s.caption({ text: 'Ahora tu rama existe también en el servidor.', at: 4.0, typeDur: 1 });
         },
       }),
 
@@ -145,8 +143,8 @@ export default ({ scene }) => {
           s.node({ id: 'n3', rect: { x: 1370, y: 640, w: 450, h: 160 }, text: 'Alguien del equipo revisa', at: 5.2, color: 'accent2', z: 6 });
           s.spotlight({ target: 'pr.checks', at: 3.6, until: 4.9, color: 'warn' });
           s.spotlight({ target: 'pr.reviewers', at: 5.2, until: 6.5, color: 'accent2' });
-          s.cursor({ path: [[1.2, 1250, 860], [2.2, 760, 300], [3.5, 760, 300], [4.2, 520, 520], [5.1, 520, 520], [5.8, 1100, 480], [8, 1100, 480]], clicks: [2.3], until: 7.4 });
-          s.caption({ text: 'Nada entra a main sin pasar por aquí.', at: 6.8 });
+          s.cursor({ path: [[1.2, 1250, 860], [3.4, 'pr.checks'], [4.9, 'pr.checks'], [5.4, 'pr.reviewers'], [7, 'pr.reviewers']], until: 7.2 });
+          s.caption({ text: 'Nada entra a main sin pasar por aquí.', at: 5.8, typeDur: 1 });
         },
       }),
 
@@ -177,7 +175,7 @@ export default ({ scene }) => {
           s.gauge({ id: 'cov', rect: { x: 1250, y: 410, w: 260, h: 290 }, to: 0.92, at: 3.0, dur: 2, color: 'accent', label: 'Cobertura' });
           s.chart({ id: 'secs', rect: { x: 1530, y: 410, w: 290, h: 290 }, type: 'bars', data: [12, 48, 95, 31], labels: ['lint', 'unit', 'e2e', 'build'], colors: ['accent', 'accent2', 'accent2', 'warn'], title: 'Seg.', at: 3.2, dur: 2.2 });
           s.stamp({ rect: { x: 1340, y: 735, w: 450, h: 100 }, text: 'TODO EN VERDE', at: 7.0, color: 'good' });
-          s.caption({ text: 'Si un check falla, el merge queda bloqueado.', at: 7.4 });
+          s.caption({ text: 'Si un check falla, el merge queda bloqueado.', at: 6.2, typeDur: 1 });
         },
       }),
 
@@ -201,13 +199,13 @@ export default ({ scene }) => {
           s.chip({ x: 90, y: 750, text: 'CI vuelve a correr', at: 5.1, color: 'warn', px: 28, states: [{ at: 6.0, text: 'CI en verde', color: 'good' }] });
           s.stamp({ id: 'ok', rect: { x: 1250, y: 620, w: 480, h: 140 }, text: 'APROBADO', at: 6.0, color: 'good' });
           s.burst({ origin: 'ok', at: 6.22, colors: ['good', 'ink', 'accent'], radius: 260, shape: 'spark' });
-          s.caption({ text: 'La revisión atrapa lo que las pruebas no ven.', at: 6.5 });
+          s.caption({ text: 'La revisión atrapa lo que las pruebas no ven.', at: 5.0, typeDur: 1 });
         },
       }),
 
       scene({
         name: 'merge',
-        dur: 7.5,
+        dur: 8,
         transition: { type: 'zoom-through', origin: 'g.mg', dur: 0.7 },
         build(s) {
           base(s, 6, 'El merge lo integra a main');
@@ -231,7 +229,7 @@ export default ({ scene }) => {
           s.cursor({ path: [[2.4, 1760, 900], [3.3, 1560, 650]], clicks: [3.45], until: 4.4 });
           s.pulse({ target: 'btn', at: 3.45, times: 1, dur: 0.7, color: 'good' });
           s.burst({ origin: 'g.mg', at: 3.95, colors: ['good', 'accent', 'accent2'], radius: 240 });
-          s.caption({ text: 'main siempre debe quedar listo para desplegar.', at: 4.9 });
+          s.caption({ text: 'main siempre debe quedar listo para desplegar.', at: 4.4, typeDur: 1 });
         },
       }),
 
@@ -245,8 +243,9 @@ export default ({ scene }) => {
             id: 'mc',
             rect: { x: 140, y: 250, w: 1640, h: 500 },
             at: 0.4,
-            feedStep: 1.3,
-            processDur: 1.6,
+            feedStep: 0.8,
+            travel: 1.0,
+            processDur: 1.2,
             inputs: [{ kind: 'doc', label: 'Código de main' }, { kind: 'doc', color: 'accent2' }, { kind: 'doc' }],
             machine: { kind: 'gear', label: 'Build' },
             output: { kind: 'package', label: 'Artefacto v2', color: 'good' },
@@ -254,7 +253,7 @@ export default ({ scene }) => {
           const { processStart: workAt, processEnd: outAt } = m.marks;
           ['instalar dependencias', 'compilar', 'optimizar', 'empaquetar'].forEach((text, i) => s.chip({ cx: 330 + i * 420, cy: 824, text, at: workAt + i * 0.4, color: 'warn', px: 28, states: [{ at: workAt + 0.35 + i * 0.4, text, color: 'good' }] }));
           s.burst({ origin: 'mc.out', at: outAt + 0.7, colors: ['good', 'ink', 'accent'], radius: 200 });
-          s.caption({ text: 'El mismo artefacto viaja a todos los entornos.', at: outAt + 0.9 });
+          s.caption({ text: 'El mismo artefacto viaja a todos los entornos.', at: outAt - 0.6, typeDur: 1 });
         },
       }),
 
@@ -272,7 +271,7 @@ export default ({ scene }) => {
           });
           s.progress({ id: 'roll', rect: { x: 640, y: 720, w: 1180, h: 130 }, label: 'Actualización gradual, sin cortar el servicio', at: 2.05, dur: 4.0, segments: 4, linear: true });
           s.chip({ x: 110, y: 750, text: 'health check OK', at: 6.3, color: 'good', px: 28 });
-          s.caption({ text: 'Si algo sale mal, se vuelve a la versión anterior.', at: 6.4 });
+          s.caption({ text: 'Si algo sale mal, se vuelve a la versión anterior.', at: 5.6, typeDur: 1 });
         },
       }),
 
@@ -294,7 +293,7 @@ export default ({ scene }) => {
           });
           s.chart({ id: 'adopt', rect: { x: 1290, y: 240, w: 540, h: 380 }, type: 'area', data: [0, 3, 9, 20, 38, 58, 76, 90, 97, 100], labels: ['v2'], title: 'Tráfico en v2', color: 'good', at: 2.8, dur: 2.4, mark: { i: 9, text: '100 %' } });
           s.counter({ id: 'pct', rect: { x: 1300, y: 650, w: 520, h: 210 }, to: 100, suffix: ' %', at: 3.2, dur: 2.4, color: 'good', label: 'de los usuarios ya lo tiene', ease: k => k });
-          s.caption({ text: 'El mismo cambio, verificado en cada paso.', at: 5.5 });
+          s.caption({ text: 'El mismo cambio, verificado en cada paso.', at: 4.6, typeDur: 1 });
         },
       }),
 

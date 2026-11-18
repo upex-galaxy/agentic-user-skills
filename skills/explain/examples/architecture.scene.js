@@ -58,7 +58,7 @@ export default ({ scene }) => {
           s.packets({ path: ['scene', 'engine', 'chrome', 'mp4'], at: 5.4, until: 9.6, every: 0.5, dur: 2.2, shape: 'doc', size: 40, colors: ['accent', 'accent2', 'good'], track: false });
           s.spotlight({ target: 'engine', at: 5.0, until: 6.8, color: 'accent' });
           s.pulse({ target: 'mp4', at: 8.6, times: 2, dur: 0.8, color: 'good' });
-          s.caption({ text: 'Un scene.js entra por la izquierda y sale un MP4.', at: 6.6, until: 10.6 });
+          s.caption({ text: 'Un scene.js entra por la izquierda y sale un MP4.', at: 6.6, until: 10.6, typeDur: 1 });
           s.sourceFooter({ text: SRC, at: 1 });
         },
       }),
@@ -79,14 +79,14 @@ export default ({ scene }) => {
             s.chip({ cx: 270 + i * 470, cy: 790, text, at: 2.6 + i * 0.8, color: ['accent', 'accent2', 'warn', 'good'][i], px: 40, solid: i === 3 });
           });
           s.chip({ x: 150, y: 560, text: 'mismo t, mismo cuadro', at: 6.6, color: 'good', px: 36, icon: 'check' });
-          s.caption({ text: 'Cada cuadro se dibuja en función del tiempo, y se puede repetir.', at: 7.0, until: 9.6 });
+          s.caption({ text: 'Cada cuadro se dibuja en función del tiempo.', at: 5.6, typeDur: 1 });
           s.sourceFooter({ text: SRC, at: 1 });
         },
       }),
 
       scene({
         name: 'piezas',
-        dur: 10,
+        dur: 10.5,
         build(s) {
           base(s, 2, 'La escena es código con piezas');
           s.editor({
@@ -107,7 +107,7 @@ export default ({ scene }) => {
           s.pulse({ target: 'ci', at: 3.5, times: 2, dur: 0.8, color: 'good' });
           s.callout({ target: 'ed.l3', text: 'Las conexiones usan ids', rect: { x: 1190, y: 255, w: 630, h: 130 }, bend: 0, at: 4.6, color: 'warn' });
           s.caption({ text: 'Listo', at: 4.2, until: 5.6 });
-          s.caption({ text: 'Cada pieza se llama como s.nombre y se coloca sola.', at: 6.4, until: 9.6 });
+          s.caption({ text: 'Cada pieza se llama como s.nombre y se coloca sola.', at: 6.0, typeDur: 1 });
           s.sourceFooter({ text: SRC, at: 1 });
         },
       }),
@@ -142,14 +142,14 @@ export default ({ scene }) => {
           });
           s.counter({ id: 'frames', rect: { x: 1380, y: 690, w: 460, h: 170 }, from: 0, to: 90, at: 4.6, dur: 2.4, ease: 'linear', label: 'cuadros codificados', color: 'good' });
           s.burst({ origin: 'cli', at: 9.3, colors: ['accent2', 'good', 'ink'], radius: 200 });
-          s.caption({ text: 'La página codifica H.264 con WebCodecs.', at: 7.4, until: 11 });
+          s.caption({ text: 'La página codifica H.264 con WebCodecs.', at: 7.4, until: 11, typeDur: 1 });
           s.sourceFooter({ text: SRC, at: 1 });
         },
       }),
 
       scene({
         name: 'ciclo',
-        dur: 10.5,
+        dur: 12,
         transition: { type: 'light-sweep', dur: 0.6 },
         build(s) {
           base(s, 4, 'Un video pasa por cuatro estados');
@@ -160,14 +160,14 @@ export default ({ scene }) => {
             pathAt: 3.0,
             pathStep: 1.5,
             layout: 'row',
-            area: { x: 80, y: 244, w: 1280, h: 620 },
+            area: { x: 80, y: 250, w: 1760, h: 400 },
             at: 0.5,
           });
-          s.icon({ id: 'vid', kind: 'doc', rect: { x: 1450, y: 250, w: 330, h: 290 }, label: 'Tu video', labelPx: 40, at: 0.6, idle: 'float' });
+          s.icon({ id: 'vid', kind: 'doc', rect: { x: 180, y: 680, w: 420, h: 170 }, label: 'Tu video', labelSide: 'right', labelPx: 44, at: 0.6, idle: 'float' });
           s.chip({
             id: 'st',
-            cx: 1615,
-            cy: 600,
+            cx: 960,
+            cy: 765,
             text: 'Borrador',
             at: 2.6,
             color: 'dim',
@@ -179,8 +179,8 @@ export default ({ scene }) => {
               { at: 8.9, text: 'Con errores de QA', color: 'bad', icon: 'cross' },
             ],
           });
-          s.stamp({ rect: { x: 1380, y: 700, w: 440, h: 90 }, text: 'EXPORT NEGADO', at: 9.0, color: 'bad' });
-          s.caption({ text: 'Con errores de QA, el export se niega.', at: 8.8, until: 10.2 });
+          s.stamp({ rect: { x: 1340, y: 710, w: 460, h: 110 }, text: 'EXPORT NEGADO', at: 9.0, color: 'bad' });
+          s.caption({ text: 'Antes de exportar se corre el QA.', at: 8.6, typeDur: 1 });
           s.sourceFooter({ text: SRC, at: 1 });
         },
       }),
@@ -234,9 +234,9 @@ export default ({ scene }) => {
             s.node({ id: `h${i}`, rect: { x, y: 260, w: 540, h: 100 }, text: name, at: 0.4 + i * 0.3, color, px: 50, font: 'display' });
             s.icon({ id: `r${i}`, kind: 'rocket', rect: { x: x + 120, y: 470, w: 300, h: 260 }, at: 0.9 + i * 0.3, color });
             s.chip({ cx: x + 270, cy: 790, text: note, at: 1.5 + i * 0.3, color, px: 38 });
-            s.animate({ targets: `r${i}`, y: [[2.0, 0], [2.6, -70], [3.2, 0], [3.8, -70], [4.4, 0], [5.0, -70], [5.6, 0], [6.2, -70], [6.8, 0]], ease: 'inOut' });
+            s.animate({ targets: `r${i}`, y: [[2.0, 0], [2.6, -70], [3.2, 0], [3.8, -70], [4.4, 0], [5.0, -70], [5.6, 0], [6.2, -70], [6.8, 0], [7.4, -70], [8.0, 0], [8.6, -70], [9.2, 0]], ease: 'inOut' });
           });
-          s.caption({ text: 'Un preset cambia paleta, fuentes y trazo; no toca el movimiento.', at: 5.2, until: 9.0 });
+          s.caption({ text: 'Cambia la paleta, las fuentes y el trazo.', at: 4.4, typeDur: 1 });
           s.sourceFooter({ text: SRC, at: 1 });
         },
       }),

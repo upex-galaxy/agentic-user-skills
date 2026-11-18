@@ -64,9 +64,7 @@ export default ({ scene }) => ({
         icon(s, { id: 'lap', kind: 'laptop', cx: 1540, cy: 380, size: 230, label: 'Tu laptop', at: 0.8, idle: 'float' });
         s.chip({ text: 'Cambio guardado', icon: 'check', color: 'good', cx: 1540, cy: 690, at: 5.5 });
         s.chip({ text: 'Pruebas locales', icon: 'spinner', color: 'warn', cx: 1540, cy: 780, at: 6.0, states: [{ at: 7.1, text: 'Pruebas locales: OK', icon: 'check', color: 'good' }] });
-        s.camera.focus('ed.l5', 2.0, 0.9, { zoom: 1.55 });
-        s.camera.reset(4.7, 0.7);
-        s.caption({ text: 'Escribes el cambio y lo pruebas en tu máquina.', at: 5.6 });
+        s.caption({ text: 'Escribes el cambio y lo pruebas en tu máquina.', at: 5.6, typeDur: 1 });
       },
     }),
 
@@ -103,7 +101,7 @@ export default ({ scene }) => ({
         icon(s, { id: 'lap', kind: 'laptop', cx: 330, cy: 700, size: 150, label: 'Tu laptop', at: 0.7 });
         icon(s, { id: 'remote', kind: 'cloud', cx: 1590, cy: 690, size: 170, label: 'Repositorio remoto', color: 'accent2', at: 0.9, idle: 'float' });
         s.packets({ path: ['lap', 'remote'], curve: 'arc', bend: -110, at: push - 0.2, until: push + 0.6, every: 0.16, dur: 1.1, shape: 'box', size: 30, ping: true, trackAt: branch });
-        s.caption({ text: 'El commit guarda el cambio. El push lo sube al remoto.', at: 6.6 });
+        s.caption({ text: 'El commit guarda el cambio. El push lo sube al remoto.', at: 6.2, typeDur: 1 });
       },
     }),
 
@@ -130,15 +128,13 @@ export default ({ scene }) => ({
           labels: { draft: 'Borrador', open: 'Abierto', merged: 'Fusionado', reviewers: 'Revisores', checks: 'Verificaciones' },
           at: 1.0,
         });
-        s.callout({ target: 'pr.button', text: 'Propones unir tu rama a main', rect: { x: 1380, y: 640, w: 450, h: 110 }, at: 2.3, until: 4.2 });
+        s.callout({ target: 'pr.button', text: 'Propones unir tu rama a main', rect: { x: 1380, y: 770, w: 450, h: 110 }, at: 2.3, until: 4.2 });
         s.chip({ text: 'Borrador', icon: 'dot', color: 'dim', cx: 1580, cy: 330, px: 34, at: 1.6, states: [{ at: 4.6, text: 'Abierto', icon: 'check', color: 'good', solid: true }] });
         s.chip({ text: 'Pruebas en curso', icon: 'spinner', color: 'warn', cx: 1580, cy: 430, px: 34, at: 6.0, states: [{ at: 8.6, text: 'Pruebas en verde', icon: 'check', color: 'good' }] });
         icon(s, { id: 'rev', kind: 'eye', cx: 1580, cy: 600, size: 150, label: 'Revisión', color: 'accent2', at: 6.6, idle: 'pulse' });
-        s.camera.focus('pr.checks', 3.2, 0.8, { zoom: 1.4 });
-        s.camera.reset(5.1, 0.7);
-        s.cursor({ path: [[2.9, 1000, 560], [4.2, 'pr.button'], [5.4, 'pr.button'], [6.3, 760, 960]], clicks: [4.5], until: 6.0 });
+        s.cursor({ path: [[2.9, 1000, 560], [4.2, 'pr.button'], [5.4, 'pr.button']], clicks: [4.5], until: 5.6 });
         s.burst({ target: 'pr.status', at: 4.65, count: 28 });
-        s.caption({ text: 'Un pull request propone unir tu rama a la rama principal.', at: 5.6 });
+        s.caption({ text: 'Ahora corren las pruebas y lo revisan Ana y Luis.', at: 6.0, typeDur: 1 });
       },
     }),
 
@@ -181,7 +177,7 @@ export default ({ scene }) => ({
         s.chip({ text: 'CI en verde', icon: 'check', color: 'good', solid: true, cx: 1580, cy: 760, px: 40, at: doneAt + 0.2 });
         s.burst({ origin: [1580, 760], at: doneAt + 0.3, count: 40, radius: 260 });
         s.packets({ path: [[1060, 330], [1210, 330]], shape: 'dot', at: 1.5, until: 8, every: 0.7, dur: 0.8, color: 'warn', track: false });
-        s.caption({ text: 'Cada push dispara lint, pruebas y build automáticos.', at: 8.4 });
+        s.caption({ text: 'Cada push dispara lint, pruebas y build automáticos.', at: 7.0, typeDur: 1 });
       },
     }),
 
@@ -224,7 +220,7 @@ export default ({ scene }) => ({
           at: 0.7,
         });
         s.burst({ target: 'git.m3', at: 6.15, count: 30, radius: 260 });
-        s.caption({ text: 'Con CI en verde y una aprobación, la rama se une a main.', at: 6.7 });
+        s.caption({ text: 'Con CI en verde y una aprobación, la rama se une a main.', at: 6.2, typeDur: 1 });
       },
     }),
 
@@ -247,7 +243,7 @@ export default ({ scene }) => ({
         s.counter({ rect: { x: 120, y: 770, w: 260, h: 110 }, to: 214, label: 'módulos', at: processStart, dur: processEnd - processStart, ease: 'linear', color: 'warn' });
         s.chip({ text: 'Artefacto versionado', icon: 'check', color: 'good', cx: 1530, cy: 820, at: fab.end + 0.1 });
         s.burst({ target: 'fab.out', at: fab.end, count: 26, radius: 240 });
-        s.caption({ text: 'El código se compila y se empaqueta en un artefacto versionado.', at: 5.2 });
+        s.caption({ text: 'Código, dependencias y config salen como tienda:1.4.2.', at: 5.2, typeDur: 1 });
       },
     }),
 
@@ -265,7 +261,7 @@ export default ({ scene }) => ({
         s.counter({ rect: { x: 1370, y: 650, w: 440, h: 110 }, to: 3, suffix: ' / 3', label: 'instancias en la versión nueva', at: 2.25, dur: 5.1, ease: 'linear', color: 'good' });
         s.progress({ rect: { x: 1370, y: 770, w: 440, h: 110 }, label: 'Tráfico nuevo', at: 2.4, dur: 5.2, segments: 3, color: 'good' });
         s.stamp({ text: 'SIN CORTES', cx: 250, cy: 790, at: fl.end + 0.2, px: 52 });
-        s.caption({ text: 'Se actualiza una instancia a la vez, sin cortar el servicio.', at: 8.0 });
+        s.caption({ text: 'Una instancia a la vez, sin cortar el servicio.', at: 7.0, typeDur: 1 });
         s.sourceFooter({ text: 'Kubernetes docs, Performing a Rolling Update' });
       },
     }),
@@ -283,7 +279,7 @@ export default ({ scene }) => ({
         for (let i = 0; i < 6; i++) { icon(s, { id: `u${i}`, kind: 'user', cx: 1480 + (i % 3) * 150, cy: 340 + Math.floor(i / 3) * 190, size: 120, color: i % 2 ? 'accent' : 'accent2', at: 3.9 + i * 0.14 }); }
         s.particles({ mode: 'confetti', at: 4.5, dur: 3.4, count: 110 });
         s.flow({ id: 'recap', steps: ['Commit', 'PR', 'CI', 'Merge', 'Build', 'Deploy'], area: { x: 500, y: 730, w: 1340, h: 150 }, at: 5.4, step: 0.18 });
-        s.caption({ text: 'De tu laptop a producción: cada paso verifica al anterior.', at: 7.2 });
+        s.caption({ text: 'De tu laptop a producción: cada paso verifica al anterior.', at: 7.2, typeDur: 1 });
       },
     }),
   ],
