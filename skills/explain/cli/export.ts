@@ -1,3 +1,4 @@
+import type { PageAudio } from './audio.ts';
 import type { ChromeHandle } from './chrome.ts';
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -5,21 +6,57 @@ import { findChrome, isHeadlessShell } from './chrome.ts';
 import { withErrorProbe } from './headless.ts';
 import { BadRequest, runSession } from './session.ts';
 
+/** The page's mix report (engine/audio.js) plus the codec the page chose, as POSTed to /__audio. */
+export interface ExportAudio {
+  codec: string
+  sfxEvents: number
+  voiceSeconds: number
+  integratedLufs: number
+  peakDbfs: number
+}
+
 export interface ExportResult {
   file: string
   bytes: number
   seconds: number
   chrome: string
+  /** Present when the page has audio and reported its mix. */
+  audio?: ExportAudio
 }
 
 const DEFAULT_TIMEOUT_MS = 10 * 60_000;
 const DEFAULT_BITRATE = 2e6; // matches engine/export.js
 const MB = 1024 * 1024;
 const STILL_LIMIT = 32 * MB;
+const AUDIO_BITRATE = 160e3; // matches engine/export.js
+const AUDIO_REPORT_LIMIT = 64 * 1024;
 
-/** Body cap for the MP4 upload: 4x the expected size, at least 64 MB, at most 1 GiB. */
-export function exportLimit(duration: number, bitrate = DEFAULT_BITRATE): number {
-  return Math.min(1024 * MB, Math.max(64 * MB, Math.ceil((4 * duration * bitrate) / 8)));
+/** Body cap for the MP4 upload: 4x the expected size (the audio track's 160 kbps added when on), at least 64 MB, at most 1 GiB. */
+export function exportLimit(duration: number, bitrate = DEFAULT_BITRATE, audio = false): number {
+  const expected = (duration * bitrate) / 8 + (audio ? (duration * AUDIO_BITRATE) / 8 : 0);
+  return Math.min(1024 * MB, Math.max(64 * MB, Math.ceil(4 * expected)));
+}
+
+const AUDIO_BLOCK = /<script type="application\/json" id="explain-audio">([\s\S]*?)<\/script>/;
+
+/** The audio block a built page carries (cli/build.ts audioBlock), or null for a silent page. */
+export function readPageAudio(html: string): PageAudio | null {
+  const m = AUDIO_BLOCK.exec(html);
+  if (!m) { return null; }
+  const a = JSON.parse(m[1]) as PageAudio | null;
+  return a && (a.sound || a.narration) ? a : null;
+}
+
+/** The /__audio body as an ExportAudio, or a BadRequest. */
+export function parseAudioReport(body: ArrayBuffer): ExportAudio {
+  let r: Partial<ExportAudio>;
+  try { r = JSON.parse(new TextDecoder().decode(body)) as Partial<ExportAudio>; }
+  catch { throw new BadRequest('bad audio report: not JSON'); }
+  const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
+  if (typeof r?.codec !== 'string' || !num(r.sfxEvents) || !num(r.voiceSeconds) || !num(r.integratedLufs) || !num(r.peakDbfs)) {
+    throw new BadRequest('bad audio report');
+  }
+  return { codec: r.codec, sfxEvents: r.sfxEvents!, voiceSeconds: r.voiceSeconds!, integratedLufs: r.integratedLufs!, peakDbfs: r.peakDbfs! };
 }
 
 /**
@@ -57,6 +94,8 @@ export async function exportVideo(opts: { html: string, out: string, duration: n
   }
   const start = performance.now();
   let bytes = 0;
+  let audio: ExportAudio | undefined;
+  const hasAudio = readPageAudio(opts.html) !== null;
   const query: Record<string, string> = { export: '1' };
   if (opts.bitrate) { query.bitrate = String(Math.round(opts.bitrate)); }
   const session = await runSession({
@@ -64,9 +103,13 @@ export async function exportVideo(opts: { html: string, out: string, duration: n
     query,
     label: 'Export',
     timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-    limits: { __export: exportLimit(opts.duration, opts.bitrate) },
+    limits: { __export: exportLimit(opts.duration, opts.bitrate, hasAudio), __audio: AUDIO_REPORT_LIMIT },
     launch: opts.launch,
     onPost: (name, _url, body) => {
+      if (name === '__audio') {
+        audio = parseAudioReport(body);
+        return false;
+      }
       if (name !== '__export') { return false; }
       mkdirSync(dirname(opts.out), { recursive: true });
       writeFileSync(opts.out, new Uint8Array(body));
@@ -74,7 +117,7 @@ export async function exportVideo(opts: { html: string, out: string, duration: n
       return true;
     },
   });
-  return { file: opts.out, bytes, seconds: (performance.now() - start) / 1000, chrome: session.chrome };
+  return { file: opts.out, bytes, seconds: (performance.now() - start) / 1000, chrome: session.chrome, ...(audio ? { audio } : {}) };
 }
 
 /**

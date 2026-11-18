@@ -11,18 +11,19 @@
  * Exit codes: 0 ok | 1 runtime failure or QA errors | 2 usage error.
  * Bun and node: built-ins only, no install step.
  */
-import type { AudioConfig, Provider } from './audio.ts';
+import type { AudioConfig, PageAudio, Provider } from './audio.ts';
+import type { ExportAudio } from './export.ts';
 import type { PageInfo } from './headless.ts';
 import { existsSync, mkdirSync, readFileSync, statfsSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { AudioUsageError, pageAudio, resolveAudio, resolveProvider, resolveSound, resolveVoice } from './audio.ts';
 import { buildHash, buildPage, insideSkillDir, PAGE_WARN_BYTES, readBuildHash, scenePreset, SKILL_DIR } from './build.ts';
-import { exportVideo, sheet, sheetFromMp4, stillName, stills, stillsFromMp4 } from './export.ts';
+import { exportVideo, readPageAudio, sheet, sheetFromMp4, stillName, stills, stillsFromMp4 } from './export.ts';
 import { inspectPage, pageScenes } from './headless.ts';
 import { findPreset, listPresets, loadPreset, newPreset, presetNames, promotePreset } from './presets.ts';
 import { summarizeReport } from './qa.ts';
-import { formatPlan, ingest, planVoice, runKokoro, voiceDoctor } from './voice.ts';
+import { formatPlan, ingest, planVoice, runKokoro, voiceDir, voiceDoctor } from './voice.ts';
 
 // ---------------------------------------------------------------------------
 // Pure helpers (tested)
@@ -395,19 +396,45 @@ async function cmdStills(p: ParsedArgs): Promise<number> {
   return res.files.length === times.length ? 0 : 1;
 }
 
-/** Verify the MP4 with ffprobe when it is on PATH. Returns the line to print and whether it passed. */
-export async function verifyVideo(file: string): Promise<{ line: string, ok: boolean }> {
+/**
+ * Verify the MP4 with ffprobe when it is on PATH. Returns the line to print and whether it passed. Video: h264 yuv420p
+ * 1920x1080 30 fps. With `expectAudio`, a:0 must be aac or opus, 48000 Hz, 2 channels, within 0.05 s of the video;
+ * without it, the file must carry no audio stream.
+ */
+export async function verifyVideo(file: string, expectAudio = false): Promise<{ line: string, ok: boolean }> {
   const ffprobe = Bun.which('ffprobe');
   if (!ffprobe) { return { line: 'ffprobe not found: verification skipped', ok: true }; }
-  const proc = Bun.spawn([ffprobe, '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name,pix_fmt,width,height,avg_frame_rate', '-of', 'json', file], { stdout: 'pipe', stderr: 'ignore' });
+  const proc = Bun.spawn([ffprobe, '-v', 'error', '-show_entries', 'stream=codec_type,codec_name,pix_fmt,width,height,avg_frame_rate,sample_rate,channels,duration', '-of', 'json', file], { stdout: 'pipe', stderr: 'ignore' });
   const out = await new Response(proc.stdout).text();
   await proc.exited;
-  const s = (JSON.parse(out) as { streams?: { codec_name: string, pix_fmt: string, width: number, height: number, avg_frame_rate: string }[] }).streams?.[0];
+  interface Stream { codec_type: string, codec_name: string, pix_fmt: string, width: number, height: number, avg_frame_rate: string, sample_rate?: string, channels?: number, duration?: string }
+  const streams = (JSON.parse(out || '{}') as { streams?: Stream[] }).streams ?? [];
+  const s = streams.find(x => x.codec_type === 'video');
   if (!s) { return { line: 'ffprobe: no video stream', ok: false }; }
   const [n, d] = String(s.avg_frame_rate).split('/').map(Number);
   const fps = d ? n / d : n;
-  const ok = s.codec_name === 'h264' && s.pix_fmt === 'yuv420p' && s.width === 1920 && s.height === 1080 && Math.abs(fps - 30) < 0.01;
-  return { line: `ffprobe: ${s.codec_name} ${s.pix_fmt} ${s.width}x${s.height} ${fps.toFixed(2)} fps ${ok ? 'OK' : 'MISMATCH (expected h264 yuv420p 1920x1080 30 fps)'}`, ok };
+  const videoOk = s.codec_name === 'h264' && s.pix_fmt === 'yuv420p' && s.width === 1920 && s.height === 1080 && Math.abs(fps - 30) < 0.01;
+  const video = `ffprobe: ${s.codec_name} ${s.pix_fmt} ${s.width}x${s.height} ${fps.toFixed(2)} fps`;
+  if (!videoOk) { return { line: `${video} MISMATCH (expected h264 yuv420p 1920x1080 30 fps)`, ok: false }; }
+  const a = streams.find(x => x.codec_type === 'audio');
+  if (!expectAudio) {
+    return a ? { line: `${video} + ${a.codec_name} MISMATCH (expected no audio stream)`, ok: false } : { line: `${video} OK`, ok: true };
+  }
+  if (!a) { return { line: `${video} MISMATCH (expected an aac or opus audio stream, found none)`, ok: false }; }
+  const aSec = Number(a.duration);
+  const vSec = Number(s.duration);
+  const ok = ['aac', 'opus'].includes(a.codec_name) && Number(a.sample_rate) === 48000 && a.channels === 2 && Number.isFinite(aSec) && Number.isFinite(vSec) && Math.abs(aSec - vSec) <= 0.05;
+  const line = `${video} + ${a.codec_name} ${a.sample_rate} Hz ${a.channels} ch ${aSec.toFixed(2)} s`;
+  return { line: `${line} ${ok ? 'OK' : `MISMATCH (expected aac or opus 48000 Hz 2 ch within 0.05 s of the video's ${vSec.toFixed(2)} s)`}`, ok };
+}
+
+/** The one audio line of an export: codec, voice, effects, loudness and peak; or how to turn audio on. */
+export function audioLine(page: PageAudio | null, r: ExportAudio | undefined): string {
+  if (!page) { return 'audio: off (add --sound on and --voice kokoro|elevenlabs, or set EXPLAIN_SOUND / EXPLAIN_VOICE)'; }
+  if (!r) { return 'audio: the page has audio but sent no mix report'; }
+  const voice = page.narration ? `voice ${page.narration.provider}/${page.narration.voice} ${r.voiceSeconds.toFixed(1)} s` : 'no voice';
+  const sfx = page.sound ? `${r.sfxEvents} effect${r.sfxEvents === 1 ? '' : 's'}` : 'effects off';
+  return `audio: ${r.codec} 48000 Hz stereo, ${voice}, ${sfx}, ${r.integratedLufs.toFixed(1)} LUFS, peak ${r.peakDbfs.toFixed(1)} dBFS`;
 }
 
 /** Least free space an export needs (the MP4, Chrome's profile and caches): about 1 GB. */
@@ -447,10 +474,14 @@ async function cmdExport(p: ParsedArgs): Promise<number> {
     return 1;
   }
   const out = resolveOut(p.flags.out, t, build);
-  const res = await exportVideo({ html: readFileSync(build.index, 'utf8'), out, duration: info.duration, fps: info.fps, bitrate });
+  const html = readFileSync(build.index, 'utf8');
+  const page = readPageAudio(html);
+  const res = await exportVideo({ html, out, duration: info.duration, fps: info.fps, bitrate });
   console.log(res.file);
   console.log(`duration ${info.duration.toFixed(1)} s, size ${(res.bytes / 1024 / 1024).toFixed(2)} MB, took ${res.seconds.toFixed(1)} s`);
-  const v = await verifyVideo(res.file);
+  console.log(audioLine(page, res.audio));
+  if (res.audio?.codec === 'opus') { log('warning: the audio track is Opus; QuickTime may not play Opus inside MP4. Google Chrome encodes AAC.'); }
+  const v = await verifyVideo(res.file, page !== null);
   console.log(v.line);
   return v.ok ? 0 : 1;
 }
@@ -580,6 +611,8 @@ async function cmdVoice(p: ParsedArgs): Promise<number> {
   const entries = planVoice(a.cues, a.voice);
   if (a.voice.provider === 'elevenlabs') { await ingest(entries, a.voice); }
   if (sub === 'plan') {
+    // The agent saves each take straight at its target path: the cache folder must exist.
+    mkdirSync(voiceDir(), { recursive: true });
     console.log(formatPlan(planVoice(a.cues, a.voice), a.voice));
     return 0;
   }

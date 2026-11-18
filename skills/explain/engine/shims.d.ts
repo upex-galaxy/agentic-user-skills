@@ -56,3 +56,4 @@ declare module '*/audio.js';
 declare module '*/audio-qa.js';
 declare module '*/sound-kinds.js';
 declare module '*/page-audio.js';
+declare module '*/export.js';
