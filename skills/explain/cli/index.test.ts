@@ -43,6 +43,9 @@ describe('argument parsing', () => {
   test('boolean flag does not eat the next positional', () => {
     expect(parseArgs(['--force', 'dir']).positional).toEqual(['dir']);
   });
+  test('a repeated --at adds to the list', () => {
+    expect(parseArgs(['x', '--at', 'a:1', '--at', 'b:2']).flags.at).toBe('a:1,b:2');
+  });
   test('missing value is a usage error', () => {
     expect(() => parseArgs(['--style'])).toThrow(UsageError);
   });

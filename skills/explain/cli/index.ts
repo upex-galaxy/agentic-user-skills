@@ -46,7 +46,8 @@ export function parseArgs(args: string[]): ParsedArgs {
       if (VALUE_FLAGS.has(key)) {
         const value = eq > 0 ? arg.slice(eq + 1) : args[++i];
         if (value === undefined) { throw new UsageError(`--${key} needs a value`); }
-        flags[key] = value;
+        // A repeated --at adds to the list instead of replacing it.
+        flags[key] = key === 'at' && typeof flags.at === 'string' ? `${flags.at},${value}` : value;
       }
       else { flags[key] = true; }
     }

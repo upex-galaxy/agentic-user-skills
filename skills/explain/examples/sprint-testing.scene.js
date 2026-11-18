@@ -1,7 +1,7 @@
 // Reference example (sketch, ~68 s, 9 scenes): how one user story is tested during a sprint.
 // Content comes only from the sprint-testing skill (SKILL.md). Shows: kinetic intro, journeyRail, packets, an icon story
 // card, a checklist of chips that flip, a browser with an app screen and a cursor, a camera move, a dot grid and a
-// counter of cases, a bug callout, a report assembled by packets, a machine for what each stage leaves, a fan-out of
+// chip of cases run, a bug callout, a report assembled by packets, a machine for what each stage leaves, a fan-out of
 // hand-offs and a recap. Each fact scene carries a sourceFooter.
 export const title = 'Cómo se testea una historia en el sprint';
 export const preset = 'sketch';
@@ -104,7 +104,7 @@ export default ({ scene }) => ({
         s.packets({ id: 'ev2', path: ['db', 'pbi'], curve: 'arc', bend: -190, shape: 'doc', at: 6.0, dur: 1.8, color: 'good', track: false, ping: true });
         s.callout({ id: 'found', target: 'api', text: 'Aquí aparece un bug', side: 'bottom', w: 460, h: 100, dist: 40, at: 4.4, until: 7.0, color: 'bad' });
         s.dotGrid({ id: 'cases', rect: { x: 420, y: 745, w: 1000, h: 135 }, rows: 3, cols: 14, fail: [17], at: 0.8, dur: 6.5 });
-        s.counter({ id: 'run', rect: { x: 1500, y: 700, w: 340, h: 180 }, from: 0, to: 42, at: 0.8, dur: 6.5, label: 'casos ejecutados', color: 'accent' });
+        s.chip({ id: 'run', cx: 1670, cy: 790, text: 'Ejecutando casos', icon: 'spinner', color: 'warn', at: 0.8, states: [{ at: 7.3, text: 'Casos ejecutados', icon: 'check', color: 'good' }] });
         s.camera.focus('api', 3.4, 0.9, { zoom: 1.35 }).reset(6.6, 0.9);
         s.caption({ text: 'La evidencia queda guardada en la carpeta del PBI.', at: 7.8, until: 9.3 });
       },
