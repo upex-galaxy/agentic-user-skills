@@ -282,7 +282,7 @@ const log = (msg: string) => console.error(msg);
 // ---------------------------------------------------------------------------
 
 const audioNote = (a: { sound: boolean, narration: { provider: string, voice: string, cues: unknown[] } | null }) =>
-  `${a.sound ? ', sound on' : ''}${a.narration ? `, voice ${a.narration.provider}/${a.narration.voice} (${a.narration.cues.length} lines)` : ''}`;
+  `${a.sound ? ', sound on' : ''}${a.narration ? `, voice ${a.narration.provider}/${a.narration.voice} (${a.narration.cues.length} line${a.narration.cues.length === 1 ? '' : 's'})` : ''}`;
 
 /**
  * Preset precedence: --preset, explain.json, `export const preset` in the scene, hologram. A --preset other than the
