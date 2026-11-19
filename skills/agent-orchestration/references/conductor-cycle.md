@@ -109,7 +109,7 @@ A worker mid-`ask` is waiting, not stalled. To steer a working or finished worke
 In the turn that processes a `worker_done`, in this order. The commands are in the provider file ("Close"): `providers/orca.md` for `native`, `providers/jitso.md` for `jitso`.
 
 1. **Integration verified.** Commits landed (`git cherry`), the PR opened where the strategy asks, tracker artifacts in their declared status. A released worker whose work never integrated cannot be recovered from the board.
-2. **Footer.** Read the cost footer and put it in the roster. It exists only on the worker's screen.
+2. **Cost.** Native: read the cost footer and put it in the roster; it exists only on the worker's screen. JITSO: no footer exists, take the `tokens:` line `jitso close` prints (`providers/jitso.md`, "Close").
 3. **Release.** One release, per the provider.
 4. **Terminal gone.** Verify it, never assume (a success code describes the call, not the outcome).
 5. **Orphan audit.** Removing a worktree deletes everything gitignored inside it, silently, exit 0. Before removal:

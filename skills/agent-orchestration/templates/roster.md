@@ -19,7 +19,8 @@ the worker's screen or argv at readiness, against the profile's `orchestration.p
 `Launch id` is filled only in jitso mode.
 
 Fill `Cost` from the worker's status footer, read off the screen before you release it: no command
-reports it and the number dies with the terminal (gotcha G54).
+reports it and the number dies with the terminal (gotcha G54). In jitso mode there is no footer: use
+the `tokens:` line `jitso close` prints.
 
 Status vocabulary, and nothing outside it: `queued` · `provisioning` · `launched` · `in-flight` ·
 `waiting on claim` · `waiting on answer` · `blocked` · `done` · `done, released` · `kept-open` ·

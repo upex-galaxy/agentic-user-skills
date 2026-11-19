@@ -134,7 +134,7 @@ The roster resolves "the one on BK-123" into a Task, a dispatch, a terminal and 
 
 The numbers are stable because other files cite them.
 
-1. Close a finished worker in the turn that processes its `worker_done`: verify integration, read the cost footer, release, confirm the terminal is gone, audit orphans, remove the worktree. Live worktrees left open have taken the runtime down (G31).
+1. Close a finished worker in the turn that processes its `worker_done`: verify integration, read the worker's cost (native: the screen footer; JITSO: the `tokens:` line `jitso close` prints; see the provider reference), release, confirm the terminal is gone, audit orphans, remove the worktree. Live worktrees left open have taken the runtime down (G31).
 2. Provision the worktree before launching, with the project's own provisioning step. A missing step disguises itself as another failure.
 3. Create the worktree, launch, name, and verify that the spec landed: one indivisible operation. A worker once sat idle for hours because its brief never arrived (G32).
 4. The channel is an assignment. `orchestration send` carries every message between sessions; anything longer than a couple of sentences goes in a file with a one-line pointer; `terminal send` carries raw terminal input only (a command, a slash-command, an interrupt), never conversation and never a first prompt (G60, G64, G66). `references/channel-discipline.md`.
