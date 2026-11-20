@@ -4,7 +4,7 @@ Read `providers/orca.md` first: JITSO rides on the same Orca runtime, mailbox, w
 
 ## Gate
 
-`jitso` only when the `jitso` binary is on PATH AND `<repo root>/jitso/jitso.yaml` exists. Every other case is `native`. Then run `jitso doctor` once (read-only); a non-zero exit stops the run: report its line. Load the JITSO usage skill before anything else; it owns the flags and the exit codes, this file does not copy them.
+`jitso` only when the `jitso` binary is on PATH AND `<repo root>/jitso/jitso.yaml` exists. Every other case is `native`. The project needs only that file and `jitso/builds/`: the jitso skill and the guard travel with the launch (below), so a project copy of the skill or a project `setup hook` is optional. Then run `jitso doctor` once (read-only); a non-zero exit stops the run: report its line. Load the JITSO usage skill before anything else; it owns the flags and the exit codes, this file does not copy them.
 
 ## Launch
 
@@ -19,6 +19,14 @@ jitso launch --build <id> --brief .jitso/briefs/<name>.md --mode fleet --run <ru
 ```
 
 Omit `--parent` for a top conductor (one a human started). A launched conductor passes its own launch id. The conductor still creates and verifies the worktree (`conductor-cycle.md` section 2) and passes it with `--worktree`. A clean dry run does not promise the real launch works.
+
+## Composing a build
+
+Run `jitso arsenal` to see what a build may name in this project; `jitso arsenal --all` adds what exists on the machine but no allowlist names yet. A build may list user-level skills and MCP servers as `user:<name>` in `skills_first` and `mcp`, only if `~/.jitso/jitso.yaml` allows them (a plain name never resolves there). A conductor composes the build just in time from that list; saving a build stays the owner's (`jitso build save` is denied to agent sessions). `cloud:` connectors and OAuth servers are refused, and a user server travels by reference only: a literal secret in its env, headers or args refuses the launch.
+
+## What travels
+
+A launch that carries the guard, the jitso skill (conductor builds and builds that name `jitso`) or any `user:` item writes `.jitso/launches/<id>/pkg/`, passed with `--add-dir`. The guard rides in the launch's `--settings` unless the project registers it. `jitso setup hook --scope user` guards the owner's own session, which JITSO does not launch.
 
 A top conductor tells the human the build and the brief before a real launch, unless they asked for exactly that. A launched conductor reports them to its launcher instead; fleet workers never ask the human. JITSO composes the model, effort, MCP servers and skills from the build: the conductor passes none of them.
 

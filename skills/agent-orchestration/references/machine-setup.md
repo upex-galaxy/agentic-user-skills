@@ -51,7 +51,7 @@ Pairing a phone makes the board card, its comment and shared artifacts readable 
 
 ## 6 JITSO (optional)
 
-JITSO is optional and may not be installed. Install and register it as its own documentation says (the owner runs the setup commands, never an agent session); `jitso doctor` then reports what is missing. `native` is the default until JITSO is published and passes an attended real Orca run (`references/providers/jitso.md`).
+JITSO is optional and may not be installed. Install and register it as its own documentation says (the owner runs the setup commands, never an agent session); `jitso doctor` then reports what is missing. Optional for the owner: `jitso setup hook --scope user` to guard their own session, and `~/.jitso/jitso.yaml` to allow user skills and MCP servers a build may name as `user:<name>`. `native` is the default until JITSO is published and passes an attended real Orca run (`references/providers/jitso.md`).
 
 ## 7 Checklist
 
