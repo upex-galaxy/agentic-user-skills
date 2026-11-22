@@ -14,6 +14,9 @@
 | a file plus a one-line pointer | anything longer than a couple of sentences: briefs, reports, scope agreements, evidence, tables | perfect, and re-readable later |
 | `orca terminal send` | raw terminal input only: a command, a harness slash-command (`/rename`, `/mcp`, `/reload-plugins`), an interrupt, Ctrl+U | lossy: truncates silently, keeps only the TAIL, reports success anyway (G60, G64) |
 
+Between independent Claude Code sessions that share no Run, the channel is native `SendMessage`, not
+the mailbox: `references/cross-session-messaging.md`.
+
 The test: if a human would READ it, it does not go through `terminal send`; if a shell or a TUI would
 EXECUTE it, that is what the verb is for. `terminal send` never carries conversation and never the
 first prompt: the task spec (`--spec` / `--spec-file`) is the first prompt. Mail to
