@@ -1,11 +1,11 @@
 import type { VoiceSettings } from './voice.ts';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { decodeWav as decodeWavUntyped, encodeWav as encodeWavUntyped } from '../engine/wav.js';
 import { findChrome } from './chrome.ts';
-import { applyPronunciation, clipSeconds, cueKey, defaultVoiceId, formatPlan, ingest, kokoroInstall, loadPronunciation, planVoice, runKokoro, voiceDir, voiceDoctor } from './voice.ts';
+import { applyPronunciation, clipSeconds, cueKey, defaultVoiceId, formatPlan, ingest, kokoroInstall, loadPronunciation, planJson, planVoice, runKokoro, voiceDir, voiceDoctor } from './voice.ts';
 
 const decodeWav = decodeWavUntyped as (bytes: Uint8Array) => { sampleRate: number, channels: Float32Array[] };
 const encodeWav = encodeWavUntyped as (channels: Float32Array[], sampleRate: number) => Uint8Array<ArrayBuffer>;
@@ -107,6 +107,23 @@ describe('plan', () => {
     expect(text).toContain(`Missing characters: ${chars}`);
     expect(text).toMatch(/Estimated credits: about 76 /);
     expect(text).toContain('eleven_flash_v2_5');
+  });
+  test('--takes sets the take count in the credit estimate and says so', () => {
+    const entries = planVoice(cues(2, 'takes'), eleven, []);
+    const chars = entries[0].chars + entries[1].chars;
+    expect(formatPlan(entries, eleven, 1)).toContain(`about ${chars} (1 take per line x`);
+    expect(formatPlan(entries, eleven, 3)).toContain(`about ${3 * chars} (3 takes per line x`);
+    expect(formatPlan(entries, eleven)).toContain(`about ${2 * chars} (2 takes per line by default x`);
+  });
+  test('planJson lists the lines to generate with paths, chars and credits', () => {
+    const entries = planVoice(cues(2, 'json'), eleven, []);
+    const j = planJson(entries, eleven, 1);
+    expect(j.lines.map(l => l.path)).toEqual(entries.map(e => e.source!));
+    expect(j.lines[0]).toEqual({ scene: 'intro', index: '0.0', text: entries[0].spoken, voice: 'v1', model: 'eleven_flash_v2_5', chars: entries[0].chars, path: entries[0].source! });
+    expect(j.missingChars).toBe(entries[0].chars + entries[1].chars);
+    expect(j.takes).toBe(1);
+    expect(j.credits).toBe(j.missingChars);
+    expect(planJson(entries, eleven).takes).toBe(2);
   });
   test('a line said twice is listed and estimated once', () => {
     const twice = [{ id: '0.0', scene: 'a', text: 'La misma línea.' }, { id: '1.0', scene: 'b', text: 'La misma línea.' }];
@@ -265,6 +282,39 @@ describe('hard rules', () => {
     for (const f of files) {
       const text = readFileSync(f, 'utf8');
       for (const b of banned) { expect(`${f}:${text.includes(b)}`).toBe(`${f}:false`); }
+    }
+  });
+});
+
+describe('voice plan command', () => {
+  const cli = join(import.meta.dir, 'index.ts');
+  const root = mkdtempSync(join(tmpdir(), 'explain-plan-cli-'));
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  const dir = join(root, 'demo');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'scene.js'), readFileSync(join(import.meta.dir, '..', 'examples', 'narrated.scene.js')));
+  async function plan(...extra: string[]) {
+    const env = { ...process.env, EXPLAIN_HOME: root, EXPLAIN_VOICE_DIR: join(root, 'voice'), EXPLAIN_PRONUNCIATION: join(root, 'none.txt') };
+    const p = Bun.spawn(['bun', cli, 'voice', 'plan', dir, '--voice', 'elevenlabs', '--voice-id', 'v1', ...extra], { stdout: 'pipe', stderr: 'pipe', env });
+    const [stdout, stderr] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+    return { code: await p.exited, stdout, stderr };
+  }
+  test('--json prints one JSON object and nothing else', async () => {
+    const r = await plan('--json', '--takes', '1');
+    expect(r.code).toBe(0);
+    const j = JSON.parse(r.stdout);
+    expect(Object.keys(j)).toEqual(['lines', 'missingChars', 'takes', 'credits']);
+    expect(j.lines.length).toBeGreaterThan(0);
+    expect(j.takes).toBe(1);
+    expect(j.credits).toBe(j.missingChars);
+  });
+  test('--takes changes the human estimate; a bad value is a usage error', async () => {
+    expect((await plan('--takes', '1')).stdout).toContain('1 take per line x');
+    expect((await plan()).stdout).toContain('2 takes per line by default x');
+    for (const bad of ['0', '5', '1.5', 'x']) {
+      const r = await plan('--takes', bad);
+      expect(r.code).toBe(2);
+      expect(r.stderr).toContain('--takes needs a whole number from 1 to 4');
     }
   });
 });

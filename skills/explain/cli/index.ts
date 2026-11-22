@@ -2,11 +2,13 @@
 /**
  * explain - CLI entry point: scene.js -> self-contained index.html -> checked MP4.
  *
- *   bun <skill-dir>/cli/index.ts <new|build|check|stills|export|preview> ...
+ *   bun <skill-dir>/cli/index.ts <new|build|check|stills|export|prune|preview> ...
  *
  * STDOUT carries the result of a command (a path, the QA JSON, the export summary); progress and
  * diagnostics go to stderr. Output lives under ~/explainers/ (override: EXPLAIN_HOME) or the given
  * directory, never the cwd.
+ *
+ * `prune` deletes exported MP4s (they re-export from scene.js and the voice cache); dry run unless --yes.
  *
  * Exit codes: 0 ok | 1 runtime failure or QA errors | 2 usage error.
  * Bun and node: built-ins only, no install step.
@@ -22,8 +24,9 @@ import { buildHash, buildPage, insideSkillDir, PAGE_WARN_BYTES, readBuildHash, s
 import { exportVideo, readPageAudio, sheet, sheetFromMp4, stillName, stills, stillsFromMp4 } from './export.ts';
 import { inspectPage, pageScenes } from './headless.ts';
 import { findPreset, listPresets, loadPreset, newPreset, presetNames, promotePreset } from './presets.ts';
+import { deleteFile, explainerDirsUnder, findMp4s, isExplainerDir } from './prune.ts';
 import { summarizeReport } from './qa.ts';
-import { formatPlan, ingest, planVoice, runKokoro, voiceDir, voiceDoctor } from './voice.ts';
+import { formatPlan, ingest, planJson, planVoice, runKokoro, voiceDir, voiceDoctor } from './voice.ts';
 
 // ---------------------------------------------------------------------------
 // Pure helpers (tested)
@@ -36,7 +39,7 @@ export interface ParsedArgs {
   flags: Record<string, string | true>
 }
 
-const VALUE_FLAGS = new Set(['style', 'preset', 'title', 'at', 'out', 'bitrate', 'from', 'scene', 'cols', 'rows', 'sound', 'voice', 'voice-id', 'voice-model']);
+const VALUE_FLAGS = new Set(['style', 'preset', 'title', 'at', 'out', 'bitrate', 'from', 'scene', 'cols', 'rows', 'sound', 'voice', 'voice-id', 'voice-model', 'takes']);
 
 export function parseArgs(args: string[]): ParsedArgs {
   const positional: string[] = [];
@@ -99,6 +102,14 @@ export function parseBitrate(value: string | true | undefined): number | undefin
   const mbps = typeof value === 'string' ? Number(value) : Number.NaN;
   if (!(mbps >= 0.5 && mbps <= 50)) { throw new UsageError('--bitrate needs megabits per second between 0.5 and 50, for example --bitrate 2'); }
   return mbps * 1e6;
+}
+
+/** Parse --takes (1 to 4) for the credit estimate; undefined keeps the default (2). */
+export function parseTakes(value: string | true | undefined): number | undefined {
+  if (value === undefined) { return undefined; }
+  const n = typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : Number.NaN;
+  if (!(n >= 1 && n <= 4)) { throw new UsageError('--takes needs a whole number from 1 to 4'); }
+  return n;
 }
 
 /** Parse "1,5.5,9" into seconds. */
@@ -485,7 +496,48 @@ async function cmdExport(p: ParsedArgs): Promise<number> {
   if (res.audio?.codec === 'opus') { log('warning: the audio track is Opus; QuickTime may not play Opus inside MP4. Google Chrome encodes AAC.'); }
   const v = await verifyVideo(res.file, page !== null);
   console.log(v.line);
+  log(`The MP4 is transient: upload it to Loom or a storage, then run \`prune ${t.dir} --yes\`.`);
   return v.ok ? 0 : 1;
+}
+
+/** prune [<dir> | --all] [--yes]: list (dry run) or delete exported MP4s in explainer folders. */
+function cmdPrune(p: ParsedArgs): number {
+  const arg = p.positional[0];
+  const all = p.flags.all === true;
+  if (arg && all) { throw new UsageError('pass a <dir> or --all, not both'); }
+  if (!arg && !all) { throw new UsageError('prune needs a <dir> or --all'); }
+  let dirs: string[];
+  if (arg) {
+    const dir = resolve(arg);
+    if (!existsSync(dir)) { throw new UsageError(`not found: ${dir}`); }
+    if (!isExplainerDir(dir)) { throw new UsageError(`${dir} is not an explainer folder (no scene.js or explain.json)`); }
+    dirs = [dir];
+  }
+  else { dirs = explainerDirsUnder(explainersRoot()); }
+  const yes = p.flags.yes === true;
+  const cache = voiceDir();
+  let count = 0;
+  let bytes = 0;
+  let failed = 0;
+  for (const dir of dirs) {
+    for (const f of findMp4s(dir, cache)) {
+      if (yes) {
+        try { deleteFile(f.file); }
+        catch (e) {
+          log(`could not delete ${f.file}: ${e instanceof Error ? e.message : String(e)}`);
+          failed++;
+          continue;
+        }
+      }
+      console.log(`${yes ? 'deleted' : 'would delete'} ${f.file} (${(f.bytes / 1024 / 1024).toFixed(2)} MB)`);
+      count++;
+      bytes += f.bytes;
+    }
+  }
+  const rebuild = dirs.length === 1 ? ` Rebuild with: export ${dirs[0]}` : ' Rebuild one with: export <dir>';
+  const mb = (bytes / 1024 / 1024).toFixed(2);
+  console.log(count === 0 ? 'no MP4 files found' : yes ? `deleted ${count} MP4 file${count === 1 ? '' : 's'}, freed ${bytes} bytes (${mb} MB).${rebuild}` : `dry run: ${count} MP4 file${count === 1 ? '' : 's'}, ${bytes} bytes (${mb} MB) would be freed; nothing deleted. Run again with --yes to delete.${rebuild}`);
+  return failed ? 1 : 0;
 }
 
 async function cmdPreview(p: ParsedArgs): Promise<number> {
@@ -604,18 +656,28 @@ async function cmdVoice(p: ParsedArgs): Promise<number> {
     for (const line of await voiceDoctor()) { console.log(line); }
     return 0;
   }
+  const takes = parseTakes(p.flags.takes);
   const isSub = sub === 'plan' || sub === 'kokoro';
   const t = resolveTarget(isSub ? arg : sub);
   const flags = sub === 'kokoro' ? { ...p.flags, voice: 'kokoro' } : p.flags;
   const a = await audioSettings(t, flags);
   if (!a.voice) { throw new UsageError('the voice is none for this video: pass --voice kokoro|elevenlabs, save it with `audio use <dir> --voice ...`, or set EXPLAIN_VOICE'); }
-  if (!a.cues.length) { log('no scene has `say`: nothing to narrate'); return 0; }
+  if (!a.cues.length) {
+    if (sub === 'plan' && p.flags.json === true) { console.log(JSON.stringify(planJson([], a.voice, takes))); }
+    else { log('no scene has `say`: nothing to narrate'); }
+    return 0;
+  }
   const entries = planVoice(a.cues, a.voice);
   if (a.voice.provider === 'elevenlabs') { await ingest(entries, a.voice); }
   if (sub === 'plan') {
+    if (p.flags.json === true) {
+      mkdirSync(voiceDir(), { recursive: true });
+      console.log(JSON.stringify(planJson(planVoice(a.cues, a.voice), a.voice, takes)));
+      return 0;
+    }
     // The agent saves each take straight at its target path: the cache folder must exist.
     mkdirSync(voiceDir(), { recursive: true });
-    console.log([...formatCover(a.cover), '', formatPlan(planVoice(a.cues, a.voice), a.voice)].join('\n'));
+    console.log([...formatCover(a.cover), '', formatPlan(planVoice(a.cues, a.voice), a.voice, takes)].join('\n'));
     return 0;
   }
   if (sub === 'kokoro') {
@@ -656,8 +718,9 @@ const HELP: Record<string, string> = {
   stills: 'stills <dir|scene.js> [--preset <name>] [--at ci:3.5,git:5.2,12.4] [--scene <name>] [--from-mp4 [--out video.mp4]]\n  PNGs named NN-<scene>@<local seconds>.png to <dir>/stills/ (old ones replaced). --at takes <scene>:<seconds of that scene> or global seconds. Default: 2 per scene at 40 % and 85 % of it; --scene <name> gives 4 of that scene. --from-mp4 cuts them from the exported MP4 with ffmpeg into <dir>/stills/mp4/.',
   sheet: 'sheet <dir|scene.js> [--preset <name>] [--cols 3] [--rows 2] [--at ...] [--from-mp4]\n  One contact-sheet PNG (cols x rows frames at 960x540; 3x2 = 2880x1080) to <dir>/sheet.png, rendered in the page without ffmpeg; frames at the settled time of scenes spread over the video (after the last caption or typing finishes) unless --at names them. --from-mp4 cuts it from the exported MP4 with ffmpeg.',
   export: 'export <dir|scene.js> [--out video.mp4] [--bitrate 2] [--force] [--sound on|off] [--voice none|kokoro|elevenlabs] [--voice-id <id>]\n  Run check (refuses on errors unless --force), export <dir>/<slug>.mp4 (a relative --out is inside <dir>), print path, duration, size, time; ffprobe verifies when available.',
+  prune: 'prune [<dir> | --all] [--yes]\n  Delete exported MP4s (they re-export from scene.js and the voice cache). <dir> must be an explainer folder (scene.js or explain.json); --all covers every explainer folder under ~/explainers (EXPLAIN_HOME). Only .mp4 files, at most 2 levels deep; symlinks and the voice cache are never touched. Dry run unless --yes.',
   preview: 'preview <dir> [--preset <name>]\n  Open index.html in the default browser.',
-  voice: 'voice doctor | voice plan <dir> | voice kokoro <dir> | voice <dir>\n  Narration (scene `say`). doctor: Kokoro installed/running, the ElevenLabs route, the cache (~/.explain/voice, or EXPLAIN_VOICE_DIR). plan: the lines missing from the cache, with the exact text, voice, model, target MP3 path and estimated credits, for an agent to generate with an ElevenLabs MCP (no API key is ever read). kokoro: start the installed Kokoro server, synthesize the missing lines, cache them and stop it (a server already running is used and left alone). voice <dir>: cached or missing per line. Builds never synthesize: they read the cache and name the command when a line is missing.',
+  voice: 'voice doctor | voice plan <dir> [--json] [--takes 1-4] | voice kokoro <dir> | voice <dir>\n  Narration (scene `say`). doctor: Kokoro installed/running, the ElevenLabs route, the cache (~/.explain/voice, or EXPLAIN_VOICE_DIR). plan: the lines missing from the cache, with the exact text, voice, model, target MP3 path and estimated credits (--takes sets the takes per line, default 2; --json prints the plan as one JSON object), for an agent to generate with an ElevenLabs MCP (no API key is ever read). kokoro: start the installed Kokoro server, synthesize the missing lines, cache them and stop it (a server already running is used and left alone). voice <dir>: cached or missing per line. Builds never synthesize: they read the cache and name the command when a line is missing.',
   audio: 'audio use <dir> [--sound on|off] [--voice none|kokoro|elevenlabs] [--voice-id <id>] [--voice-model <model>]\n  Save the video\'s sound and voice in explain.json. Both are off by default. Precedence on every build: flag, explain.json, env (EXPLAIN_SOUND, EXPLAIN_VOICE, EXPLAIN_VOICE_ID, EXPLAIN_ELEVENLABS_MODEL), default (sound off, voice none). Kokoro voices: ef_dora (Spanish) and af_heart by default; ElevenLabs needs a voice id from the MCP and uses eleven_flash_v2_5 unless --voice-model says otherwise.',
   preset: 'preset list | new <name> [--from sketch|hologram|poster] | check <name> | use <dir> <name> | promote <name>\n  Presets are the look of a video. list: built-in and user presets (~/.explain/presets, or EXPLAIN_PRESETS). new: copy one into the user folder with a README checklist. check: validate it, build the gallery scene in it, QA must pass. use: save it in the folder\'s explain.json. promote: copy a checked user preset into the skill (maintainers).',
 };
@@ -684,6 +747,7 @@ export async function main(argv: string[]): Promise<number> {
       case 'check': return await cmdCheck(p);
       case 'stills': return await cmdStills(p);
       case 'export': return await cmdExport(p);
+      case 'prune': return cmdPrune(p);
       case 'preset': return await cmdPreset(p);
       case 'sheet': return await cmdSheet(p);
       case 'voice': return await cmdVoice(p);

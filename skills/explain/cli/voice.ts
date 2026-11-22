@@ -113,7 +113,7 @@ export function planVoice(cues: CueLike[], settings: VoiceSettings, rules: Pronu
 const creditRate = (model: string) => /eleven_v[34]/i.test(model) ? 2 : 1;
 
 /** The text `voice plan` prints: one block per line still to generate, a credits estimate and the agent's steps. */
-export function formatPlan(entries: PlanEntry[], settings: VoiceSettings): string {
+export function formatPlan(entries: PlanEntry[], settings: VoiceSettings, takes?: number): string {
   // Cues that say the same line share one key, so the agent generates and pays for it once.
   const unique = [...new Map(entries.map(e => [e.key, e])).values()];
   const missing = unique.filter(e => !e.cached);
@@ -137,7 +137,7 @@ export function formatPlan(entries: PlanEntry[], settings: VoiceSettings): strin
   if (waiting) { out.push(`${waiting} more line(s) already have an MP3 waiting to be ingested.`, ''); }
   const chars = todo.reduce((n, e) => n + e.chars, 0);
   const rate = creditRate(settings.model);
-  out.push(`Missing characters: ${chars}. Estimated credits: about ${Math.round(2 * chars * rate)} (2 takes per line by default x ${rate} credit per character for ${settings.model}).`);
+  out.push(`Missing characters: ${chars}. Estimated credits: about ${Math.round((takes ?? 2) * chars * rate)} (${takes ? `${takes} take${takes === 1 ? '' : 's'} per line` : '2 takes per line by default'} x ${rate} credit per character for ${settings.model}).`);
   if (settings.provider === 'elevenlabs') {
     out.push(
       '',
@@ -146,6 +146,19 @@ export function formatPlan(entries: PlanEntry[], settings: VoiceSettings): strin
     );
   }
   return out.join('\n');
+}
+
+/** `voice plan --json`: the lines still to generate, the characters and the credit estimate. */
+export function planJson(entries: PlanEntry[], settings: VoiceSettings, takes = 2) {
+  const unique = [...new Map(entries.map(e => [e.key, e])).values()];
+  const todo = unique.filter(e => !e.cached && !(e.source && existsSync(e.source)));
+  const missingChars = todo.reduce((n, e) => n + e.chars, 0);
+  return {
+    lines: todo.map(e => ({ scene: e.scene, index: e.id, text: e.spoken, voice: settings.voiceId, model: settings.model, chars: e.chars, path: e.source ?? e.wav })),
+    missingChars,
+    takes,
+    credits: Math.round(takes * missingChars * creditRate(settings.model)),
+  };
 }
 
 const sidecarOf = (wav: string) => wav.replace(/\.wav$/, '.json');

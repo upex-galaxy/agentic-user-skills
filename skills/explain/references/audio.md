@@ -64,16 +64,17 @@ Builds never synthesize speech. They read the cache (`~/.explain/voice/<hash>.wa
 The CLI reads no ElevenLabs key and calls no ElevenLabs endpoint. The agent generates each line with the ElevenLabs MCP its harness has. For example, the claude.ai ElevenLabs connector: `creative_list_voices`, `creative_generate_speech`, `creative_get_flow_run_status`.
 
 1. **Pick a voice.** Ask the MCP for voices in the video's language (`creative_list_voices` with `languages`). Then save the id: `audio use <dir> --voice elevenlabs --voice-id <id>`.
-2. **`voice plan <dir>`** first prints a `Script:` block: per narrated scene, its words and estimated speech against the authored `dur`, `THIN` under half (fix those before paying for a line). Then it lists every line missing from the cache. For each line it gives the exact text to send, the voice, the model, the character count and the target path (`~/.explain/voice/<hash>.mp3`), plus the estimated credits.
+2. **`voice plan <dir>`** first prints a `Script:` block: per narrated scene, its words and estimated speech against the authored `dur`, `THIN` under half (fix those before paying for a line). Then it lists every line missing from the cache. For each line it gives the exact text to send, the voice, the model, the character count and the target path (`~/.explain/voice/<hash>.mp3`), plus the estimated credits. `--takes <n>` (1 to 4, default 2) sets the takes per line in that estimate. `voice plan <dir> --json` prints the same lines as one JSON object (`lines`, `missingChars`, `takes`, `credits`) with each target `path`.
 3. **For each listed line:**
-   - Call `creative_generate_speech` with exactly that text, voice and model (`eleven_flash_v2_5` unless the user asked for a professional one; record the model with `audio use --voice-model`).
+   - Call `creative_generate_speech` with exactly that text, voice and model, and `generations_count: 1` unless the user asked to compare takes (the default of 2 doubles the credits) (`eleven_flash_v2_5` unless the user asked for a professional one; record the model with `audio use --voice-model`).
    - Poll `creative_get_flow_run_status` until it completes.
-   - The connector makes two takes by default: pick one, download its audio URL to the target path, and keep it.
+   - After the status call, each take has a signed `content_url`: download it with `curl` to the path the plan gives (`voice plan <dir> --json` lists the paths). With several takes, pick one and keep it.
    - Never repeat a generation call to retry: each call is charged.
    - To replace a bad take, save the new MP3 over the old one. The next build ingests it again, because the newer file wins.
+   - Keep `~/.explain/voice` (or `EXPLAIN_VOICE_DIR`): never delete it, a re-export needs it.
 4. **Run any build command** (`build`, `check`, `export`) with the same voice settings. It ingests each saved MP3 by its hash (decoded in headless Chrome to a 24 kHz WAV; the MP3 stays next to it) and builds.
 
-Cost, measured through the claude.ai connector: `eleven_flash_v2_5` charged 31 credits for one 31-character take, so a two-take line costs about 2 credits per character. A minute of narration is about 900 characters. Its model guide says `eleven_v3` and `eleven_v4` cost twice as much as flash.
+Cost, measured through the claude.ai connector: `eleven_flash_v2_5` charged 31 credits for one 31-character take, so a line costs about 1 credit per character per take (a two-take line, the connector default, about 2). A minute of narration is about 900 characters. Its model guide says `eleven_v3` and `eleven_v4` cost twice as much as flash.
 
 ## Sound effects
 
