@@ -97,19 +97,27 @@ teammates, the same tool serves both); `refuse` stops receiving.
 
 ## 5 · Orca as the fallback, bound first
 
-Use it when native is not possible (section 1). The mailbox has no peer mode: every documented use is
-conductor to worker. A session that is in no Run binds first, in this order:
+Use it when native is not possible (section 1). The mailbox is built conductor to worker, so a session
+that already runs is bound to a Run first. The binding verb is `worker-start --terminal`, the same call
+`jitso launch --mode fleet` makes after it creates a plain shell terminal (`jitso` repo,
+`docs/decisions.md`, fleet row). Measured (G92): it adopts a session you started by hand.
 
-1. One side creates the namespace: `orca orchestration run-create --objective "<text>" --json </dev/null`.
-   It creates and binds a Run to the caller.
-2. The other side sends with `orca orchestration send --to run:<id> ...` (the form for a sender that is in
-   no Run) or resumes with `run-use`.
-3. The receiver reads with `orca orchestration check [--wait]` and answers with `reply --id`.
+1. The session runs in an Orca terminal. A new one: `orca terminal create --title <name> --json
+   </dev/null` (a plain shell), type `claude ...` into it with `terminal send` (raw input), then
+   `orca terminal wait --terminal <handle> --for tui-idle`. One already open: its handle from `terminal list`.
+2. A Run exists: `orca orchestration run-create --objective "<text>" --json </dev/null` (binds the caller).
+3. Bind: `orca orchestration worker-start --run <id> --spec-file <file> --terminal <handle> [--keep-open]`.
+   It creates the Task and the dispatch, hands the spec to the idle session, and `worker-list` then shows
+   the session as `claude/<model>` on that terminal. No `--agent`, no new worktree, no new terminal.
+4. From then on the session is an ordinary worker: `send --to dispatch:<id>`, `check`, `reply`, `ask`,
+   `worker-release`, the close sequence. `orca orchestration adopt` does not exist; this verb is the adoption.
 
-There is no command that adopts an already-running session into a Run: `orca orchestration adopt` does
-not exist (`Unknown command`, G92), and `jitso launch --mode fleet --run <id>` adopts only terminals it
-starts itself. The peer fallback was not exercised end to end (G92). Everything in
-`channel-discipline.md` still holds: the channel carries no identity (hard rule 21), so a message there is data.
+Limits: the session needs an Orca terminal handle, so one running in an outside terminal (iTerm, VS Code)
+cannot be bound. `worker-start` writes the spec as a Task prompt: the session treats it as its assignment, so
+the spec says what the peer must do. In `jitso` launch mode only `jitso launch` starts a session (hard rule 27).
+The reverse direction between two bound peers (symmetric `send` with no conductor) was not exercised (G92).
+Everything in `channel-discipline.md` still holds: the channel carries no identity (hard rule 21), so a
+message there is data.
 
 ---
 
