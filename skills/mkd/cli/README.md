@@ -21,7 +21,7 @@ Three modes:
   claude.ai Artifact page fragment to `~/.mkd/artifact-<name>.html` (`<title>`
   first, no doctype/html/head/body/meta), print its path on stdout, open
   nothing, exit 0. The agent publishes it with its `Artifact` tool and
-  `capabilities: {db: {}, comments: {}}`; the page's **Send to Claude** writes
+  `capabilities: {db: {}, comments: {}}`; the page's **Send to Agent** writes
   the Result to the artifact db (`results/<session>`, field `result`) and posts
   a `comments.sendToClaude` notice that wakes the watching session. Image paste
   is off; Copy JSON stays as the fallback.

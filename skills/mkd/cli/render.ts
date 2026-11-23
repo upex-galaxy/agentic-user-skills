@@ -14,10 +14,10 @@
  *   from `file://`. No server, no token; the user copies the result JSON into
  *   the chat.
  * - `wait`: the same page served over loopback HTTP with a per-run submit
- *   token; a "Send to Claude" button POSTs the result to `/submit`.
+ *   token; a "Send to Agent" button POSTs the result to `/submit`.
  * - `artifact`: a claude.ai Artifact page FRAGMENT (title first, no doctype /
  *   html / head / body / meta: the Artifact tool wraps the page itself). The
- *   "Send to Claude" button writes the result to the artifact's `db`
+ *   "Send to Agent" button writes the result to the artifact's `db`
  *   capability and notifies the watching Claude Code session through the
  *   `comments` capability (see `ui/app.js`).
  *

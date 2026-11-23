@@ -4,7 +4,7 @@ Read the section for the flow `SKILL.md` picked. `<skill-dir>` is the skill's in
 
 ## Artifact mode (Claude Code with the `Artifact` tool)
 
-The user answers inside a claude.ai artifact. **Send to Claude** saves the Result JSON in the artifact's database and posts a comment addressed to Claude, which wakes this session. Nothing runs on localhost and nothing is copied.
+The user answers inside a claude.ai artifact. **Send to Agent** saves the Result JSON in the artifact's database and posts a comment addressed to Claude, which wakes this session. Nothing runs on localhost and nothing is copied.
 
 1. **Render**: `bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-<name>.json --artifact --title-prefix <session-name>`. The session name is the first line of `ListAgents` ("This session is ...") or the terminal title. The CLI validates the spec, writes `~/.mkd/artifact-<name>.html` (a page fragment: `<title>` first, no doctype/html/head/body), prints only that path on stdout, opens nothing, exits 0. stderr names the db document the answer will land in. Exit 2 = bad spec.
 2. **Publish** with the `Artifact` tool: `file_path` = the printed path, an `icon` (e.g. `checklist`), a one-line `description`, `capabilities: {db: {}, comments: {}}`. Give the user the link. Inside Orca, open it in a tab first: run `bun "<skill-dir>/cli/index.ts" open-artifact <artifact url>` from the user's checkout (it creates a tab bound to the worktree and checks that it loaded, never the system browser). stdout `opened`: say the deck is in the Orca tab next to the terminal. `skipped` or no Orca: give the link.
@@ -24,7 +24,7 @@ The CLI blocks until the user submits, so run it in the background: a foreground
 2. Run from the user's checkout:
    - **Claude Code**: Bash with `run_in_background: true` on `bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-<name>.json`. The harness notifies you when the process exits; read its stdout then (measured on Orca 1.4.190).
    - **OpenCode / Codex / Cursor** (unverified): `nohup bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-<name>.json > ~/.mkd/stdout-<name>.json 2> ~/.mkd/stderr-<name>.log &`. Once `~/.mkd/stderr-<name>.log` contains `result written to`, read `~/.mkd/result-<name>.json` (same Result as stdout). If the harness cannot keep a background process alive, pass `--copy` and use copy mode.
-3. Tell the user the deck is open in a tab next to this terminal and **Send to Claude** returns the answers directly. End the turn or keep working.
+3. Tell the user the deck is open in a tab next to this terminal and **Send to Agent** returns the answers directly. End the turn or keep working.
 4. When the process exits, act on the exit code (table below). Exit 0: stdout holds the Result JSON.
 
 How Orca is detected: `ORCA_TERMINAL_HANDLE` is set, or `orca status --json` reports a reachable runtime. The executable resolves as `ORCA_CLI_COMMAND`, then `orca-dev` in an Orca dev checkout, then `orca-ide` on Linux outside a managed terminal (bare `orca` there is usually the GNOME screen reader), then `orca`. A failed check counts as "no Orca" and prints nothing.

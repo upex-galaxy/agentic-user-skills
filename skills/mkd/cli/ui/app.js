@@ -17,7 +17,7 @@
  *   /submit with the per-run token; images are allowed (persisted server-side).
  * - 'artifact': published as a claude.ai Artifact. The submit button writes
  *   the result to the artifact's `db` capability (`window.__MKD_RESULT_DOC__`)
- *   and posts a "Send to Claude" comment through the `comments` capability,
+ *   and posts a "Send to Agent" comment through the `comments` capability,
  *   which wakes the Claude Code session watching the artifact. Image paste is
  *   disabled (no server to persist the bytes); Copy JSON stays the fallback.
  *
@@ -37,7 +37,7 @@
   /** @type {{ session: string, source?: string, title: string, submitLabel: string, items: any[] }} */
   const spec = (window.__MKD__ && typeof window.__MKD__ === 'object')
     ? window.__MKD__
-    : { session: '', title: '', submitLabel: 'Send to Claude', items: [] };
+    : { session: '', title: '', submitLabel: 'Send to Agent', items: [] };
 
   const items = Array.isArray(spec.items) ? spec.items : [];
   const mode = window.__MKD_MODE__ === 'wait' || window.__MKD_MODE__ === 'artifact'
@@ -2964,7 +2964,7 @@
 
   /**
    * Artifact mode: store the result in the artifact's database, then post a
-   * "Send to Claude" comment so the Claude Code session watching the
+   * "Send to Agent" comment so the Claude Code session watching the
    * artifact wakes up and reads it. Resolves whether Claude was notified;
    * rejects only when the answers could NOT be saved. The notice is
    * best-effort: once the db write lands the answers are safe, and Claude
