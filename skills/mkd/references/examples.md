@@ -172,7 +172,7 @@ Any spec works in `--wait` mode — only the invocation changes:
 bun "<skill-dir>/cli/index.ts" ~/.mkd/spec-release-readiness.json --wait --timeout 120
 ```
 
-The CLI blocks, the footer gains a **Send to Claude** button (label via
+The CLI blocks, the footer gains a **Send to Agent** button (label via
 `submitLabel`), stdout carries ONLY the Result JSON, and pasted images come
 back as `~/.mkd/...` file paths. Use it when the next step cannot proceed
 without the answer; otherwise prefer the non-blocking default.

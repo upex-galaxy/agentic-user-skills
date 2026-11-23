@@ -489,7 +489,7 @@ export function validateSpec(raw: unknown): NormalizedSpec {
 
   const submitLabel = isNonEmptyString(raw.submitLabel)
     ? raw.submitLabel
-    : 'Send to Claude';
+    : 'Send to Agent';
 
   const normalized: NormalizedSpec = {
     session: raw.session,

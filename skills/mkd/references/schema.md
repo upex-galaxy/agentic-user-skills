@@ -16,7 +16,7 @@ There are two shapes: the **Spec** the AI writes (input), and the **Result** the
 | `source` | `string` | no | Pointer to the artifact the deck was derived from. Echoed in the result. |
 | `title` | `string` | yes | Non-empty. Page title + header brand line. |
 | `intro` | `SpecIntro` | no | The intro screen. Omit → the intro shows just `title` + the how-it-works legend. |
-| `submitLabel` | `string` | no | CTA label for the submit button (`--wait` and `--artifact`). Default `"Send to Claude"`. |
+| `submitLabel` | `string` | no | CTA label for the submit button (`--wait` and `--artifact`). Default `"Send to Agent"`. |
 | `items` | `Item[]` | yes | Non-empty array. One item = one screen. |
 
 ### `SpecIntro`

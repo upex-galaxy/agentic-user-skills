@@ -48,7 +48,7 @@ describe('render: artifact mode', () => {
 
   it('carries the Send button, the artifact mode and the result doc', () => {
     expect(fragment).toContain('<main id="mkd-app" data-mode="artifact">');
-    expect(fragment).toContain('id="mkd-submit" disabled>Send to Claude</button>');
+    expect(fragment).toContain('id="mkd-submit" disabled>Send to Agent</button>');
     expect(fragment).toContain('window.__MKD_MODE__ = "artifact";');
     expect(fragment).toContain('window.__MKD_RESULT_DOC__ = "results/render-contract";');
   });
@@ -125,19 +125,20 @@ describe('render: copy and wait modes are unchanged', () => {
   // (carousel, embeds, link cards, diagrams, option thumbnails), and the
   // artifact-only video-card / missing-image styles (shared CSS; the copy and
   // wait markup itself is unchanged),
-  // and the color-mix guard on the translucent header.
+  // the color-mix guard on the translucent header, and the default submit
+  // label renamed from Send to Claude to Send to Agent (harness-neutral).
   // Update these only for an intentional change to the copy/wait markup.
   const shellHash = (html: string): string =>
     createHash('sha256').update(html.replace(APP_JS, () => '<app.js>')).digest('hex');
 
   it('copy mode', () => {
     expect(shellHash(render(spec, { mode: 'copy' })))
-      .toBe('729a328519c1a2b1a075613c4a5e22c32f18135eade928e9a3b454bc09c1c1f5');
+      .toBe('5c6e2fc41948ea44001a570197e5eae2b4c868efd7db1b513da838efb81cfa13');
   });
 
   it('wait mode', () => {
     expect(shellHash(render(spec, { mode: 'wait', submitToken: 'tok-123' })))
-      .toBe('2e1b4d054aafa44ee78e7c64a1a5c40fd468b8c9a83c8ec059b209e04a48835d');
+      .toBe('de189e6d24cbeb0930032e66628305c619aad1405cab3c322351258c3dd0e7a4');
   });
 
   it('never leaks the artifact globals into copy or wait pages', () => {
