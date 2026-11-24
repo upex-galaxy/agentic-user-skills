@@ -4,7 +4,7 @@ Read `providers/orca.md` first: JITSO rides on the same Orca runtime, mailbox, w
 
 ## Gate
 
-`jitso` only when the `jitso` binary is on PATH AND `<repo root>/jitso/jitso.yaml` exists. Every other case is `native`. The project needs only that file and `jitso/builds/`: the jitso skill and the guard travel with the launch (below), so a project copy of the skill or a project `setup hook` is optional. Then run `jitso doctor` once (read-only); a non-zero exit stops the run: report its line. Load the JITSO usage skill before anything else; it owns the flags and the exit codes, this file does not copy them.
+`jitso` only when the `jitso` binary is on PATH AND `<repo root>/jitso/jitso.yaml` exists. Every other case is `native`. The owner sets a project up with one command, `jitso init` (skill, `AGENTS.md` block, `jitso/jitso.yaml`, guard for each harness on PATH); an agent session never runs it (the guard denies `jitso init`, `setup` and `install`). The jitso skill and the guard also travel with every launch (below). Then run `jitso doctor` once (read-only); a non-zero exit stops the run: report its line. Load the JITSO usage skill before anything else; it owns the flags and the exit codes, this file does not copy them.
 
 ## Launch
 
@@ -22,11 +22,14 @@ Omit `--parent` for a top conductor (one a human started). A launched conductor 
 
 ## Composing a build
 
+A build's `harness:` is `claude`, `codex`, `opencode` or `pi` (JITSO v0.3). Each harness honors less than Claude Code, and `jitso build validate` rejects a build that asks for what its harness cannot give: codex takes no subagents, `tools` or `user:` items and keeps the owner's own Codex MCP servers (the launch prints a note); opencode takes no subagents, `tools` or `agents_md: exclude`; pi takes no MCP server at all. Only a claude launch reports tokens at `jitso close`.
+
+
 Run `jitso arsenal` to see what a build may name in this project; `jitso arsenal --all` adds what exists on the machine but no allowlist names yet. A build may list user-level skills and MCP servers as `user:<name>` in `skills_first` and `mcp`, only if `~/.jitso/jitso.yaml` allows them (a plain name never resolves there). A conductor composes the build just in time from that list; saving a build stays the owner's (`jitso build save` is denied to agent sessions). `cloud:` connectors and OAuth servers are refused, and a user server travels by reference only: a literal secret in its env, headers or args refuses the launch.
 
 ## What travels
 
-A launch that carries the guard, the jitso skill (conductor builds and builds that name `jitso`) or any `user:` item writes `.jitso/launches/<id>/pkg/`, passed with `--add-dir`. The guard rides in the launch's `--settings` unless the project registers it. `jitso setup hook --scope user` guards the owner's own session, which JITSO does not launch.
+A launch that carries the guard, the jitso skill (conductor builds and builds that name `jitso`) or any `user:` item writes `.jitso/launches/<id>/pkg/`, passed with `--add-dir`. The guard always travels: in the launch's `--settings` for claude (unless the project registers it), as inline hooks for codex, as a plugin in the launch's own OpenCode config folder, and as a `-e` extension for pi. In the project, `jitso init` registers it for Claude Code, Codex (`.codex/hooks.json`), OpenCode (`.opencode/plugins/jitso-guard.js`) and Pi (`.pi/extensions/jitso-guard.js`). Codex runs project hooks only after the owner trusts them ("Hooks need review" on the first session; `codex exec` skips untrusted hooks silently). `jitso setup hook --scope user` guards the owner's own session, which JITSO does not launch.
 
 A top conductor tells the human the build and the brief before a real launch, unless they asked for exactly that. A launched conductor reports them to its launcher instead; fleet workers never ask the human. JITSO composes the model, effort, MCP servers and skills from the build: the conductor passes none of them.
 
