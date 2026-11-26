@@ -63,7 +63,7 @@ Outside this skill, a failed gate costs the work nothing and nothing names the o
 | yes | yes | `jitso` | `references/providers/jitso.md` and JITSO's own usage skill |
 | any other case | | `native` (the default) | `references/providers/orca.md` |
 
-JITSO may not be installed, and `native` stays the default until JITSO is published and has passed an attended real Orca run. Other providers get a file in `references/providers/` and one row here; none is designed yet (`references/providers/README.md`).
+JITSO may not be installed, and `native` stays the default until JITSO has passed an attended real Orca run. Other providers get a file in `references/providers/` and one row here; none is designed yet (`references/providers/README.md`).
 
 ---
 
