@@ -1,6 +1,6 @@
 # Provider: JITSO (`jitso` mode)
 
-Read `providers/orca.md` first: JITSO rides on the same Orca runtime, mailbox, wake and mail rules. This file holds only what differs. Nothing here was measured on a real Orca: JITSO's own record says its attended real run has not happened. JITSO may not be installed; `native` stays the default until JITSO is published and passes an attended real Orca run.
+Read `providers/orca.md` first: JITSO rides on the same Orca runtime, mailbox, wake and mail rules. This file holds only what differs. Direct-mode launches and the messaging below were measured on a real Orca; a fleet run with a conductor on the current JITSO was not. JITSO may not be installed; `native` stays the default until JITSO is published and passes an attended real Orca run.
 
 ## Gate
 
@@ -36,6 +36,16 @@ A top conductor tells the human the build and the brief before a real launch, un
 ## Naming and roster
 
 JITSO titles the tab `[jitso:<id>] <build>`. Keep it: `reap` matches that mark. The roster maps `<label>` to the launch id (`Launch id` column); the dispatch id still comes from `worker-list`.
+
+## Who is running and who talked (JITSO v0.5 and v0.6)
+
+| Command | What it gives |
+|---|---|
+| `jitso fleet [--json] [--all]` | read only: the project's sessions joined with Orca's terminals (launch id, state, handle, parent, title). A worker finds a named peer and its own row here |
+| `jitso link <from> <to>` | records that one session talked to another; each side is a launch id, a terminal handle or an exact title |
+| `jitso graph [--port <n>] [--json]` | for the human: a live view on `127.0.0.1` of sessions, hierarchy and who talked to whom, from any folder. It never reads message text |
+
+Every `brief.md` a launch writes ends with the communication rule: find the peer with `jitso fleet`; between two Claude Code sessions use `SendMessage` to the session name (the tab title) and then run `jitso link`; otherwise `orca orchestration send --to <handle> --from <own handle>`, answered with `reply`. Measured with two launched Claude Code sessions: both paths delivered and answered. Orca warns that a terminal mailbox is lost if that terminal closes. A session a human opened by hand gets no rule: tell it how, or give it this section.
 
 ## Close
 
