@@ -127,18 +127,21 @@ describe('render: copy and wait modes are unchanged', () => {
   // wait markup itself is unchanged),
   // the color-mix guard on the translucent header, and the default submit
   // label renamed from Send to Claude to Send to Agent (harness-neutral).
+  // Re-pinned for the full-viewport media viewer (bar with zoom tools and
+  // Original link, prev/next, caption and Choose-option foot), the large
+  // option previews CSS, and the V key in the intro legend.
   // Update these only for an intentional change to the copy/wait markup.
   const shellHash = (html: string): string =>
     createHash('sha256').update(html.replace(APP_JS, () => '<app.js>')).digest('hex');
 
   it('copy mode', () => {
     expect(shellHash(render(spec, { mode: 'copy' })))
-      .toBe('5c6e2fc41948ea44001a570197e5eae2b4c868efd7db1b513da838efb81cfa13');
+      .toBe('59283e77730e6615969a495e6ab6355c13200f0ed2774bc87fd8b2c824f9270a');
   });
 
   it('wait mode', () => {
     expect(shellHash(render(spec, { mode: 'wait', submitToken: 'tok-123' })))
-      .toBe('de189e6d24cbeb0930032e66628305c619aad1405cab3c322351258c3dd0e7a4');
+      .toBe('f8f25177c1fd029c1735629591477e86e983a07f5075b14447b754d1e1369227');
   });
 
   it('never leaks the artifact globals into copy or wait pages', () => {
@@ -217,5 +220,13 @@ describe('cli: --artifact', () => {
     rmSync(home, { recursive: true, force: true });
     expect(proc.exitCode).toBe(2);
     expect(proc.stdout.toString()).toBe('');
+  });
+});
+
+describe('markdown links', () => {
+  it('open in a new tab (an artifact frame cannot navigate itself); mailto keeps the default', () => {
+    const page = render(validateSpec({ session: 's', title: 't', items: [{ id: 'R1', type: 'report', title: 'r', content: 'See [hi-res](https://d1.cloudfront.net/a.jpg) or [mail](mailto:a@b.c).' }] }), { mode: 'artifact' });
+    expect(page).toContain('<a href="https://d1.cloudfront.net/a.jpg" target="_blank" rel="noopener noreferrer">hi-res</a>');
+    expect(page).toContain('<a href="mailto:a@b.c">mail</a>');
   });
 });

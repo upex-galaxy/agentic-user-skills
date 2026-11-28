@@ -47,6 +47,7 @@ There are two shapes: the **Spec** the AI writes (input), and the **Result** the
 | `context` | `ContextBalloon[]` | no | Collapsible "How does X work today?" balloons. Each needs non-empty `title` + `body` (markdown). |
 | `options` | `DecisionOption[]` | yes | **At least 2** — one option is not a decision. |
 | `allowCustom` | `boolean` | no | Default `true`. Adds the "Something else (custom)" option with its textarea. |
+| `optionMediaLayout` | `'large' \| 'compact'` | no | Default `'large'`: option pictures (images, SVGs, video posters, artifact embed thumbnails) preview at card width, one big, two side by side, or one big plus a strip for three or more; other media show as chips. `'compact'` keeps the older row of small thumbnails, which pick the option when clicked and open no viewer. Any other value fails validation. |
 
 `DecisionOption`:
 
@@ -56,7 +57,7 @@ There are two shapes: the **Spec** the AI writes (input), and the **Result** the
 | `label` | `string` | yes | Non-empty. Inline markdown supported. |
 | `justification` | `string` | yes | **Non-empty — the HARD RULE.** The written value/cost rationale. Inline markdown supported. An option without it fails validation. |
 | `recommended` | `boolean` | no | **At most ONE option per decision** may be `true` (a second fails validation). Its justification must state WHY it is recommended. |
-| `media` | `MediaEntry[]` | no | Thumbnails inside the option card; "View option media" opens them full size. A media-only option still needs its `justification`. |
+| `media` | `MediaEntry[]` | no | Previews inside the option card (see `optionMediaLayout`). In the `large` layout, clicking a preview opens the media viewer on it instead of picking the option. In the `compact` layout, clicking a thumbnail picks the option and opens no viewer. In both, **V** or "View option media" opens the viewer. A media-only option still needs its `justification`. |
 
 Decision extras rendered by the UI (not in the spec): the custom option textarea (when `allowCustom`) and a per-decision "Note for Claude (optional)" textarea.
 
@@ -114,20 +115,25 @@ Each row's answer lives behind a compact "Answer" button that opens a popover (c
 
 | `type` | Fields | Notes |
 | --- | --- | --- |
-| `image` | `src`, `alt` (required), `caption?` | Click to enlarge (lightbox). |
+| `image` | `src`, `alt` (required), `caption?`, `full?` | Click to open the media viewer. `full` is an optional higher-resolution source (same source rules as `src`, raster only) used only in the viewer: the card shows `src`, the viewer swaps to `full` once it loads. In `--artifact` mode a remote `full` is inlined when it is under 2 MB; otherwise the viewer shows `src` with an "Original" link to it. |
 | `video` | `src` (mp4, webm or mov), `poster?`, `caption?` | `<video controls muted playsinline preload="metadata">`, never autoplays. Without `poster`, the first frame becomes the poster when ffmpeg is present. |
 | `embed` | `url`, `caption?` | Loom (`loom.com/share/<id>`) or YouTube (`watch?v=`, `youtu.be/`, `/shorts/`, `/live/`, `/embed/`; `t=` becomes the start time). Copy and wait modes: a sandboxed 16:9 iframe (`loom.com/embed/<id>` or `youtube-nocookie.com/embed/<id>`) with an "Open in new tab" link that is always visible. `--artifact` mode: a poster card (thumbnail, play icon, caption) that opens the video in a new tab, with no iframe. Any other host fails validation. |
 | `link` | `url` (https), `title?`, `description?`, `image?` | A preview card, never an iframe. Missing fields are read from the page's Open Graph tags at build time; when that fails the card is a plain titled link. |
 | `diagram` | `format: "mermaid"`, `code`, `caption?` | Mermaid is loaded from the CDN only when a deck has a diagram, follows the deck theme, and falls back to the source code block when it cannot load or parse. |
 | `svg` | exactly one of `src` (local path) or `svg` (inline markup), `alt` (required), `caption?` | Sanitized at build time and rendered as an image. |
 
-Sources (`src`, `poster`, `image`): a local path (relative to the spec file, or absolute), an `https:` URL, or a `data:` URI. Local files are inlined as `data:` URIs in every mode so the page is self-contained; https URLs stay URLs. Any other scheme fails validation.
+Sources (`src`, `poster`, `image`, `full`): a local path (relative to the spec file, or absolute), an `https:` URL, or a `data:` URI. Local files are inlined as `data:` URIs in every mode so the page is self-contained; https URLs stay URLs. Any other scheme fails validation.
+
+**Media viewer.** Any image in intro or item media, the `large` option previews, "View option media" and **V** (the current card's media; on a decision it starts at the chosen option) open a full-viewport viewer: the picture fits the screen, the wheel or a pinch zooms around the pointer, drag pans when zoomed, double-click or **Z** toggles 1:1, **+ / -** zoom, **0** fits, **left / right** (or a swipe) move through every picture of the same item or, on a decision, every option's media in screen order (it follows Shuffle), **Esc** closes. On option media the foot shows "Choose option X" (**Enter**), which picks it and closes. Video, embeds, links and diagrams show as they are, without zoom. A picture with an https source gets an "Original" link that opens it in a new tab.
+
+**Links in markdown** (`problem`, `content`, balloons, justifications) open in a new tab (`target="_blank" rel="noopener noreferrer"`; `mailto:` keeps the default). In `--artifact` mode the claude.ai viewer runs the page in a sandboxed frame: a new-tab link works only while the viewer allows popups, and the page can never show a remote image itself. To let the user inspect a high-resolution picture inside the deck, put it in `media` (a local file, or `full` on an image entry) instead of linking it in the text.
 
 Build-time rules (the CLI, not `validateSpec`):
 
 - A missing local file exits 2 and names the path (`items[3].media[0].src: file not found: ...`).
 - A local video is transcoded with ffmpeg to WebM VP9 (480p max height, about 700 kbps, no audio, 24 fps cap) and cached under `~/.mkd/media/`. Without ffmpeg, or for a WebM already under 1.5 MB, it is inlined as is with a warning. A video over 6 MB after processing exits 2.
 - Page budget: a warning above 8 MB; in `--artifact` mode a page over 14 MB exits 2 and names the heaviest media to shrink or host.
+- Dedupe: a picture inlined more than once on the page (an option preview and its viewer copy, the same file in item and option media, a `full` equal to another `src`) is stored once in a `<script type="application/json" id="mkd-media-pool">` and referenced by key (`data-mkd-src`, `data-mkd-full`); the page fills them at start. A picture used once stays inline. The budget counts the final page, so repeats cost nothing.
 - `--artifact` mode loads nothing remote, because the artifact viewer blocks remote frames and images:
   - Embeds become poster cards. The thumbnail (YouTube `i.ytimg.com/vi/<id>/hqdefault.jpg`, Loom oEmbed `thumbnail_url`, its still JPEG first) is fetched at build time and inlined when it is under 150 KB; otherwise the card shows a plain play icon.
   - https images, link-card images and video posters are fetched and inlined when they are under 200 KB; otherwise the figure shows its `alt` text and the card renders without the image. A remote video becomes a poster card that opens it in a new tab.
@@ -222,7 +228,7 @@ Item level: not an object; `id` missing/empty/**duplicated**; `type` not one of 
 
 `table`: `table` not an object; `columns` empty or with empty strings; `rows` empty; row `id` missing/duplicated; `cells` length ≠ `columns.length` or non-string cells; `rowControls`/`rowText` failing their rules.
 
-`media` (intro, items, options): not a non-empty array; entry `type` not one of `image`, `video`, `embed`, `link`, `diagram`, `svg`; `alt` missing on `image`/`svg`; a source that is not a local path, `https:` or `data:`; `link.url` not https; `embed.url` not a Loom or YouTube video URL; `diagram.format` not `mermaid` or empty `code`; `svg` with both or neither of `src`/`svg`, or `svg` markup without an `<svg>` element.
+`media` (intro, items, options): not a non-empty array; entry `type` not one of `image`, `video`, `embed`, `link`, `diagram`, `svg`; `alt` missing on `image`/`svg`; a source (including `full`) that is not a local path, `https:` or `data:`; `link.url` not https; `embed.url` not a Loom or YouTube video URL; `diagram.format` not `mermaid` or empty `code`; `svg` with both or neither of `src`/`svg`, or `svg` markup without an `<svg>` element.
 
 `Controls`: `type` invalid; `options` present on `toggle`; `options` missing/empty on `single`/`multi`; option `value`/`label` missing or duplicated `value`; `required` non-boolean. `TextField`: non-object; `required` non-boolean; `placeholder` non-string.
 

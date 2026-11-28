@@ -3171,16 +3171,139 @@ button {
   color: var(--mkd-text-muted);
 }
 
-/* Lightbox: a native modal dialog (focus trapped and restored by the browser). */
-.mkd-lightbox {
-  width: min(1100px, calc(100vw - 24px));
-  max-height: calc(100dvh - 24px);
-  padding: 44px 16px 16px;
+/* Option media, `large` layout (default): pictures at card width. */
+.mkd-opt__preview {
+  display: block;
+  margin-top: 12px;
+}
+
+.mkd-opt__gallery {
+  display: grid;
+  gap: 8px;
+}
+
+.mkd-opt__gallery--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mkd-opt__gallery--many {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.mkd-opt__gallery--many .mkd-opt__shot:first-child {
+  grid-column: 1 / -1;
+}
+
+.mkd-opt__shot {
+  position: relative;
+  display: block;
   border: 1px solid var(--mkd-border);
-  border-radius: var(--mkd-radius);
+  border-radius: var(--mkd-radius-sm);
+  background: var(--mkd-code-bg);
+  overflow: hidden;
+  cursor: zoom-in;
+}
+
+.mkd-opt__gallery {
+  align-items: start;
+}
+
+/* Natural aspect at card width, capped in height: a tall picture is
+   letterboxed sideways, never shrunk to a thumbnail. */
+.mkd-opt__shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 80px;
+  max-height: clamp(220px, 46vh, 460px);
+  object-fit: contain;
+}
+
+.mkd-opts.is-dense .mkd-opt__shot img {
+  max-height: clamp(200px, 40vh, 400px);
+}
+
+.mkd-opts .mkd-opt__gallery--many .mkd-opt__shot:not(:first-child) img {
+  height: clamp(64px, 11vh, 110px);
+  min-height: 0;
+  max-height: none;
+  object-fit: cover;
+}
+
+.mkd-opt__shot .mkd-opt__play {
+  background: rgba(5, 8, 15, 0.25);
+}
+
+.mkd-opt__shot-zoom {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--mkd-radius-pill);
   background: var(--mkd-surface);
   color: var(--mkd-text);
-  box-shadow: var(--mkd-shadow-lift);
+  opacity: 0.85;
+  box-shadow: var(--mkd-shadow-soft);
+  transition: opacity 160ms var(--mkd-ease-out), transform 160ms var(--mkd-ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mkd-opt__shot:hover .mkd-opt__shot-zoom {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+
+  .mkd-opt__shot:hover {
+    border-color: var(--mkd-accent);
+  }
+}
+
+.mkd-opt__preview .mkd-opt__media {
+  margin-top: 8px;
+}
+
+.mkd-opt__preview .mkd-opt__chip {
+  cursor: zoom-in;
+}
+
+/* The selection mark sits over the picture's top-right corner when the
+   label row is short; keep it readable. */
+.mkd-opts.has-gallery .mkd-opt__mark {
+  background: var(--mkd-surface);
+}
+
+.mkd-opts__view kbd {
+  padding: 0 5px;
+  border: 1px solid var(--mkd-border);
+  border-radius: 4px;
+  font-family: var(--mkd-font-mono);
+  font-size: 11px;
+  color: var(--mkd-text-muted);
+}
+
+/* Viewer: a native modal dialog over the whole viewport (focus trapped and
+   restored by the browser). Bar on top, stage in the middle, foot below. */
+.mkd-lightbox {
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--mkd-bg);
+  color: var(--mkd-text);
+  overflow: hidden;
+}
+
+.mkd-lightbox[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  animation: mkd-confirm-in 160ms var(--mkd-ease-out);
 }
 
 .mkd-lightbox:modal {
@@ -3190,18 +3313,75 @@ button {
 .mkd-lightbox::backdrop {
   overflow: hidden;
   overscroll-behavior: contain;
-  background: rgba(3, 6, 14, 0.78);
+  background: var(--mkd-scrim);
 }
 
-.mkd-lightbox[open] {
-  animation: mkd-confirm-in 200ms var(--mkd-ease-out);
+.mkd-lightbox__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--mkd-border);
+  background: var(--mkd-surface);
+}
+
+.mkd-lightbox__tag {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mkd-lightbox__count {
+  flex: none;
+  color: var(--mkd-text-muted);
+  font-family: var(--mkd-font-mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mkd-lightbox__tools {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.mkd-lightbox__tool {
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius-pill);
+  background: var(--mkd-surface-raised);
+  color: var(--mkd-text);
+  font: inherit;
+  font-family: var(--mkd-font-mono);
+  font-size: 12.5px;
+  text-decoration: none;
+}
+
+.mkd-lightbox__tool[hidden] {
+  display: none;
+}
+
+.mkd-lightbox__tool[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.mkd-lightbox:not(.is-image) .mkd-lightbox__tool:not(a) {
+  display: none;
 }
 
 .mkd-lightbox__close {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  min-height: 32px;
+  flex: none;
+  min-height: 34px;
   padding: 4px 14px;
   border: 1px solid var(--mkd-border);
   border-radius: var(--mkd-radius-pill);
@@ -3211,18 +3391,129 @@ button {
   font-size: 13px;
 }
 
-.mkd-lightbox .mkd-media__img,
-.mkd-lightbox .mkd-media__video {
-  max-height: calc(100dvh - 160px);
+.mkd-lightbox__body {
+  position: relative;
+  overflow: hidden;
+  outline: none;
 }
 
-.mkd-lightbox .mkd-diagram__src {
+.mkd-lightbox.is-image .mkd-lightbox__body {
+  touch-action: none;
+  cursor: zoom-in;
+  background:
+    repeating-conic-gradient(var(--mkd-code-bg) 0 25%, transparent 0 50%) 0 0 / 24px 24px,
+    var(--mkd-bg);
+}
+
+.mkd-lightbox.is-image.is-zoomed .mkd-lightbox__body {
+  cursor: grab;
+}
+
+.mkd-lightbox.is-image.is-zoomed .mkd-lightbox__body:active {
+  cursor: grabbing;
+}
+
+.mkd-lightbox__img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: none;
+  transform-origin: 0 0;
+  user-select: none;
+  -webkit-user-drag: none;
+  image-rendering: auto;
+}
+
+.mkd-lightbox__node {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 16px 64px;
+  overflow: auto;
+}
+
+.mkd-lightbox__node > * {
+  width: min(1100px, 100%);
+}
+
+.mkd-lightbox__node .mkd-media__img,
+.mkd-lightbox__node .mkd-media__video {
+  max-height: calc(100dvh - 200px);
+}
+
+.mkd-lightbox__node .mkd-embed {
+  max-width: calc((100dvh - 220px) * 16 / 9);
+}
+
+.mkd-lightbox__node .mkd-diagram__src {
   max-height: none;
 }
 
-.mkd-lightbox .mkd-carousel__track {
+.mkd-lightbox__nav {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--mkd-border);
+  border-radius: var(--mkd-radius-pill);
+  background: var(--mkd-surface);
+  color: var(--mkd-text);
+  box-shadow: var(--mkd-shadow-soft);
+  transform: translateY(-50%);
+  touch-action: manipulation;
+}
+
+.mkd-lightbox__nav--prev {
+  left: 12px;
+}
+
+.mkd-lightbox__nav--next {
+  right: 12px;
+}
+
+.mkd-lightbox__nav[disabled] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mkd-lightbox.is-single .mkd-lightbox__nav,
+.mkd-lightbox.is-single .mkd-lightbox__count {
+  display: none;
+}
+
+.mkd-lightbox__foot {
+  display: flex;
   align-items: center;
-  min-height: min(60dvh, 520px);
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--mkd-border);
+  background: var(--mkd-surface);
+}
+
+.mkd-lightbox__caption {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--mkd-text-muted);
+  font-size: 13.5px;
+}
+
+.mkd-lightbox__pick {
+  flex: none;
+}
+
+.mkd-lightbox__pick[hidden] {
+  display: none;
+}
+
+.mkd-lightbox__tool:focus-visible,
+.mkd-lightbox__nav:focus-visible,
+.mkd-lightbox__close:focus-visible {
+  outline: 2px solid var(--mkd-accent);
+  outline-offset: 2px;
 }
 
 /* ==========================================================================
@@ -3419,5 +3710,61 @@ button {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+/* Option previews and the viewer on phones (after every base rule). */
+@media (max-width: 720px) {
+  .mkd-opts .mkd-opt__shot img,
+  .mkd-opts.is-dense .mkd-opt__shot img {
+    max-height: clamp(220px, 52vh, 420px);
+  }
+
+  .mkd-lightbox__bar {
+    flex-wrap: wrap;
+    gap: 6px 8px;
+  }
+
+  .mkd-lightbox__tag {
+    flex-basis: calc(100% - 90px);
+    order: 0;
+  }
+
+  .mkd-lightbox__close {
+    order: 1;
+  }
+
+  .mkd-lightbox__tools {
+    order: 2;
+  }
+
+  .mkd-lightbox__count {
+    order: 3;
+    margin-left: auto;
+  }
+
+  .mkd-lightbox__nav {
+    width: 40px;
+    height: 40px;
+  }
+
+  .mkd-lightbox__nav--prev {
+    left: 6px;
+  }
+
+  .mkd-lightbox__nav--next {
+    right: 6px;
+  }
+
+  .mkd-lightbox__node {
+    padding: 12px 48px;
+  }
+
+  .mkd-lightbox__foot {
+    flex-wrap: wrap;
+  }
+
+  .mkd-lightbox__pick {
+    width: 100%;
   }
 }

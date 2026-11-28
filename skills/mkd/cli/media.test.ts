@@ -265,18 +265,66 @@ describe('render: media markup', () => {
     expect(withDiagram).toContain('<pre class="mkd-diagram__src"><code>flowchart LR\nA--&gt;B</code></pre>');
   });
 
-  it('keeps option media non-interactive inside the option button', () => {
-    const spec = validateSpec({ session: 's', title: 't', items: [{ id: 'D1', type: 'decision', title: 'd', problem: 'p', options: [
-      { key: 'A', label: 'a', justification: 'j', media: [{ type: 'image', src: 'https://example.com/a.png', alt: 'a' }, { type: 'link', url: 'https://example.com' }] },
-      { key: 'B', label: 'b', justification: 'j' },
-    ] }] });
-    const html = render(spec, { mode: 'copy' });
-    const option = /<button type="button" class="mkd-opt" data-opt-key="A">([\s\S]*?)<\/button>\s*<button type="button" class="mkd-opt/.exec(html)?.[1] ?? '';
+  const optionDeck = (extra: Record<string, unknown> = {}) => ({ session: 's', title: 't', items: [{ id: 'D1', type: 'decision', title: 'd', problem: 'p', ...extra, options: [
+    { key: 'A', label: 'a', justification: 'j', media: [{ type: 'image', src: 'https://example.com/a.png', alt: 'a' }, { type: 'link', url: 'https://example.com' }] },
+    { key: 'B', label: 'b', justification: 'j' },
+  ] }] });
+  const optionA = (html: string) => /<button type="button" class="mkd-opt" data-opt-key="A">([\s\S]*?)<\/button>\s*<button type="button" class="mkd-opt/.exec(html)?.[1] ?? '';
+
+  it('keeps option media non-interactive inside the option button (large layout by default)', () => {
+    const html = render(validateSpec(optionDeck()), { mode: 'copy' });
+    const option = optionA(html);
     const visible = option.replace(/<template[\s\S]*?<\/template>/, '');
-    expect(visible).toContain('class="mkd-opt__media" aria-hidden="true"');
+    expect(visible).toContain('<span class="mkd-opt__preview" aria-hidden="true"><span class="mkd-opt__gallery mkd-opt__gallery--one"><span class="mkd-opt__shot" data-opt-zoom="0"><img src="https://example.com/a.png"');
+    expect(visible).toContain('<span class="mkd-opt__chip" data-opt-zoom="1">');
     expect(visible).not.toMatch(/<(?:a|button|iframe|video)\b/);
     expect(option).toContain('<template class="mkd-opt__full">');
-    expect(html).toContain('data-opt-media>View option media</button>');
+    expect(html).toContain('<div class="mkd-opts has-gallery">');
+    expect(html).toContain('data-opt-media>View option media <kbd>V</kbd></button>');
+  });
+
+  it('keeps the older thumbnail row with optionMediaLayout "compact"', () => {
+    const html = render(validateSpec(optionDeck({ optionMediaLayout: 'compact' })), { mode: 'copy' });
+    expect(optionA(html)).toContain('class="mkd-opt__media" aria-hidden="true"><span class="mkd-opt__thumb">');
+    expect(html).not.toContain('<div class="mkd-opts has-gallery');
+  });
+
+  it('rejects an unknown optionMediaLayout', () => {
+    expect(() => validateSpec(optionDeck({ optionMediaLayout: 'huge' }))).toThrow('optionMediaLayout (id "D1") must be one of: large, compact.');
+  });
+
+  it('inlines a local full-size source and carries it on the figure for the viewer only', async () => {
+    const { spec } = await resolveMedia(validateSpec(deck([{ type: 'image', src: 'https://example.com/small.png', alt: 'p', full: 'pic.png' }])), dir, quiet);
+    const html = render(spec, { mode: 'copy' });
+    expect(html).toContain('<img class="mkd-media__img" src="https://example.com/small.png" alt="p" loading="lazy" decoding="async" data-remote data-full="data:image/png;base64,');
+    expect(() => validateSpec(deck([{ type: 'image', src: 'a.png', alt: 'p', full: 'ftp://x/y.png' }]))).toThrow('media[0].full must be a local path or an https URL');
+  });
+
+  it('stores a repeated picture once in the media pool', async () => {
+    const raw = { session: 's', title: 't', items: [{ id: 'D1', type: 'decision', title: 'd', problem: 'p', media: [{ type: 'image', src: 'pic.png', alt: 'p' }], options: [
+      { key: 'A', label: 'a', justification: 'j', media: [{ type: 'image', src: 'pic.png', alt: 'a' }] },
+      { key: 'B', label: 'b', justification: 'j', media: [{ type: 'image', src: 'pic.png', alt: 'b', full: 'pic.png' }] },
+    ] }] };
+    const { spec } = await resolveMedia(validateSpec(raw), dir, quiet);
+    const html = render(spec, { mode: 'copy' });
+    expect(html.match(/data:image\/png;base64/g)).toHaveLength(1);
+    expect(html).toContain('<script type="application/json" id="mkd-media-pool">{"m0":"data:image/png;base64,');
+    expect(html.match(/data-mkd-src="m0"/g)).toHaveLength(5);
+    expect(html).toContain('data-mkd-full="m0"');
+    expect(findBlockedResources(html)).toEqual([]);
+  });
+
+  it('pools an unencoded data URI as written, not as escaped attribute text', () => {
+    const src = 'data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' data-q="a&amp;b"><text>&lt;</text></svg>';
+    const media = [{ type: 'image', src, alt: 'a', full: `${src}<!-- full -->` }];
+    const raw = { session: 's', title: 't', items: [{ id: 'D1', type: 'decision', title: 'd', problem: 'p', options: [
+      { key: 'A', label: 'a', justification: 'j', media },
+      { key: 'B', label: 'b', justification: 'j', media },
+    ] }] };
+    const html = render(validateSpec(raw), { mode: 'copy' });
+    const json = /<script type="application\/json" id="mkd-media-pool">([\s\S]*?)<\/script>/.exec(html)?.[1] ?? '';
+    expect(json).not.toContain('<');
+    expect(Object.values(JSON.parse(json) as Record<string, string>)).toEqual([src, `${src}<!-- full -->`]);
   });
 });
 
@@ -325,7 +373,9 @@ describe('artifact mode: nothing remote', () => {
     expect(html).not.toContain('<iframe');
     expect(html.match(/<a class="mkd-videocard has-image" href="https:\/\/(?:www\.youtube\.com|www\.loom\.com)\/[^"]+" target="_blank" rel="noopener noreferrer"/g)).toHaveLength(2);
     expect(html).toContain('Open video in a new tab &#8599;');
-    expect(html.match(/class="mkd-videocard__img" src="data:image\/jpeg;base64,/g)).toHaveLength(2);
+    // Both thumbnails are the same bytes: pooled once, referenced twice.
+    expect(html.match(/class="mkd-videocard__img" data-mkd-src="m0"/g)).toHaveLength(2);
+    expect(html.match(/data:image\/jpeg;base64,/g)).toHaveLength(1);
     expect(seen).not.toContain('https://cdn.loom.com/t/x-00001.gif');
     expect(findBlockedResources(html)).toEqual([]);
   });

@@ -807,64 +807,97 @@
     };
   }
 
-  /** Build carousel markup in the browser (lightbox), matching render.ts. */
-  function buildCarousel(nodes, label) {
-    const root = el('section', 'mkd-carousel', { 'aria-roledescription': 'carousel', 'aria-label': label });
-    const controls = el('div', 'mkd-carousel__controls');
-    const prev = el('button', 'mkd-carousel__btn mkd-carousel__btn--prev', { 'type': 'button', 'data-dir': '-1', 'aria-label': 'Previous slide' });
-    prev.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>';
-    prev.disabled = true;
-    const next = el('button', 'mkd-carousel__btn mkd-carousel__btn--next', { 'type': 'button', 'data-dir': '1', 'aria-label': 'Next slide' });
-    next.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>';
-    controls.append(prev, next);
-    const count = el('span', 'mkd-carousel__count', { 'aria-hidden': 'true' });
-    count.textContent = `1/${nodes.length}`;
-    const track = el('div', 'mkd-carousel__track', { 'tabindex': '0', 'role': 'group', 'aria-label': 'Slides' });
-    nodes.forEach((node, i) => {
-      const slide = el('div', 'mkd-carousel__slide', { 'role': 'group', 'aria-roledescription': 'slide', 'aria-label': node.dataset.slideLabel || `${i + 1} of ${nodes.length}` });
-      slide.appendChild(node);
-      track.appendChild(slide);
-    });
-    const status = el('p', 'mkd-visually-hidden mkd-carousel__status', { 'role': 'status', 'aria-live': 'polite' });
-    const dots = el('div', 'mkd-carousel__dots', { 'role': 'group', 'aria-label': 'Choose a slide' });
-    nodes.forEach((_n, i) => {
-      const dot = el('button', 'mkd-carousel__dot', { 'type': 'button', 'aria-label': `Go to slide ${i + 1}` });
-      if (i === 0) {
-        dot.setAttribute('aria-current', 'true');
+  // ---- Media pool: one copy of each repeated data URI (render.ts poolDataUris) ----
+
+  const mediaPool = (() => {
+    const node = byId('mkd-media-pool');
+    if (!node) {
+      return {};
+    }
+    try {
+      const parsed = JSON.parse(node.textContent || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    }
+    catch {
+      return {};
+    }
+  })();
+
+  /** Fill pooled `<img data-mkd-src>` sources under `root` (templates included). */
+  function hydratePool(root) {
+    if (!root || !root.querySelectorAll) {
+      return;
+    }
+    for (const img of root.querySelectorAll('img[data-mkd-src]')) {
+      const value = mediaPool[img.getAttribute('data-mkd-src')];
+      if (value && !img.getAttribute('src')) {
+        img.setAttribute('src', value);
       }
-      dots.appendChild(dot);
-    });
-    root.append(controls, count, track, status, dots);
-    return root;
+    }
+    for (const template of root.querySelectorAll('template')) {
+      hydratePool(template.content);
+    }
   }
 
-  /** Open the lightbox on clones of `nodes`, starting at `start`. */
-  function openLightbox(nodes, start, label) {
-    if (!lightbox || !lightboxBody || typeof lightbox.showModal !== 'function' || nodes.length === 0) {
-      return;
+  /** The lightbox-only high-resolution source of an image, if any. */
+  function fullSourceOf(img) {
+    if (!img) {
+      return '';
     }
-    lightboxBody.textContent = '';
-    lightbox.setAttribute('aria-label', label);
-    if (nodes.length === 1) {
-      lightboxBody.appendChild(nodes[0]);
+    const key = img.getAttribute('data-mkd-full');
+    if (key && mediaPool[key]) {
+      return mediaPool[key];
     }
-    else {
-      const carousel = buildCarousel(nodes, label);
-      lightboxBody.appendChild(carousel);
-      lightbox.showModal();
-      initCarousel(carousel);
-      carousel.carouselGoTo(start);
-      prepareLightboxContent();
-      return;
-    }
-    lightbox.showModal();
-    prepareLightboxContent();
+    return img.getAttribute('data-full') || '';
   }
 
-  function prepareLightboxContent() {
-    // Inside the viewer an image needs no zoom button: keep the image itself,
-    // drop the other enlarge controls (the diagram one).
-    for (const zoom of lightboxBody.querySelectorAll('[data-lightbox]')) {
+  // ---- The viewer: one slide at a time, fit to the viewport, zoom and pan ----
+
+  const lbTag = byId('mkd-lightbox-tag');
+  const lbCount = byId('mkd-lightbox-count');
+  const lbCaption = byId('mkd-lightbox-caption');
+  const lbPrev = byId('mkd-lightbox-prev');
+  const lbNext = byId('mkd-lightbox-next');
+  const lbZoomIn = byId('mkd-lightbox-zoomin');
+  const lbZoomOut = byId('mkd-lightbox-zoomout');
+  const lbActual = byId('mkd-lightbox-actual');
+  const lbOriginal = byId('mkd-lightbox-original');
+  const lbPick = byId('mkd-lightbox-pick');
+
+  const viewer = {
+    slides: [],
+    index: 0,
+    card: null,
+    img: null,
+    // Zoom state of the current image: scale and the image's top-left
+    // corner in stage pixels.
+    scale: 1,
+    fit: 1,
+    x: 0,
+    y: 0,
+    pointers: new Map(),
+    pinch: null,
+    drag: null,
+  };
+
+  /**
+   * One figure as a viewer slide. Images (and SVG figures) zoom; every other
+   * kind (video, embed, link, diagram, missing image) is shown as a clone.
+   */
+  function slideFromFigure(fig, extra) {
+    const captionNode = fig.querySelector('.mkd-media__caption');
+    const caption = captionNode ? captionNode.textContent : '';
+    const img = fig.querySelector('img.mkd-media__img');
+    if (img && img.getAttribute('src')) {
+      return Object.assign({ kind: 'image', src: img.getAttribute('src'), full: fullSourceOf(img), alt: img.getAttribute('alt') || '', caption }, extra);
+    }
+    return Object.assign({ kind: 'node', node: cloneFigure(fig), caption }, extra);
+  }
+
+  /** A clean copy of a figure for the viewer (a rendered diagram keeps its SVG). */
+  function cloneFigure(fig) {
+    const copy = fig.cloneNode(true);
+    for (const zoom of copy.querySelectorAll('[data-lightbox]')) {
       if (zoom.classList.contains('mkd-media__zoom')) {
         zoom.replaceWith(...zoom.querySelectorAll('img'));
       }
@@ -872,54 +905,529 @@
         zoom.remove();
       }
     }
-    for (const fig of lightboxBody.querySelectorAll('.mkd-diagram')) {
-      delete fig.dataset.renderedTheme;
+    for (const caption of copy.querySelectorAll('.mkd-media__caption')) {
+      caption.remove();
     }
-    renderVisibleDiagrams();
+    for (const diagram of copy.querySelectorAll('.mkd-diagram')) {
+      delete diagram.dataset.renderedTheme;
+    }
+    if (copy.classList.contains('mkd-diagram')) {
+      delete copy.dataset.renderedTheme;
+    }
+    return copy;
+  }
+
+  /** Every option's media of a decision card, in screen order (follows Shuffle). */
+  function optionSlides(card) {
+    const slides = [];
+    for (const opt of card.querySelectorAll('.mkd-opt[data-opt-key]')) {
+      const template = opt.querySelector('template.mkd-opt__full');
+      if (!template) {
+        continue;
+      }
+      const key = opt.getAttribute('data-opt-key');
+      const letter = ((opt.querySelector('.mkd-opt__key') || {}).textContent || '').trim();
+      const label = ((opt.querySelector('.mkd-opt__label') || {}).textContent || '').trim();
+      const parts = [...template.content.querySelectorAll('.mkd-opt__full-slide')];
+      parts.forEach((part, i) => {
+        const fig = part.firstElementChild;
+        if (!fig) {
+          return;
+        }
+        const node = part.cloneNode(true);
+        hydratePool(node);
+        const tag = `${letter} · ${label}${parts.length > 1 ? ` (${i + 1}/${parts.length})` : ''}`;
+        slides.push(slideFromFigure(node.firstElementChild, { tag, optKey: key, optIndex: i }));
+      });
+    }
+    return slides;
+  }
+
+  /** The figures of one media block (a single figure or a carousel's slides). */
+  function blockSlides(block) {
+    const figs = [...block.querySelectorAll('.mkd-carousel__slide > figure, .mkd-carousel__slide > .mkd-linkcard')];
+    const list = figs.length > 0 ? figs : [...block.children].filter(node => node.matches('figure, .mkd-linkcard'));
+    return list.map(fig => ({ fig, slide: fig.matches('figure') ? slideFromFigure(fig, {}) : { kind: 'node', node: fig.cloneNode(true), caption: '' } }));
+  }
+
+  function openViewer(slides, start, label, card) {
+    if (!lightbox || !lightboxBody || typeof lightbox.showModal !== 'function' || slides.length === 0) {
+      return;
+    }
+    viewer.slides = slides;
+    viewer.card = card || null;
+    lightbox.setAttribute('aria-label', label);
+    lightbox.classList.toggle('is-single', slides.length === 1);
+    if (!lightbox.open) {
+      lightbox.showModal();
+    }
+    showSlide(Math.max(0, Math.min(start, slides.length - 1)));
+    lightboxBody.focus({ preventScroll: true });
+  }
+
+  /** Option media from the "View option media" button, the V key or a preview click. */
+  function openOptionMedia(card, optKey, optIndex) {
+    if (!card) {
+      return;
+    }
+    const slides = optionSlides(card);
+    let start = 0;
+    if (optKey) {
+      const found = slides.findIndex(slide => slide.optKey === optKey && (optIndex === undefined || slide.optIndex === optIndex));
+      start = found >= 0 ? found : 0;
+    }
+    openViewer(slides, start, 'Option media', card);
+  }
+
+  /** V: the current card's media, starting at the chosen option when it has some. */
+  function openCurrentMedia() {
+    const card = document.querySelector('.mkd-card.is-current');
+    if (!card) {
+      return false;
+    }
+    if (card.querySelector('template.mkd-opt__full')) {
+      const chosen = card.querySelector('.mkd-opt.is-selected[data-opt-key]');
+      openOptionMedia(card, chosen && chosen.querySelector('template.mkd-opt__full') ? chosen.getAttribute('data-opt-key') : null);
+      return true;
+    }
+    const block = card.querySelector('.mkd-card__media');
+    if (block) {
+      openViewer(blockSlides(block).map(entry => entry.slide), 0, 'Media', card);
+      return true;
+    }
+    return false;
+  }
+
+  /** The viewer element that holds focus right now, if any. */
+  function heldViewerFocus() {
+    const active = document.activeElement;
+    return active && lightbox.contains(active) ? active : null;
+  }
+
+  function isFocusable(node) {
+    return Boolean(node && node.isConnected && !node.disabled && node.getClientRects().length > 0);
+  }
+
+  /**
+   * The viewer's keys are heard on the dialog, so focus must stay inside it.
+   * When `held` (focused before an update) went dead (disabled, hidden or
+   * removed with its slide), focus moves to its counterpart (previous and
+   * next, zoom in and zoom out), else to the stage.
+   */
+  function keepViewerFocus(held) {
+    if (!held || !isLightboxOpen() || isFocusable(held)) {
+      return;
+    }
+    const pair = [[lbPrev, lbNext], [lbZoomIn, lbZoomOut]].find(nodes => nodes.includes(held));
+    const other = pair ? pair.find(node => node !== held) : null;
+    (isFocusable(other) ? other : lightboxBody).focus({ preventScroll: true });
+  }
+
+  function showSlide(index) {
+    const slide = viewer.slides[index];
+    if (!slide) {
+      return;
+    }
+    const held = heldViewerFocus();
+    viewer.index = index;
+    viewer.img = null;
+    lightboxBody.textContent = '';
+    const n = viewer.slides.length;
+    if (lbCount) {
+      lbCount.textContent = n > 1 ? `${index + 1} / ${n}` : '';
+    }
+    if (lbTag) {
+      lbTag.textContent = slide.tag || '';
+    }
+    if (lbCaption) {
+      lbCaption.textContent = slide.caption || (slide.kind === 'image' ? slide.alt : '');
+    }
+    if (lbPrev) {
+      lbPrev.disabled = index === 0;
+    }
+    if (lbNext) {
+      lbNext.disabled = index === n - 1;
+    }
+    syncPick();
+    const original = slide.kind === 'image' ? [slide.full, slide.src].find(value => /^https:/i.test(value || '')) : '';
+    if (lbOriginal) {
+      lbOriginal.hidden = !original;
+      lbOriginal.href = original || '#';
+    }
+    lightbox.classList.toggle('is-image', slide.kind === 'image');
+    if (slide.kind !== 'image') {
+      const wrap = el('div', 'mkd-lightbox__node');
+      wrap.appendChild(slide.node.cloneNode(true));
+      lightboxBody.appendChild(wrap);
+      setZoomTools(false);
+      keepViewerFocus(held);
+      renderVisibleDiagrams();
+      return;
+    }
+    const img = el('img', 'mkd-lightbox__img', { alt: slide.alt, draggable: 'false' });
+    viewer.img = img;
+    setZoomTools(true);
+    img.addEventListener('load', () => {
+      if (viewer.img === img) {
+        fitImage();
+      }
+    }, { once: true });
+    img.src = slide.src;
+    lightboxBody.appendChild(img);
+    if (img.complete && img.naturalWidth) {
+      fitImage();
+    }
+    keepViewerFocus(held);
+    // A higher-resolution `full` source replaces the card picture once it
+    // has loaded, keeping the current zoom. An https one in an artifact page
+    // is never loaded (the viewer blocks remote images): "Original" links it.
+    const full = slide.full;
+    const remoteBlocked = window.__MKD_MODE__ === 'artifact' && /^https?:/i.test(full || '');
+    if (full && full !== slide.src && !remoteBlocked) {
+      const hi = new Image();
+      hi.addEventListener('load', () => {
+        if (viewer.img !== img) {
+          return;
+        }
+        const w = img.naturalWidth;
+        const atFit = Math.abs(viewer.scale - viewer.fit) < 1e-3;
+        img.src = full;
+        const ratio = w ? w / hi.naturalWidth : 1;
+        viewer.fit = fitScale();
+        if (atFit) {
+          viewer.scale = viewer.fit;
+          centerImage();
+        }
+        else {
+          viewer.scale *= ratio;
+        }
+        applyTransform();
+      }, { once: true });
+      hi.src = full;
+    }
+  }
+
+  function syncPick() {
+    if (!lbPick) {
+      return;
+    }
+    const slide = viewer.slides[viewer.index];
+    const btn = slide && slide.optKey && viewer.card
+      ? viewer.card.querySelector(`.mkd-opt[data-opt-key="${cssAttrEscape(slide.optKey)}"]`)
+      : null;
+    if (!btn) {
+      lbPick.hidden = true;
+      return;
+    }
+    const letter = ((btn.querySelector('.mkd-opt__key') || {}).textContent || '').trim();
+    const chosen = btn.classList.contains('is-selected');
+    lbPick.hidden = false;
+    lbPick.disabled = chosen;
+    lbPick.textContent = chosen ? `Option ${letter} chosen` : `Choose option ${letter} (Enter)`;
+  }
+
+  function pickFromViewer() {
+    const slide = viewer.slides[viewer.index];
+    if (!slide || !slide.optKey || !viewer.card || (lbPick && lbPick.disabled)) {
+      return;
+    }
+    const btn = viewer.card.querySelector(`.mkd-opt[data-opt-key="${cssAttrEscape(slide.optKey)}"]`);
+    closeLightbox();
+    if (btn) {
+      btn.click();
+      btn.focus({ preventScroll: true });
+    }
+  }
+
+  function setZoomTools(on) {
+    for (const tool of [lbZoomIn, lbZoomOut, lbActual]) {
+      if (tool) {
+        tool.disabled = !on;
+      }
+    }
+  }
+
+  function stageSize() {
+    return { w: lightboxBody.clientWidth, h: lightboxBody.clientHeight };
+  }
+
+  /** Scale that fits the whole picture in the stage (upscales small ones to fill it). */
+  function fitScale() {
+    const img = viewer.img;
+    if (!img || !img.naturalWidth) {
+      return 1;
+    }
+    const { w, h } = stageSize();
+    return Math.min(w / img.naturalWidth, h / img.naturalHeight, 4);
+  }
+
+  function centerImage() {
+    const img = viewer.img;
+    const { w, h } = stageSize();
+    viewer.x = (w - img.naturalWidth * viewer.scale) / 2;
+    viewer.y = (h - img.naturalHeight * viewer.scale) / 2;
+  }
+
+  function fitImage() {
+    viewer.fit = fitScale();
+    viewer.scale = viewer.fit;
+    centerImage();
+    applyTransform();
+  }
+
+  /** Keep a zoomed picture covering the stage; a smaller one stays centered. */
+  function clampPan() {
+    const img = viewer.img;
+    const { w, h } = stageSize();
+    const iw = img.naturalWidth * viewer.scale;
+    const ih = img.naturalHeight * viewer.scale;
+    viewer.x = iw <= w ? (w - iw) / 2 : Math.min(0, Math.max(w - iw, viewer.x));
+    viewer.y = ih <= h ? (h - ih) / 2 : Math.min(0, Math.max(h - ih, viewer.y));
+  }
+
+  function applyTransform() {
+    const img = viewer.img;
+    if (!img || !img.naturalWidth) {
+      return;
+    }
+    clampPan();
+    img.style.width = `${img.naturalWidth}px`;
+    img.style.height = `${img.naturalHeight}px`;
+    img.style.transform = `translate(${viewer.x}px, ${viewer.y}px) scale(${viewer.scale})`;
+    const zoomed = viewer.scale > viewer.fit + 1e-3;
+    lightbox.classList.toggle('is-zoomed', zoomed);
+    if (lbActual) {
+      const actual = Math.abs(viewer.scale - 1) < 1e-3;
+      lbActual.textContent = actual ? 'Fit' : '1:1';
+      lbActual.setAttribute('aria-label', actual ? 'Fit to screen' : 'Actual size (1:1)');
+    }
+    const held = heldViewerFocus();
+    if (lbZoomOut) {
+      lbZoomOut.disabled = viewer.scale <= minScale() + 1e-3;
+    }
+    if (lbZoomIn) {
+      lbZoomIn.disabled = viewer.scale >= maxScale() - 1e-3;
+    }
+    keepViewerFocus(held);
+  }
+
+  /** Never smaller than the fit size, except to show a big picture at 1:1. */
+  function minScale() {
+    return Math.min(viewer.fit, 1);
+  }
+
+  function maxScale() {
+    return Math.max(8, viewer.fit * 4);
+  }
+
+  /** Zoom to `next` keeping the stage point (cx, cy) still. */
+  function zoomTo(next, cx, cy) {
+    const img = viewer.img;
+    if (!img || !img.naturalWidth) {
+      return;
+    }
+    const { w, h } = stageSize();
+    const px = cx === undefined ? w / 2 : cx;
+    const py = cy === undefined ? h / 2 : cy;
+    const target = Math.max(minScale(), Math.min(next, maxScale()));
+    const ratio = target / viewer.scale;
+    viewer.x = px - (px - viewer.x) * ratio;
+    viewer.y = py - (py - viewer.y) * ratio;
+    viewer.scale = target;
+    applyTransform();
+  }
+
+  function toggleActual(cx, cy) {
+    if (!viewer.img) {
+      return;
+    }
+    if (Math.abs(viewer.scale - 1) < 1e-3) {
+      fitImage();
+    }
+    else {
+      zoomTo(1, cx, cy);
+    }
+  }
+
+  function stagePoint(event) {
+    const box = lightboxBody.getBoundingClientRect();
+    return { x: event.clientX - box.left, y: event.clientY - box.top };
+  }
+
+  function wireViewer() {
+    if (!lightbox || !lightboxBody) {
+      return;
+    }
+    lightboxBody.addEventListener('wheel', (event) => {
+      if (!viewer.img) {
+        return;
+      }
+      event.preventDefault();
+      const p = stagePoint(event);
+      // Trackpad pinch arrives as ctrl+wheel with small deltas.
+      const factor = Math.exp(-event.deltaY * (event.ctrlKey ? 0.01 : 0.0018));
+      zoomTo(viewer.scale * factor, p.x, p.y);
+    }, { passive: false });
+
+    lightboxBody.addEventListener('dblclick', (event) => {
+      if (!viewer.img) {
+        return;
+      }
+      const p = stagePoint(event);
+      toggleActual(p.x, p.y);
+    });
+
+    lightboxBody.addEventListener('pointerdown', (event) => {
+      if (!viewer.img || (event.pointerType === 'mouse' && event.button !== 0)) {
+        return;
+      }
+      lightboxBody.setPointerCapture(event.pointerId);
+      viewer.pointers.set(event.pointerId, stagePoint(event));
+      if (viewer.pointers.size === 2) {
+        const [a, b] = [...viewer.pointers.values()];
+        viewer.pinch = { dist: Math.hypot(a.x - b.x, a.y - b.y), scale: viewer.scale };
+        viewer.drag = null;
+      }
+      else if (viewer.pointers.size === 1) {
+        const p = stagePoint(event);
+        viewer.drag = { x: p.x, y: p.y, ox: viewer.x, oy: viewer.y, moved: false, t: event.timeStamp };
+      }
+    });
+
+    lightboxBody.addEventListener('pointermove', (event) => {
+      if (!viewer.pointers.has(event.pointerId)) {
+        return;
+      }
+      viewer.pointers.set(event.pointerId, stagePoint(event));
+      if (viewer.pinch && viewer.pointers.size >= 2) {
+        const [a, b] = [...viewer.pointers.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        if (viewer.pinch.dist > 0) {
+          zoomTo(viewer.pinch.scale * (dist / viewer.pinch.dist), (a.x + b.x) / 2, (a.y + b.y) / 2);
+        }
+        return;
+      }
+      const drag = viewer.drag;
+      if (!drag) {
+        return;
+      }
+      const p = stagePoint(event);
+      if (Math.abs(p.x - drag.x) + Math.abs(p.y - drag.y) > 4) {
+        drag.moved = true;
+      }
+      if (viewer.scale > viewer.fit + 1e-3) {
+        viewer.x = drag.ox + (p.x - drag.x);
+        viewer.y = drag.oy + (p.y - drag.y);
+        applyTransform();
+      }
+    });
+
+    const release = (event) => {
+      if (!viewer.pointers.has(event.pointerId)) {
+        return;
+      }
+      viewer.pointers.delete(event.pointerId);
+      const drag = viewer.drag;
+      if (viewer.pointers.size < 2) {
+        viewer.pinch = null;
+      }
+      if (viewer.pointers.size === 0) {
+        viewer.drag = null;
+        // A horizontal swipe on a picture at fit size moves between slides.
+        if (drag && drag.moved && viewer.scale <= viewer.fit + 1e-3 && event.type === 'pointerup') {
+          const p = stagePoint(event);
+          const dx = p.x - drag.x;
+          if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(p.y - drag.y)) {
+            stepViewer(dx < 0 ? 1 : -1);
+          }
+        }
+      }
+    };
+    lightboxBody.addEventListener('pointerup', release);
+    lightboxBody.addEventListener('pointercancel', release);
+
+    if (lbPrev) {
+      lbPrev.addEventListener('click', () => stepViewer(-1));
+    }
+    if (lbNext) {
+      lbNext.addEventListener('click', () => stepViewer(1));
+    }
+    if (lbZoomIn) {
+      lbZoomIn.addEventListener('click', () => zoomTo(viewer.scale * 1.5));
+    }
+    if (lbZoomOut) {
+      lbZoomOut.addEventListener('click', () => zoomTo(viewer.scale / 1.5));
+    }
+    if (lbActual) {
+      lbActual.addEventListener('click', () => toggleActual());
+    }
+    if (lbPick) {
+      lbPick.addEventListener('click', pickFromViewer);
+    }
+
+    lightbox.addEventListener('keydown', (event) => {
+      // Nothing typed in the viewer reaches the deck keys (Enter would pick
+      // here and then advance the deck once the dialog has closed).
+      event.stopPropagation();
+      if (event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      const onControl = event.target && event.target.closest && event.target.closest('button, a, video, iframe, input, textarea');
+      if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+        if (event.target && event.target.closest && event.target.closest('video')) {
+          return;
+        }
+        event.preventDefault();
+        stepViewer(event.key === 'ArrowRight' ? 1 : -1);
+      }
+      else if (event.key === '+' || event.key === '=') {
+        event.preventDefault();
+        zoomTo(viewer.scale * 1.5);
+      }
+      else if (event.key === '-' || event.key === '_') {
+        event.preventDefault();
+        zoomTo(viewer.scale / 1.5);
+      }
+      else if (event.key === '0') {
+        event.preventDefault();
+        if (viewer.img) {
+          fitImage();
+        }
+      }
+      else if (event.key === 'z' || event.key === 'Z') {
+        event.preventDefault();
+        toggleActual();
+      }
+      else if (event.key === 'Enter' && !onControl && lbPick && !lbPick.hidden) {
+        event.preventDefault();
+        pickFromViewer();
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      if (isLightboxOpen() && viewer.img) {
+        const atFit = Math.abs(viewer.scale - viewer.fit) < 1e-3;
+        viewer.fit = fitScale();
+        if (atFit) {
+          viewer.scale = viewer.fit;
+          centerImage();
+        }
+        applyTransform();
+      }
+    });
+  }
+
+  function stepViewer(delta) {
+    const next = viewer.index + delta;
+    if (next >= 0 && next < viewer.slides.length) {
+      showSlide(next);
+    }
   }
 
   function closeLightbox() {
     if (lightbox && lightbox.open) {
       lightbox.close();
     }
-  }
-
-  /** A clean copy of a figure for the lightbox (a rendered diagram keeps its SVG). */
-  function cloneFigure(fig) {
-    const copy = fig.cloneNode(true);
-    for (const zoom of copy.querySelectorAll('[data-lightbox]')) {
-      if (zoom.classList.contains('mkd-media__zoom')) {
-        zoom.replaceWith(...zoom.querySelectorAll('img'));
-      }
-    }
-    return copy;
-  }
-
-  /** Option media in screen order, each slide labelled with its screen letter. */
-  function openOptionMedia(button) {
-    const card = button.closest('.mkd-card');
-    if (!card) {
-      return;
-    }
-    const nodes = [];
-    for (const opt of card.querySelectorAll('.mkd-opt[data-opt-key]')) {
-      const template = opt.querySelector('template.mkd-opt__full');
-      if (!template) {
-        continue;
-      }
-      const letter = (opt.querySelector('.mkd-opt__key') || {}).textContent || '';
-      const label = (opt.querySelector('.mkd-opt__label') || {}).textContent || '';
-      const slides = [...template.content.querySelectorAll('.mkd-opt__full-slide')];
-      slides.forEach((slide, i) => {
-        const node = slide.cloneNode(true);
-        const tag = el('p', 'mkd-opt__full-tag');
-        tag.textContent = `${letter} · ${label}${slides.length > 1 ? ` (${i + 1}/${slides.length})` : ''}`;
-        node.insertBefore(tag, node.firstChild);
-        node.dataset.slideLabel = `Option ${letter}${slides.length > 1 ? `, ${i + 1} of ${slides.length}` : ''}`;
-        nodes.push(node);
-      });
-    }
-    openLightbox(nodes, 0, 'Option media');
   }
 
   /**
@@ -1042,6 +1550,23 @@
     }
   }
 
+  function dropBrokenImage(img) {
+    const card = img.closest('.mkd-linkcard');
+    if (card) {
+      card.classList.remove('has-image');
+    }
+    // A large option preview without its picture collapses to a stray line:
+    // name what is missing. The box still opens the viewer.
+    const shot = img.closest('.mkd-opt__shot');
+    if (shot) {
+      const chip = el('span', 'mkd-opt__chip');
+      chip.textContent = shot.querySelector('.mkd-opt__play') ? 'Video preview not available' : 'Image not available';
+      shot.replaceChildren(chip);
+      return;
+    }
+    img.remove();
+  }
+
   function wireMedia() {
     for (const carousel of document.querySelectorAll('.mkd-stage .mkd-carousel')) {
       initCarousel(carousel);
@@ -1054,32 +1579,54 @@
       const zoom = target.closest('[data-lightbox]');
       if (zoom && !lightbox.contains(zoom)) {
         const fig = zoom.closest('figure');
-        if (fig) {
-          openLightbox([cloneFigure(fig)], 0, fig.classList.contains('mkd-diagram') ? 'Diagram' : 'Image');
+        const block = fig ? fig.closest('.mkd-card__media') : null;
+        if (fig && block) {
+          // Every figure of the block, so the arrows move through them.
+          const entries = blockSlides(block);
+          const start = Math.max(0, entries.findIndex(entry => entry.fig === fig));
+          openViewer(entries.map(entry => entry.slide), start, fig.classList.contains('mkd-diagram') ? 'Diagram' : 'Media', fig.closest('.mkd-card'));
+        }
+        else if (fig) {
+          openViewer([slideFromFigure(fig, {})], 0, 'Media', fig.closest('.mkd-card'));
         }
         return;
       }
       const optMedia = target.closest('[data-opt-media]');
       if (optMedia) {
-        openOptionMedia(optMedia);
+        openOptionMedia(optMedia.closest('.mkd-card'));
       }
     });
+    // A pointer click on an option's preview opens the viewer instead of
+    // picking the option (capture phase: the option button never sees it).
+    document.addEventListener('click', (event) => {
+      const target = event.target;
+      const shot = target && target.closest ? target.closest('.mkd-opt [data-opt-zoom]') : null;
+      if (!shot) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const opt = shot.closest('.mkd-opt[data-opt-key]');
+      openOptionMedia(shot.closest('.mkd-card'), opt.getAttribute('data-opt-key'), Number(shot.getAttribute('data-opt-zoom')));
+    }, true);
+    hydratePool(document);
+    wireViewer();
     // A remote image the page cannot reach (offline, or a CSP that blocks it)
     // disappears instead of leaving a broken icon.
     document.addEventListener('error', (event) => {
       const img = event.target;
       if (img && img.tagName === 'IMG' && img.hasAttribute('data-remote')) {
-        const card = img.closest('.mkd-linkcard');
-        if (card) {
-          card.classList.remove('has-image');
-        }
-        img.remove();
+        dropBrokenImage(img);
       }
     }, true);
     if (lightbox) {
       lightbox.addEventListener('close', () => {
         // Removing the content stops any video or embed playing inside it.
         lightboxBody.textContent = '';
+        viewer.img = null;
+        viewer.slides = [];
+        viewer.pointers.clear();
+        lightbox.classList.remove('is-zoomed', 'is-image');
       });
       // Close on a click OUTSIDE the panel: the dialog element is also the
       // target for its own padding, so test the pointer against its box.
@@ -2871,7 +3418,8 @@
       performSend();
       return;
     }
-    const noun = pending === 1 ? 'item has' : 'items have';
+    // The noun follows the total ("1 of 2 items"), the verb the pending count.
+    const noun = `${stats.total === 1 ? 'item' : 'items'} ${pending === 1 ? 'has' : 'have'}`;
     const action = canSubmit ? `"${spec.submitLabel}"` : '"Copy JSON"';
     const message = `${pending} of ${stats.total} ${noun} no answer yet. They will go back as "pending". Use ${action} anyway, or review them first?`;
     if (!confirmDialog || typeof confirmDialog.showModal !== 'function') {
@@ -3351,6 +3899,10 @@
         skipCurrent(true);
         return;
       }
+      if ((event.key === 'v' || event.key === 'V') && openCurrentMedia()) {
+        event.preventDefault();
+        return;
+      }
       if (/^[1-9]$/.test(event.key) && pickByPosition(Number(event.key))) {
         event.preventDefault();
         return;
@@ -3418,6 +3970,7 @@
       { action: 'Next screen', keys: ['Enter'] },
       { action: 'Previous / next screen', keys: ['\u2190', '\u2192'] },
       { action: 'Skip for now', keys: ['S'] },
+      { action: 'View media full screen (then \u2190 \u2192, + -, Z = 1:1, Enter = choose, Esc)', keys: ['V'] },
       { action: canSubmit ? 'Submit answers' : 'Copy the result JSON', keys: [modKey, 'Enter'] },
       { action: 'Close panel / popover / legend', keys: ['Esc'] },
       { action: 'Quote selected text', keys: ['select', 'quote'] },
