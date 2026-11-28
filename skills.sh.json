@@ -34,8 +34,13 @@
     },
     {
       "title": "Orchestration",
-      "description": "Skills that run and supervise several agent sessions as one fleet.",
-      "skills": ["agent-orchestration"]
+      "description": "Skills that run, watch and supervise agent sessions.",
+      "skills": ["agent-orchestration", "claude-cloud", "wake-on"]
+    },
+    {
+      "title": "Secrets and accounts",
+      "description": "Skills that keep credentials safe and each command on the right account.",
+      "skills": ["secret-management", "cli-accounts"]
     }
   ]
 }
