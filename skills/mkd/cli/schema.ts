@@ -82,6 +82,11 @@ export interface ImageMedia {
   src: string
   alt: string
   caption?: string
+  /**
+   * Optional higher-resolution source shown only in the lightbox (same
+   * source rules as `src`). The card keeps showing `src`.
+   */
+  full?: string
   /** Intrinsic size, filled by resolveMedia when it can read the file header. */
   width?: number
   height?: number
@@ -174,7 +179,15 @@ export interface DecisionItem extends ItemBase {
   options: DecisionOption[]
   /** Offer a free-form "something else" option. Default true. */
   allowCustom?: boolean
+  /**
+   * How option media shows inside each option card: `large` (default) is a
+   * full-width preview, `compact` is the older row of small thumbnails.
+   */
+  optionMediaLayout?: OptionMediaLayout
 }
+
+export const OPTION_MEDIA_LAYOUTS = ['large', 'compact'] as const;
+export type OptionMediaLayout = (typeof OPTION_MEDIA_LAYOUTS)[number];
 
 export interface QuestionItem extends ItemBase {
   type: 'question'
@@ -259,6 +272,7 @@ export interface NormalizedDecisionItem extends NormalizedItemBase {
   context: ContextBalloon[]
   options: DecisionOption[]
   allowCustom: boolean
+  optionMediaLayout: OptionMediaLayout
 }
 
 export interface NormalizedQuestionItem extends NormalizedItemBase {
@@ -775,6 +789,13 @@ function normalizeDecision(
     );
   }
 
+  if (raw.optionMediaLayout !== undefined && !(OPTION_MEDIA_LAYOUTS as readonly unknown[]).includes(raw.optionMediaLayout)) {
+    throw new SpecError(
+      `${where}.optionMediaLayout (id "${id}") must be one of: ${OPTION_MEDIA_LAYOUTS.join(', ')}.`,
+      `${where}.optionMediaLayout`,
+    );
+  }
+
   return {
     ...base,
     type: 'decision',
@@ -782,6 +803,7 @@ function normalizeDecision(
     context,
     options,
     allowCustom: raw.allowCustom !== false,
+    optionMediaLayout: (raw.optionMediaLayout as OptionMediaLayout | undefined) ?? 'large',
   };
 }
 
@@ -1239,7 +1261,11 @@ export function normalizeMedia(raw: unknown, where: string): MediaEntry[] | unde
         if (!isNonEmptyString(entry.alt)) {
           throw new SpecError(`${at}.alt is required on an image: describe what it shows.`, `${at}.alt`);
         }
-        return withCaption<ImageMedia>({ type, src: mediaSource(entry.src, `${at}.src`), alt: entry.alt });
+        const image: ImageMedia = { type, src: mediaSource(entry.src, `${at}.src`), alt: entry.alt };
+        if (entry.full !== undefined) {
+          image.full = mediaSource(entry.full, `${at}.full`);
+        }
+        return withCaption(image);
       }
       case 'video': {
         const video: VideoMedia = { type, src: mediaSource(entry.src, `${at}.src`) };

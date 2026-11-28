@@ -21,7 +21,7 @@
  * Bun built-ins only.
  */
 
-import type { LinkMedia, MediaEntry, NormalizedSpec, SvgMedia, VideoMedia } from './schema.ts';
+import type { ImageMedia, LinkMedia, MediaEntry, NormalizedSpec, SvgMedia, VideoMedia } from './schema.ts';
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
@@ -449,7 +449,7 @@ async function resolveEntry(entry: MediaEntry, specDir: string, path: string, de
   switch (entry.type) {
     case 'image': {
       if (isRemoteOrData(entry.src)) {
-        return entry;
+        return entry.full === undefined ? entry : { ...entry, full: await resolveFull(entry.full, specDir, `${path}.full`, deps, report) };
       }
       const { abs, bytes } = readLocal(entry.src, specDir, `${path}.src`);
       const ext = extname(abs).toLowerCase();
@@ -469,7 +469,11 @@ async function resolveEntry(entry: MediaEntry, specDir: string, path: string, de
       }
       const src = dataUri(payload, mime);
       report.weights.push({ path: `${path}.src`, kind: 'image', bytes: src.length });
-      return { ...entry, src, ...(size || {}) };
+      const out: ImageMedia = { ...entry, src, ...(size || {}) };
+      if (entry.full !== undefined) {
+        out.full = await resolveFull(entry.full, specDir, `${path}.full`, deps, report);
+      }
+      return out;
     }
     case 'svg': {
       const svg: SvgMedia = entry;
@@ -530,6 +534,28 @@ async function resolveEntry(entry: MediaEntry, specDir: string, path: string, de
     default:
       return entry;
   }
+}
+
+/**
+ * The lightbox-only source of an image: a local file is inlined (raster only,
+ * no SVG), an https or data URI stays as written.
+ */
+async function resolveFull(full: string, specDir: string, path: string, deps: MediaDeps, report: MediaReport): Promise<string> {
+  if (isRemoteOrData(full)) {
+    return full;
+  }
+  const { abs, bytes } = readLocal(full, specDir, path);
+  const ext = extname(abs).toLowerCase();
+  const mime = IMAGE_MIME[ext];
+  if (!mime || ext === '.svg') {
+    throw new MediaError(`${path}: unsupported image type "${ext}" for a full-size source (use png, jpg, gif, webp or avif).`, path);
+  }
+  if (bytes.length > 4 * MB) {
+    deps.warn(`${path}: full-size image ${abs} is ${formatMb(bytes.length)}; the page budget may not hold it.`);
+  }
+  const data = dataUri(bytes, mime);
+  report.weights.push({ path, kind: 'image-full', bytes: data.length });
+  return data;
 }
 
 async function resolveList(list: MediaEntry[] | undefined, specDir: string, path: string, deps: MediaDeps, report: MediaReport): Promise<MediaEntry[] | undefined> {
@@ -594,9 +620,11 @@ export interface ArtifactCaps {
   thumbMax: number
   /** Largest remote image (figure, link card, poster) inlined, in bytes. */
   imageMax: number
+  /** Largest remote lightbox-only `full` image inlined, in bytes. */
+  fullMax?: number
 }
 
-export const ARTIFACT_CAPS: ArtifactCaps = { thumbMax: 150 * 1024, imageMax: 200 * 1024 };
+export const ARTIFACT_CAPS: ArtifactCaps = { thumbMax: 150 * 1024, imageMax: 200 * 1024, fullMax: 2 * MB };
 
 /** Fetch an image (no cookies, time-boxed, size-capped) as a data URI. */
 export async function fetchImageData(url: string, max: number, deps: MediaDeps): Promise<string> {
@@ -701,12 +729,22 @@ async function prepareEntry(entry: MediaEntry, path: string, deps: MediaDeps, ca
       }
       return thumbnail ? { ...entry, thumbnail } : entry;
     }
-    case 'image':
+    case 'image': {
+      let out: ImageMedia = entry;
       if (/^https:/i.test(entry.src)) {
         const src = await inlineRemote(entry.src, caps.imageMax, `${path}.src`, 'image', deps, report);
-        return src ? { ...entry, src } : entry;
+        out = src ? { ...entry, src } : entry;
       }
-      return entry;
+      if (entry.full && /^https:/i.test(entry.full)) {
+        // Kept as a URL when it cannot be inlined: the lightbox then offers it
+        // as an "Open original" link instead of loading it.
+        const full = await inlineRemote(entry.full, caps.fullMax ?? 2 * MB, `${path}.full`, 'image-full', deps, report);
+        if (full) {
+          out = { ...out, full };
+        }
+      }
+      return out;
+    }
     case 'link':
       if (entry.image && /^https:/i.test(entry.image)) {
         const image = await inlineRemote(entry.image, caps.imageMax, `${path}.image`, 'image', deps, report);

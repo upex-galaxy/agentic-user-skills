@@ -58,7 +58,12 @@ function renderEmphasisAndLinks(escaped: string): string {
       if (!isSafeUrl(rawHref)) {
         return text;
       }
-      return `<a href="${href}">${text}</a>`;
+      // A deck runs in its own tab or inside a sandboxed artifact frame,
+      // where navigating the frame itself is blocked: links always open a
+      // new tab (mailto keeps the default so the mail client opens).
+      return /^mailto:/i.test(rawHref.trim())
+        ? `<a href="${href}">${text}</a>`
+        : `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
     },
   );
 

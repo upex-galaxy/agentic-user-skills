@@ -164,8 +164,9 @@ function renderMediaFigure(entry: MediaEntry): string {
           </figure>`;
       }
       const remote = /^https:/i.test(src) ? ' data-remote' : '';
+      const full = entry.type === 'image' && entry.full ? ` data-full="${escapeHtml(entry.full)}"` : '';
       return `<figure class="mkd-media__fig mkd-media__fig--image">
-            <button type="button" class="mkd-media__zoom" data-lightbox aria-label="Enlarge: ${escapeHtml(entry.alt)}"><img class="mkd-media__img" src="${escapeHtml(src)}" alt="${escapeHtml(entry.alt)}"${sizeAttrs(entry)} loading="lazy" decoding="async"${remote}><span class="mkd-media__zoom-icon">${ICON_EXPAND}</span></button>
+            <button type="button" class="mkd-media__zoom" data-lightbox aria-label="Enlarge: ${escapeHtml(entry.alt)}"><img class="mkd-media__img" src="${escapeHtml(src)}" alt="${escapeHtml(entry.alt)}"${sizeAttrs(entry)} loading="lazy" decoding="async"${remote}${full}><span class="mkd-media__zoom-icon">${ICON_EXPAND}</span></button>
             ${caption(entry.caption)}
           </figure>`;
     }
@@ -242,15 +243,83 @@ function renderMediaBlock(media: MediaEntry[] | undefined, label: string): strin
         <div class="mkd-card__media">${inner}</div>`;
 }
 
+/** The picture an option entry can preview in its card, or null (a chip). */
+function optionPreviewSrc(entry: MediaEntry): { src: string, video: boolean } | null {
+  switch (entry.type) {
+    case 'image':
+    case 'svg':
+      return entry.src && !blockedRemote(entry.src) ? { src: entry.src, video: false } : null;
+    case 'video':
+      return entry.poster && !blockedRemote(entry.poster) ? { src: entry.poster, video: true } : null;
+    case 'embed':
+      return renderMode === 'artifact' && entry.thumbnail ? { src: entry.thumbnail, video: true } : null;
+    default:
+      return null;
+  }
+}
+
 /**
- * Option media lives INSIDE the option button, so it is purely visual:
- * thumbnails and chips, nothing interactive. The full media sits in an inert
- * <template> that moves with the button on shuffle; "View option media"
- * (outside the list) opens it in the lightbox.
+ * The `large` option layout: pictures at card width (two side by side, or
+ * one big plus a strip), chips for the rest. Each piece carries
+ * `data-opt-zoom="<media index>"`: a pointer click on it opens the viewer at
+ * that entry instead of picking the option (app.js, capture phase). It stays
+ * non-interactive markup (spans inside the button), so keyboard picking and
+ * the button semantics do not change; `V` and "View option media" open the
+ * same viewer from the keyboard.
  */
-function renderOptionMedia(media: MediaEntry[] | undefined): string {
+function renderOptionGallery(media: MediaEntry[]): string {
+  const shots: string[] = [];
+  const chips: string[] = [];
+  media.forEach((entry, i) => {
+    const preview = optionPreviewSrc(entry);
+    if (preview) {
+      const remote = /^https:/i.test(preview.src) ? ' data-remote' : '';
+      const play = preview.video ? `<span class="mkd-opt__play">${ICON_PLAY_LARGE}</span>` : '';
+      shots.push(`<span class="mkd-opt__shot" data-opt-zoom="${i}"><img src="${escapeHtml(preview.src)}" alt="" loading="lazy" decoding="async"${remote}>${play}<span class="mkd-opt__shot-zoom">${ICON_EXPAND}</span></span>`);
+      return;
+    }
+    chips.push(optionChip(entry, i));
+  });
+  const n = shots.length;
+  const gallery = n > 0
+    ? `<span class="mkd-opt__gallery mkd-opt__gallery--${n === 1 ? 'one' : n === 2 ? 'two' : 'many'}">${shots.join('')}</span>`
+    : '';
+  const chipRow = chips.length > 0 ? `<span class="mkd-opt__media">${chips.join('')}</span>` : '';
+  return `<span class="mkd-opt__preview" aria-hidden="true">${gallery}${chipRow}</span>`;
+}
+
+/** A non-picture option entry (or one the page cannot load) as a small chip. */
+function optionChip(entry: MediaEntry, i: number): string {
+  const zoom = ` data-opt-zoom="${i}"`;
+  switch (entry.type) {
+    case 'image':
+    case 'svg':
+      return `<span class="mkd-opt__chip"${zoom}>Image</span>`;
+    case 'video':
+      return `<span class="mkd-opt__chip"${zoom}>${ICON_PLAY}Video</span>`;
+    case 'embed':
+      return `<span class="mkd-opt__chip"${zoom}>${ICON_PLAY}${entry.provider === 'loom' ? 'Loom' : 'YouTube'}</span>`;
+    case 'link':
+      return `<span class="mkd-opt__chip"${zoom}>${ICON_LINK}${escapeHtml(hostOf(entry.url))}</span>`;
+    default:
+      return `<span class="mkd-opt__chip"${zoom}>${ICON_DIAGRAM}Diagram</span>`;
+  }
+}
+
+/**
+ * Option media lives INSIDE the option button, so it is purely visual
+ * markup, nothing interactive. The full media sits in an inert <template>
+ * that moves with the button on shuffle; the viewer reads it from there.
+ * `large` (default) previews pictures at card width; `compact` is the older
+ * row of small thumbnails.
+ */
+function renderOptionMedia(media: MediaEntry[] | undefined, layout: 'large' | 'compact' = 'large'): string {
   if (!media || media.length === 0) {
     return '';
+  }
+  const full = media.map(entry => `<div class="mkd-opt__full-slide">${renderMediaFigure(entry)}</div>`).join('');
+  if (layout === 'large') {
+    return `${renderOptionGallery(media)}<template class="mkd-opt__full">${full}</template>`;
   }
   const thumbs = media.map((entry) => {
     switch (entry.type) {
@@ -275,7 +344,6 @@ function renderOptionMedia(media: MediaEntry[] | undefined): string {
         return `<span class="mkd-opt__chip">${ICON_DIAGRAM}Diagram</span>`;
     }
   }).join('');
-  const full = media.map(entry => `<div class="mkd-opt__full-slide">${renderMediaFigure(entry)}</div>`).join('');
   return `<span class="mkd-opt__media" aria-hidden="true">${thumbs}</span><template class="mkd-opt__full">${full}</template>`;
 }
 
@@ -297,6 +365,45 @@ function stripMedia(spec: NormalizedSpec): NormalizedSpec {
     }
   }
   return copy;
+}
+
+/**
+ * Dedupe inlined pictures. The same data URI often appears several times on
+ * one page (an option's preview, its lightbox template, the same file in item
+ * media). Every `<img src="data:...">` and `data-full="data:..."` value that
+ * occurs more than once is moved to ONE JSON pool entry and the attributes
+ * become `data-mkd-src="<key>"` / `data-mkd-full="<key>"`; app.js fills them
+ * at start. A payload used once stays inline, so a page without repeats is
+ * byte-for-byte what it was.
+ */
+export function poolDataUris(html: string): { html: string, pool: string } {
+  const IMG_SRC = /(<img\b[^>]*?\s)src="(data:[^"]+)"/g;
+  const FULL = /\sdata-full="(data:[^"]+)"/g;
+  const counts = new Map<string, number>();
+  for (const m of html.matchAll(IMG_SRC)) {
+    counts.set(m[2], (counts.get(m[2]) ?? 0) + 1);
+  }
+  for (const m of html.matchAll(FULL)) {
+    counts.set(m[1], (counts.get(m[1]) ?? 0) + 1);
+  }
+  const keys = new Map<string, string>();
+  for (const [value, n] of counts) {
+    if (n > 1) {
+      keys.set(value, `m${keys.size}`);
+    }
+  }
+  if (keys.size === 0) {
+    return { html, pool: '' };
+  }
+  const out = html
+    .replace(IMG_SRC, (whole, head: string, value: string) => (keys.has(value) ? `${head}data-mkd-src="${keys.get(value)}"` : whole))
+    .replace(FULL, (whole, value: string) => (keys.has(value) ? ` data-mkd-full="${keys.get(value)}"` : whole));
+  const pool: Record<string, string> = {};
+  for (const [value, key] of keys) {
+    // Attribute values were HTML-escaped; a data URI only ever carries &amp;.
+    pool[key] = value.replace(/&amp;/g, '&');
+  }
+  return { html: out, pool: embedJson(pool) };
 }
 
 const MERMAID_SRC = 'https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js';
@@ -392,7 +499,7 @@ function renderDecisionOptions(item: NormalizedItem & { type: 'decision' }): str
       return `
           <button type="button" class="mkd-opt${isRec ? ' has-badge' : ''}" data-opt-key="${escapeHtml(option.key)}">
             <span class="mkd-opt__head"><span class="mkd-opt__key">${escapeHtml(option.key)}</span><span class="mkd-opt__label">${mdInline(option.label)}</span>${badge}</span>
-            <span class="mkd-opt__just">${isRec ? markRecWord(mdInline(option.justification)) : mdInline(option.justification)}</span>${renderOptionMedia(option.media)}
+            <span class="mkd-opt__just">${isRec ? markRecWord(mdInline(option.justification)) : mdInline(option.justification)}</span>${renderOptionMedia(option.media, item.optionMediaLayout)}
             <span class="mkd-opt__mark">✓</span>
           </button>`;
     })
@@ -411,10 +518,11 @@ function renderDecisionOptions(item: NormalizedItem & { type: 'decision' }): str
   // Four or more real options switch the list to its compact layout:
   // clamped justifications, two columns on wide screens.
   const dense = item.options.length >= 4 ? ' is-dense' : '';
+  const gallery = item.optionMediaLayout !== 'compact' && item.options.some(option => option.media) ? ' has-gallery' : '';
   const viewMedia = item.options.some(option => option.media)
-    ? '<button type="button" class="mkd-opts__view" data-opt-media>View option media</button>'
+    ? '<button type="button" class="mkd-opts__view" data-opt-media>View option media <kbd>V</kbd></button>'
     : '';
-  return `<div class="mkd-opts${dense}">${options}${custom}
+  return `<div class="mkd-opts${dense}${gallery}">${options}${custom}
         </div>${viewMedia}`;
 }
 
@@ -478,7 +586,7 @@ function renderIntroCard(spec: NormalizedSpec): string {
         <div class="mkd-card__eyebrow">${escapeHtml(spec.session)}</div>
         <h2 class="mkd-card__title">${escapeHtml(headline)}</h2>${body}${renderMediaBlock(intro.media, 'Media for the intro')}${stats}
         <div class="mkd-legend">
-          <p>One screen per item. Move with the bar at the bottom, the rail above, or the keyboard: <b>1-6</b> picks an option, <b>Enter</b> goes on, <b>S</b> skips. Skipping means "decide later", not a rejection.</p>
+          <p>One screen per item. Move with the bar at the bottom, the rail above, or the keyboard: <b>1-6</b> picks an option, <b>Enter</b> goes on, <b>S</b> skips, <b>V</b> views the media full screen. Skipping means "decide later", not a rejection.</p>
           <p id="mkd-legend-finish">When you are done, copy the JSON from the footer and paste it back into the chat.</p>
         </div>
       </section>`;
@@ -547,7 +655,7 @@ export function render(spec: NormalizedSpec, opts: RenderOptions): string {
   <link rel="stylesheet" href="${FONTS_HREF}">
   <style>${APP_CSS}</style>`;
 
-  const app = `  <main id="mkd-app" data-mode="${mode}">
+  const markup = `  <main id="mkd-app" data-mode="${mode}">
     <header class="mkd-header">
       <div class="mkd-brand">
         <span class="mkd-brand__logo" aria-label="MKD - Make Decision">MKD</span>
@@ -610,8 +718,24 @@ ${cards}
       </form>
     </dialog>
     <dialog class="mkd-lightbox" id="mkd-lightbox" aria-label="Media viewer">
-      <button type="button" class="mkd-lightbox__close" id="mkd-lightbox-close" aria-label="Close media viewer">close</button>
-      <div class="mkd-lightbox__body" id="mkd-lightbox-body"></div>
+      <div class="mkd-lightbox__bar">
+        <p class="mkd-lightbox__tag" id="mkd-lightbox-tag"></p>
+        <span class="mkd-lightbox__count" id="mkd-lightbox-count" aria-live="polite"></span>
+        <div class="mkd-lightbox__tools" role="group" aria-label="Zoom">
+          <button type="button" class="mkd-lightbox__tool" id="mkd-lightbox-zoomout" aria-label="Zoom out" title="Zoom out (-)">${ICON('<path d="M5 12h14"/>', 16)}</button>
+          <button type="button" class="mkd-lightbox__tool mkd-lightbox__tool--text" id="mkd-lightbox-actual" title="Actual size / fit (Z, or double-click)">1:1</button>
+          <button type="button" class="mkd-lightbox__tool" id="mkd-lightbox-zoomin" aria-label="Zoom in" title="Zoom in (+)">${ICON('<path d="M12 5v14M5 12h14"/>', 16)}</button>
+          <a class="mkd-lightbox__tool mkd-lightbox__tool--text" id="mkd-lightbox-original" href="#" target="_blank" rel="noopener noreferrer" hidden>Original &#8599;</a>
+        </div>
+        <button type="button" class="mkd-lightbox__close" id="mkd-lightbox-close" aria-label="Close media viewer" title="Close (Esc)">close</button>
+      </div>
+      <div class="mkd-lightbox__body" id="mkd-lightbox-body" tabindex="-1"></div>
+      <button type="button" class="mkd-lightbox__nav mkd-lightbox__nav--prev" id="mkd-lightbox-prev" aria-label="Previous (left arrow)">${ICON_PREV}</button>
+      <button type="button" class="mkd-lightbox__nav mkd-lightbox__nav--next" id="mkd-lightbox-next" aria-label="Next (right arrow)">${ICON_NEXT}</button>
+      <div class="mkd-lightbox__foot">
+        <p class="mkd-lightbox__caption" id="mkd-lightbox-caption"></p>
+        <button type="button" class="mkd-btn mkd-btn--primary mkd-lightbox__pick" id="mkd-lightbox-pick" hidden></button>
+      </div>
     </dialog>
     <button type="button" class="mkd-quote-btn" id="mkd-quote-btn" hidden>quote</button>
     <div class="mkd-kbd" id="mkd-kbd" hidden aria-hidden="true">
@@ -627,8 +751,10 @@ ${cards}
     <div class="mkd-rowpop-backdrop" id="mkd-rowpop-backdrop" hidden></div>
     <div class="mkd-rowpop-layer" id="mkd-rowpop-layer"></div>
     <div class="mkd-done" id="mkd-done" hidden>Submitted. You can close this tab.</div>
-  </main>
-  <script>window.__MKD__ = ${embedJson(stripMedia(spec))};${mermaidGlobals}window.__MKD_MODE__ = ${embedJson(mode)};window.__MKD_TOKEN__ = ${embedJson(submitToken)};${artifactGlobals}</script>
+  </main>`;
+  const pooled = poolDataUris(markup);
+  const pool = pooled.pool ? `\n  <script type="application/json" id="mkd-media-pool">${pooled.pool}</script>\n` : '\n';
+  const app = `${pooled.html}${pool}  <script>window.__MKD__ = ${embedJson(stripMedia(spec))};${mermaidGlobals}window.__MKD_MODE__ = ${embedJson(mode)};window.__MKD_TOKEN__ = ${embedJson(submitToken)};${artifactGlobals}</script>
   <script>${APP_JS}</script>`;
 
   if (mode === 'artifact') {
