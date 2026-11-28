@@ -3418,7 +3418,8 @@
       performSend();
       return;
     }
-    const noun = pending === 1 ? 'item has' : 'items have';
+    // The noun follows the total ("1 of 2 items"), the verb the pending count.
+    const noun = `${stats.total === 1 ? 'item' : 'items'} ${pending === 1 ? 'has' : 'have'}`;
     const action = canSubmit ? `"${spec.submitLabel}"` : '"Copy JSON"';
     const message = `${pending} of ${stats.total} ${noun} no answer yet. They will go back as "pending". Use ${action} anyway, or review them first?`;
     if (!confirmDialog || typeof confirmDialog.showModal !== 'function') {

@@ -48,6 +48,31 @@ describe('a remote picture that fails to load', () => {
   });
 });
 
+describe('pending items confirmation', () => {
+  function ask(answered: number, total: number): string {
+    const confirmBody = { textContent: '' };
+    const { requestSend } = lift(['requestSend'], {
+      isConfirmOpen: () => false,
+      submitting: false,
+      canSubmit: false,
+      items: [],
+      computeStats: () => ({ total, answered, skipped: 0 }),
+      performSend: () => {},
+      spec: {},
+      confirmBody,
+      confirmDialog: { showModal: () => {} },
+    });
+    requestSend();
+    return confirmBody.textContent.split(' no answer')[0];
+  }
+
+  it('agrees the noun with the total and the verb with the pending count', () => {
+    expect(ask(1, 2)).toBe('1 of 2 items has');
+    expect(ask(0, 2)).toBe('2 of 2 items have');
+    expect(ask(0, 1)).toBe('1 of 1 item has');
+  });
+});
+
 describe('viewer focus', () => {
   function stage() {
     const focused: string[] = [];
