@@ -1550,6 +1550,23 @@
     }
   }
 
+  function dropBrokenImage(img) {
+    const card = img.closest('.mkd-linkcard');
+    if (card) {
+      card.classList.remove('has-image');
+    }
+    // A large option preview without its picture collapses to a stray line:
+    // name what is missing. The box still opens the viewer.
+    const shot = img.closest('.mkd-opt__shot');
+    if (shot) {
+      const chip = el('span', 'mkd-opt__chip');
+      chip.textContent = shot.querySelector('.mkd-opt__play') ? 'Video preview not available' : 'Image not available';
+      shot.replaceChildren(chip);
+      return;
+    }
+    img.remove();
+  }
+
   function wireMedia() {
     for (const carousel of document.querySelectorAll('.mkd-stage .mkd-carousel')) {
       initCarousel(carousel);
@@ -1599,11 +1616,7 @@
     document.addEventListener('error', (event) => {
       const img = event.target;
       if (img && img.tagName === 'IMG' && img.hasAttribute('data-remote')) {
-        const card = img.closest('.mkd-linkcard');
-        if (card) {
-          card.classList.remove('has-image');
-        }
-        img.remove();
+        dropBrokenImage(img);
       }
     }, true);
     if (lightbox) {

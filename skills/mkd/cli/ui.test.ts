@@ -22,6 +22,32 @@ function lift(names: string[], globals: Record<string, unknown>): Record<string,
   return build(...Object.values(globals));
 }
 
+describe('a remote picture that fails to load', () => {
+  function broken(inShot: boolean, video = false) {
+    const log: string[] = [];
+    const shot = {
+      querySelector: () => (video ? {} : null),
+      replaceChildren: (chip: { className: string, textContent: string }) => log.push(`${chip.className}: ${chip.textContent}`),
+    };
+    const img = {
+      closest: (selector: string) => (inShot && selector === '.mkd-opt__shot' ? shot : null),
+      remove: () => log.push('removed'),
+    };
+    const { dropBrokenImage } = lift(['dropBrokenImage'], { el: (_tag: string, className: string) => ({ className, textContent: '' }) });
+    dropBrokenImage(img);
+    return log;
+  }
+
+  it('is removed', () => {
+    expect(broken(false)).toEqual(['removed']);
+  });
+
+  it('leaves a labelled chip in a large option preview instead of an empty box', () => {
+    expect(broken(true)).toEqual(['mkd-opt__chip: Image not available']);
+    expect(broken(true, true)).toEqual(['mkd-opt__chip: Video preview not available']);
+  });
+});
+
 describe('viewer focus', () => {
   function stage() {
     const focused: string[] = [];
