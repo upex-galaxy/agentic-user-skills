@@ -313,6 +313,19 @@ describe('render: media markup', () => {
     expect(html).toContain('data-mkd-full="m0"');
     expect(findBlockedResources(html)).toEqual([]);
   });
+
+  it('pools an unencoded data URI as written, not as escaped attribute text', () => {
+    const src = 'data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' data-q="a&amp;b"><text>&lt;</text></svg>';
+    const media = [{ type: 'image', src, alt: 'a', full: `${src}<!-- full -->` }];
+    const raw = { session: 's', title: 't', items: [{ id: 'D1', type: 'decision', title: 'd', problem: 'p', options: [
+      { key: 'A', label: 'a', justification: 'j', media },
+      { key: 'B', label: 'b', justification: 'j', media },
+    ] }] };
+    const html = render(validateSpec(raw), { mode: 'copy' });
+    const json = /<script type="application\/json" id="mkd-media-pool">([\s\S]*?)<\/script>/.exec(html)?.[1] ?? '';
+    expect(json).not.toContain('<');
+    expect(Object.values(JSON.parse(json) as Record<string, string>)).toEqual([src, `${src}<!-- full -->`]);
+  });
 });
 
 describe('cli: media errors exit 2', () => {

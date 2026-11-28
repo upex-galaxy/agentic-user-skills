@@ -71,6 +71,16 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/** The exact inverse of escapeHtml (`&amp;` last, so nothing decodes twice). */
+function unescapeHtml(value: string): string {
+  return value
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, '\'')
+    .replace(/&amp;/g, '&');
+}
+
 /**
  * JSON-encode a value for embedding inside a `<script>` block, then neutralize
  * the only sequences that could break out of that script context: `<` (so a
@@ -400,8 +410,9 @@ export function poolDataUris(html: string): { html: string, pool: string } {
     .replace(FULL, (whole, value: string) => (keys.has(value) ? ` data-mkd-full="${keys.get(value)}"` : whole));
   const pool: Record<string, string> = {};
   for (const [value, key] of keys) {
-    // Attribute values were HTML-escaped; a data URI only ever carries &amp;.
-    pool[key] = value.replace(/&amp;/g, '&');
+    // The matched value is attribute text; the pool is read as a plain
+    // string, so a data URI written unencoded needs its entities decoded.
+    pool[key] = unescapeHtml(value);
   }
   return { html: out, pool: embedJson(pool) };
 }
