@@ -1,6 +1,6 @@
 ---
 name: mkd
-description: "Decision deck in the browser for collecting many decisions or point-by-point feedback. Use when more than about three decisions need the person's verdict, each with justified options; when a long plan or report needs a reaction per section. Not for one yes/no or a two-option pick (use the harness question tool)."
+description: "Decision deck in the browser for heavy decisions or point-by-point feedback. Use when decisions carry weight (architecture, an implementation approach, a larger change, real tradeoffs) and need justified options, whatever their number; when a long plan, report or table needs a reaction per section or row. Not for small decisions (a yes/no, A or B, a default to confirm), however many: sweep those with the harness question tool (SPD)."
 license: MIT
 compatibility: [claude-code, opencode, cursor, codex]
 allowed-tools: Bash(bun:*), Bash(command:*)
@@ -15,14 +15,26 @@ No install step: the AI runs `bun "<skill-dir>/cli/index.ts" <specPath> [flags]`
 
 ## Use it when
 
+The **weight** of a decision picks the tool, never the count. A small decision (A or B, a default to confirm, fits in two sentences) is swept with the harness question tool (Claude Code `AskUserQuestion`, Codex `request_user_input`, OpenCode `question`, Gemini CLI `ask_user`), in as many rounds as needed (9 items on a 4-per-call tool are rounds of 4, 4, 1). A heavy decision goes to MKD.
+
 | Situation | Use |
 | --- | --- |
-| 1-2 option pick, one yes/no, up to 3 simple decisions | the harness question tool |
-| More than 3 decisions, or decisions needing context and written tradeoffs | **MKD** |
+| Small decisions: A or B, a default to confirm, each fits in two sentences, however many | the harness question tool (SPD sweep) |
+| Heavy decision: architecture, implementation approach, larger change, real tradeoff needing written context and justified options | **MKD** |
 | A long report or plan to react to section by section | **MKD** (`report` items) |
 | Row-by-row verdicts over a table | **MKD** (`table` item) |
 | A reply anchored to exact phrases | **MKD** (highlight-to-quote) |
 | No human at a browser (CI, non-interactive) | neither: emit plain output |
+
+## MKD and SPD
+
+SPD (Sweep Pending Decisions) and MKD are siblings that never overlap: SPD takes the small decisions, MKD the heavy ones. A turn that would end with open small items, in a session that may ask (below), asks all of them with the harness question tool, in rounds at the tool's own per-call limit until every item is asked. Each question offers the recommended option first, a free-text way out (the tool's automatic "Other") and a "Later" option unless it blocks. With no such tool, fall back to a numbered prose list with the recommended default and "later".
+
+**Order for a mixed batch.** At the close of a turn that holds both, the heavy items go to an MKD deck first, then the sweep takes every remaining small item. A blocking item is asked at once, by whichever instrument fits.
+
+**Who may ask.** The session the human types into sweeps and opens decks. A session launched by another session does so only when the human typed that request into its own session or its brief grants it in writing; otherwise it sends its pendings to its launcher. Subagents and routines never ask: they list their pendings in their report.
+
+An MKD item the user skipped (decide later) is a deferral, not a rejection: the next sweep may re-raise it once.
 
 ## Writing a spec
 
@@ -67,7 +79,7 @@ The CLI never picks artifact mode by itself (it cannot call the `Artifact` tools
 | Anything else, no answer needed in this turn | **copy mode**: opens the browser, exits; the user pastes the JSON | `<spec>` |
 | Anything else, the next step needs the answer now | **`--wait`**: serves, blocks until submit, Result on stdout | `<spec> --wait` |
 
-A subagent, a print session or Claude Code without the `Artifact` tool cannot hold a watch: use the Orca, copy or `--wait` rows. Other flags: `--copy` (force copy mode inside Orca), `--no-open`, `--port <n>`, `--timeout <min>`.
+A subagent runs none of these flows: it only lists its pendings in its report. A print session or Claude Code without the `Artifact` tool cannot hold a watch: use the Orca, copy or `--wait` rows. Other flags: `--copy` (force copy mode inside Orca), `--no-open`, `--port <n>`, `--timeout <min>`.
 
 **Before running any flow, read the matching section of `references/flows.md`**: it holds the exact steps, the pending-deck rule for artifact mode, ports, exit codes and the `open-artifact <url>` subcommand.
 
