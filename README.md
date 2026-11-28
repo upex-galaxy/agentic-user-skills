@@ -79,6 +79,46 @@ That is a different install path, in the same repo:
 Prefer a skill. Reach for a plugin only when the thing has to fire on its own.
 
 
+## Maintainer setup
+
+This section is for the person who maintains this repo. To install a skill, use the commands above.
+
+On the maintainer's machine the user-level copies of these skills are symlinks to the primary checkout, so an edit in either place is the same edit.
+
+```text
+~/.agents/skills/<name>  ->  <checkout>/skills/<name>
+~/.claude/skills/<name>  ->  ../../.agents/skills/<name>
+```
+
+Run these from the primary checkout, on `main`:
+
+```bash
+bun run skills:link --dry-run   # print the plan, change nothing
+bun run skills:link             # link every skill in skills/
+bun run skills:status --fetch   # what is off, with the command that fixes each problem
+bun run skills:unlink           # rollback: real copies of the working tree again
+```
+
+- `link` refuses to run from a git worktree or from any branch but `main`.
+- A user-level directory that is in the way moves to `~/.agents/.skill-backups/<timestamp>/`, with the list of files that differ from the repo. Nothing is deleted.
+- `link` removes this repo's skills from `~/.agents/.skill-lock.json`, after a backup, so `skills update -g` leaves them alone. Third-party entries stay.
+- Do not run `skills add` or `skills update` for a skill of this repo on that machine: it replaces the link with a copy. `status` reports it and `link` repairs it.
+- Never run `skills add` with a source path inside `~/.claude/skills`: the CLI empties that skill.
+- To check at every session start, run `bun <checkout>/scripts/skills-link.ts status --quiet`. It prints nothing when all is well and exits 1 on a problem. In a Claude Code `SessionStart` hook, append `|| true` so the output reaches the session.
+
+### One link for the whole Claude Code directory
+
+`bun run skills:link --claude-dir-link` replaces the per-skill links under `~/.claude/skills` with one link, `~/.claude/skills -> ../.agents/skills`. Preview it with `--dry-run` first.
+
+| What changes | Effect |
+| --- | --- |
+| Entries that existed only under `~/.claude/skills`, including Claude Code's `synced/` | They move to `~/.agents/skills`, where other agents can see them |
+| Entries that existed only under `~/.agents/skills` | Claude Code loads them too |
+| `skills remove <name> -a claude-code` | For a linked entry, it removes the skill for every agent |
+| `rm -rf ~/.claude/skills/<name>` | It deletes the real skill |
+
+In this layout `status` also reports any skill that disappeared since the last `link`. After a removal you wanted, run `link --claude-dir-link` again to accept it. `unlink` gives Claude Code its own directory back.
+
 ## Layout
 
 ```
