@@ -32,6 +32,9 @@
     "lint:fix": "eslint --fix .",
     "types:check": "tsc --noEmit",
     "test": "bun test",
+    "skills:status": "bun scripts/skills-link.ts status",
+    "skills:link": "bun scripts/skills-link.ts link",
+    "skills:unlink": "bun scripts/skills-link.ts unlink",
     "repo:check": "bun run lint:check && bun run types:check && bun run test"
   },
   "devDependencies": {
