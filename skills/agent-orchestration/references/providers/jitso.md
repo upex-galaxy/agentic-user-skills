@@ -34,6 +34,8 @@ Run `jitso arsenal` to see what a build may name; `--all` adds what a restrictin
 
 A launch that carries a package (the jitso skill for conductor builds and builds that name `jitso`, any `user:` item) writes `.jitso/launches/<id>/pkg/`, passed with `--add-dir`. The guard always travels, in the form each harness takes. Codex runs project hooks only after the owner trusts them (`codex exec` skips untrusted hooks silently). `jitso setup hook --scope user` guards the owner's own session, which JITSO does not launch.
 
+Since JITSO v0.10 a Claude launch also writes `.jitso/launches/<id>/settings.json` (private to the owner) from the owner's `~/.claude/settings.json` and passes it with `--settings`. Every key travels (preferences, compaction switches, `env`, the owner's hooks without a second jitso guard) except context keys (plugins, marketplaces, skill overrides, MCP keys), the keys the build sets (`model`, `effortLevel`, `permissions.defaultMode`), `language`, `askUserQuestionTimeout`, `remoteControlAtStartup`, and any key the project's `.claude/settings.json` defines. The card and the launch event name the keys that travelled and the ones cut, never their values; `settings.include` and `settings.exclude` in `~/.jitso/jitso.yaml` adjust the cut. User plugins never travel. Codex, OpenCode and Pi launches carry no user settings yet.
+
 Before a real launch a top conductor tells the human the build and the brief, unless they asked for exactly that; a launched conductor tells its launcher; fleet workers never ask the human. The build sets model, effort, MCP servers and skills: pass none of them.
 
 ## Naming and roster
@@ -48,11 +50,11 @@ The session name is `--name`, else the build id (suffixed while another live lau
 | `jitso link <from> <to>` | records that one session talked to another; each side is a launch id, a terminal handle, a live session name or an exact tab title |
 | `jitso graph [--port <n>] [--json]` | for the human: a live view on `127.0.0.1` of sessions, hierarchy and who talked to whom, from any folder. It never reads message text |
 
-Every launched `brief.md` ends with the rule: find the peer with `jitso fleet`; between two Claude Code sessions use `SendMessage` to the session name, then run `jitso link`; otherwise, or when the message is held, declined or undelivered, `orca orchestration send --to <handle> --from <own handle>`, answered with `reply`. A Claude launch carries the owner's user setting `crossSessionInbound` (JITSO v0.9; relaunch older sessions). Orca warns that a terminal mailbox is lost if that terminal closes. A hand-opened session gets no rule: give it this section.
+Every launched `brief.md` ends with the rule: find the peer with `jitso fleet`; between two Claude Code sessions use `SendMessage` to the session name, then run `jitso link`; otherwise, or when the message is held, declined or undelivered, `orca orchestration send --to <handle> --from <own handle>`, answered with `reply`. A Claude launch carries the owner's user settings, `crossSessionInbound` among them (see What travels); a session launched before JITSO v0.9 holds peer messages until it is relaunched. Orca warns that a terminal mailbox is lost if that terminal closes. A hand-opened session gets no rule: give it this section.
 
 ## Close
 
-Instead of `worker-release`: `jitso close <launch id>` after integration is verified. It closes that terminal, confirms it is gone, then writes the end event; if it is still listed, nothing is written: retry. A JITSO worker has no cost footer (`--setting-sources project` leaves the user statusline out). Its cost is the `tokens:` line `jitso close` prints for a claude launch (also in the end event): tokens only, no dollar figure. Then the orphan audit and worktree removal as usual. At the end of the fleet run `jitso reap --run <run>`: it ends launches whose terminal is gone and prints every worker no launch explains (a native start).
+Instead of `worker-release`: `jitso close <launch id>` after integration is verified. It closes that terminal, confirms it is gone, then writes the end event; if it is still listed, nothing is written: retry. A Claude worker shows the owner's statusline since v0.10, but its cost of record is the `tokens:` line `jitso close` prints for a claude launch (also in the end event): tokens only, no dollar figure. Then the orphan audit and worktree removal as usual. At the end of the fleet run `jitso reap --run <run>`: it ends launches whose terminal is gone and prints every worker no launch explains (a native start).
 
 ## Re-sync
 
