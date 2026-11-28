@@ -998,11 +998,37 @@
     return false;
   }
 
+  /** The viewer element that holds focus right now, if any. */
+  function heldViewerFocus() {
+    const active = document.activeElement;
+    return active && lightbox.contains(active) ? active : null;
+  }
+
+  function isFocusable(node) {
+    return Boolean(node && node.isConnected && !node.disabled && node.getClientRects().length > 0);
+  }
+
+  /**
+   * The viewer's keys are heard on the dialog, so focus must stay inside it.
+   * When `held` (focused before an update) went dead (disabled, hidden or
+   * removed with its slide), focus moves to its counterpart (previous and
+   * next, zoom in and zoom out), else to the stage.
+   */
+  function keepViewerFocus(held) {
+    if (!held || !isLightboxOpen() || isFocusable(held)) {
+      return;
+    }
+    const pair = [[lbPrev, lbNext], [lbZoomIn, lbZoomOut]].find(nodes => nodes.includes(held));
+    const other = pair ? pair.find(node => node !== held) : null;
+    (isFocusable(other) ? other : lightboxBody).focus({ preventScroll: true });
+  }
+
   function showSlide(index) {
     const slide = viewer.slides[index];
     if (!slide) {
       return;
     }
+    const held = heldViewerFocus();
     viewer.index = index;
     viewer.img = null;
     lightboxBody.textContent = '';
@@ -1034,6 +1060,7 @@
       wrap.appendChild(slide.node.cloneNode(true));
       lightboxBody.appendChild(wrap);
       setZoomTools(false);
+      keepViewerFocus(held);
       renderVisibleDiagrams();
       return;
     }
@@ -1050,6 +1077,7 @@
     if (img.complete && img.naturalWidth) {
       fitImage();
     }
+    keepViewerFocus(held);
     // A higher-resolution `full` source replaces the card picture once it
     // has loaded, keeping the current zoom. An https one in an artifact page
     // is never loaded (the viewer blocks remote images): "Original" links it.
@@ -1173,12 +1201,14 @@
       lbActual.textContent = actual ? 'Fit' : '1:1';
       lbActual.setAttribute('aria-label', actual ? 'Fit to screen' : 'Actual size (1:1)');
     }
+    const held = heldViewerFocus();
     if (lbZoomOut) {
       lbZoomOut.disabled = viewer.scale <= minScale() + 1e-3;
     }
     if (lbZoomIn) {
       lbZoomIn.disabled = viewer.scale >= maxScale() - 1e-3;
     }
+    keepViewerFocus(held);
   }
 
   /** Never smaller than the fit size, except to show a big picture at 1:1. */
