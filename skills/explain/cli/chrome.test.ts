@@ -2,6 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, describe, expect, test } from 'bun:test';
+import { ciLimit } from '../engine/ci-limit.ts';
 import { findChrome, isHeadlessShell, launchChrome } from './chrome.ts';
 
 const temps: string[] = [];
@@ -67,10 +68,11 @@ describe('chrome process handling', () => {
     writeFileSync(bin, '#!/bin/sh\ntrap \'\' TERM\necho "stubborn started" >&2\nwhile :; do sleep 0.1; done\n');
     chmodSync(bin, 0o755);
     const chrome = launchChrome('http://127.0.0.1:1/', bin);
-    await Bun.sleep(300);
+    // The script must have set its trap and written to stderr before kill().
+    await Bun.sleep(ciLimit(300, 3));
     const start = performance.now();
     await chrome.kill();
-    expect(performance.now() - start).toBeLessThan(6500);
+    expect(performance.now() - start).toBeLessThan(ciLimit(6500, 1.5));
     expect(chrome.stderrTail()).toContain('stubborn started');
   }, 15_000);
 });

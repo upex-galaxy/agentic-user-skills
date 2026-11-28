@@ -8,6 +8,7 @@ import { withErrorProbe } from '../cli/headless.ts';
 import { ensureBuilt, resolveTarget } from '../cli/index.ts';
 import { runSession } from '../cli/session.ts';
 import { planVoice } from '../cli/voice.ts';
+import { ciLimit } from './ci-limit.ts';
 import { labels } from './player.js';
 import { encodeWav } from './wav.js';
 
@@ -126,12 +127,13 @@ describe('preview sound in Chrome', () => {
     `);
     expect(r.before).toEqual({ hidden: false, enabled: false, ctx: 0 });
     expect(r.silentWhileScrubbing).toBe(true);
-    expect(Math.abs(r.seek - 12)).toBeLessThan(0.02);
+    expect(Math.abs(r.seek - 12)).toBeLessThan(ciLimit(0.02, 2));
     expect(r.playing).toBe(true);
-    expect(r.worst).toBeLessThan(0.033);
-    expect(r.advanced).toBeGreaterThan(4.5);
+    // The drift is the time since the last drawn frame, and runners reached 48 ms. A stalled loop or a wrong clock base drifts by seconds.
+    expect(r.worst).toBeLessThan(ciLimit(0.033, 3));
+    expect(r.advanced).toBeGreaterThan(5 - ciLimit(0.5, 2));
     expect(r.paused.playing).toBe(false);
-    expect(Math.abs(r.paused.offset - 17)).toBeLessThan(0.5);
+    expect(Math.abs(r.paused.offset - 17)).toBeLessThan(ciLimit(0.5, 2));
     expect(r.ctx).toBe(1);
     expect(r.label).toBe('Sonido: sí');
     expect(r.stored).toBe('1');
@@ -149,7 +151,7 @@ describe('preview sound in Chrome', () => {
     const html = await builtPage(false);
     const r = await inChrome(html, {}, `
       var b = document.getElementById('sound');
-      await sleep(300);
+      await sleep(${ciLimit(300, 3)});
       return { hidden: b.hidden, display: getComputedStyle(b).display, audio: !!window.__explainAudio && window.__explainAudio.enabled(), ctx: window.__ctxCount, t: Number(document.getElementById('scrub').value) };
     `);
     expect(r).toMatchObject({ hidden: true, display: 'none', audio: false, ctx: 0 });

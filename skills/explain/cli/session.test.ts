@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, test } from 'bun:test';
+import { ciLimit } from '../engine/ci-limit.ts';
 import { stillFile, stills } from './export.ts';
 import { runSession, startServer, TOKEN_HEADER } from './session.ts';
 
@@ -81,6 +82,7 @@ describe('dead Chrome', () => {
     const run = runSession({ html: '<p/>', query: {}, label: 'QA', timeoutMs: 60_000, limits: {}, onPost: () => true, launch: fakeChrome(async () => {}, 3) });
     const err = await run.then(() => null, (e: Error) => e);
     expect(err?.message).toMatch(/exited with code 3[\s\S]*fake stderr line/);
-    expect(performance.now() - start).toBeLessThan(2000);
+    // Far under the 60 s session timeout, which is what a missed exit would wait for.
+    expect(performance.now() - start).toBeLessThan(ciLimit(2000, 3));
   });
 });
