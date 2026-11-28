@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, uti
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, test } from 'bun:test';
+import { ciLimit } from '../engine/ci-limit.ts';
 import { buildHash, buildPage, insideSkillDir, readBuildHash, SKILL_DIR } from './build.ts';
 import { findChrome } from './chrome.ts';
 import { dateStamp, defaultAt, defaultStillTimes, diskSpaceProblem, ensureBuilt, explainerDir, freeBytes, parseArgs, parseAt, parseBitrate, parsePreset, parseTimes, planStills, resolveOut, resolveTarget, sceneTemplate, sheetTimes, slugify, UsageError } from './index.ts';
@@ -275,7 +276,8 @@ describe('a scene that throws', () => {
       const r = await run(args, home);
       const seconds = (performance.now() - start) / 1000;
       expect(r.code).toBe(1);
-      expect(seconds).toBeLessThan(25);
+      // The first command of the suite to start Chrome took up to 33 s on a runner. Stay under the page's 60 s "never became ready" fallback.
+      expect(seconds).toBeLessThan(ciLimit(25, 2));
       expect(r.stderr).toContain('boom-scene');
       expect(r.stderr).toContain('doesNotExist');
     }

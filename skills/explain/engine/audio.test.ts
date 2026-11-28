@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, test } from 'bun:test';
 import { blockLoudness, CLIP_SR, coalesce, DEFAULT_SOUND, kWeights, limit, loudness, mix, resolveSound, soundProblems, SR, synth, upsample2x } from './audio.js';
+import { ciLimit } from './ci-limit.ts';
 import { SOUND_KINDS } from './sound-kinds.js';
 
 const sine = (n: number, f: number, amp: number, sr: number) => Float32Array.from({ length: n }, (_, i) => amp * Math.sin(2 * Math.PI * f * i / sr));
@@ -253,7 +254,8 @@ describe('mix', () => {
     const r = mix({ duration: 90, events: events(60, 90), clips });
     const ms = performance.now() - t0;
     console.log(`audio: 90 s mix, 60 events (${r.report.sfxEvents} after coalesce), 30 s of clips: ${ms.toFixed(0)} ms, ${r.report.integratedLufs.toFixed(2)} LUFS, ${r.report.peakDbfs.toFixed(2)} dBFS`);
-    expect(ms).toBeLessThan(1500);
+    // Runners took 530 to 920 ms when passing and up to 1770 ms when slow; a worse complexity class takes many times longer.
+    expect(ms).toBeLessThan(ciLimit(1500, 2));
     expect(r.left.length).toBe(90 * SR);
   });
 });
