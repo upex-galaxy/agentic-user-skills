@@ -47,7 +47,7 @@ There are two shapes: the **Spec** the AI writes (input), and the **Result** the
 | `context` | `ContextBalloon[]` | no | Collapsible "How does X work today?" balloons. Each needs non-empty `title` + `body` (markdown). |
 | `options` | `DecisionOption[]` | yes | **At least 2** — one option is not a decision. |
 | `allowCustom` | `boolean` | no | Default `true`. Adds the "Something else (custom)" option with its textarea. |
-| `optionMediaLayout` | `'large' \| 'compact'` | no | Default `'large'`: option pictures (images, SVGs, video posters, artifact embed thumbnails) preview at card width, one big, two side by side, or one big plus a strip for three or more; other media show as chips. `'compact'` keeps the older row of small thumbnails. Any other value fails validation. |
+| `optionMediaLayout` | `'large' \| 'compact'` | no | Default `'large'`: option pictures (images, SVGs, video posters, artifact embed thumbnails) preview at card width, one big, two side by side, or one big plus a strip for three or more; other media show as chips. `'compact'` keeps the older row of small thumbnails, which pick the option when clicked and open no viewer. Any other value fails validation. |
 
 `DecisionOption`:
 
@@ -57,7 +57,7 @@ There are two shapes: the **Spec** the AI writes (input), and the **Result** the
 | `label` | `string` | yes | Non-empty. Inline markdown supported. |
 | `justification` | `string` | yes | **Non-empty — the HARD RULE.** The written value/cost rationale. Inline markdown supported. An option without it fails validation. |
 | `recommended` | `boolean` | no | **At most ONE option per decision** may be `true` (a second fails validation). Its justification must state WHY it is recommended. |
-| `media` | `MediaEntry[]` | no | Previews inside the option card (see `optionMediaLayout`). Clicking a preview opens the media viewer on it instead of picking the option; **V** or "View option media" opens the viewer from the keyboard. A media-only option still needs its `justification`. |
+| `media` | `MediaEntry[]` | no | Previews inside the option card (see `optionMediaLayout`). In the `large` layout, clicking a preview opens the media viewer on it instead of picking the option. In the `compact` layout, clicking a thumbnail picks the option and opens no viewer. In both, **V** or "View option media" opens the viewer. A media-only option still needs its `justification`. |
 
 Decision extras rendered by the UI (not in the spec): the custom option textarea (when `allowCustom`) and a per-decision "Note for Claude (optional)" textarea.
 
@@ -124,7 +124,7 @@ Each row's answer lives behind a compact "Answer" button that opens a popover (c
 
 Sources (`src`, `poster`, `image`, `full`): a local path (relative to the spec file, or absolute), an `https:` URL, or a `data:` URI. Local files are inlined as `data:` URIs in every mode so the page is self-contained; https URLs stay URLs. Any other scheme fails validation.
 
-**Media viewer.** Any image, the option previews and **V** (the current card's media; on a decision it starts at the chosen option) open a full-viewport viewer: the picture fits the screen, the wheel or a pinch zooms around the pointer, drag pans when zoomed, double-click or **Z** toggles 1:1, **+ / -** zoom, **0** fits, **left / right** (or a swipe) move through every picture of the same item or, on a decision, every option's media in screen order (it follows Shuffle), **Esc** closes. On option media the foot shows "Choose option X" (**Enter**), which picks it and closes. Video, embeds, links and diagrams show as they are, without zoom. A picture with an https source gets an "Original" link that opens it in a new tab.
+**Media viewer.** Any image in intro or item media, the `large` option previews, "View option media" and **V** (the current card's media; on a decision it starts at the chosen option) open a full-viewport viewer: the picture fits the screen, the wheel or a pinch zooms around the pointer, drag pans when zoomed, double-click or **Z** toggles 1:1, **+ / -** zoom, **0** fits, **left / right** (or a swipe) move through every picture of the same item or, on a decision, every option's media in screen order (it follows Shuffle), **Esc** closes. On option media the foot shows "Choose option X" (**Enter**), which picks it and closes. Video, embeds, links and diagrams show as they are, without zoom. A picture with an https source gets an "Original" link that opens it in a new tab.
 
 **Links in markdown** (`problem`, `content`, balloons, justifications) open in a new tab (`target="_blank" rel="noopener noreferrer"`; `mailto:` keeps the default). In `--artifact` mode the claude.ai viewer runs the page in a sandboxed frame: a new-tab link works only while the viewer allows popups, and the page can never show a remote image itself. To let the user inspect a high-resolution picture inside the deck, put it in `media` (a local file, or `full` on an image entry) instead of linking it in the text.
 
