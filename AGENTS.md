@@ -91,12 +91,16 @@ agentic-user-skills/
                           #   self-contained, 5-8 slides, built only from the skill's own files
       cli/                # OPTIONAL bundled CLI — decoupled, zero-dep (see Critical Rule #8)
         index.ts … ui/
+  scripts/                # maintainer tooling, not distributed (skills-link.ts: see section 5)
   package.json            # name, bin(s), scripts (build / types / lint). READ it for commands.
   tsconfig.json eslint.config.js .gitignore README.md
 ```
 
 **A skill is just a directory.** It may be pure instructions (SKILL.md + references) or bundle a
 self-contained CLI. Keep each skill independently extractable.
+
+**On the owner's machine this checkout IS the user-level install:** `~/.agents/skills/<name>` links
+to `skills/<name>` here, so editing a skill at user level edits this repo.
 
 ---
 
@@ -110,6 +114,10 @@ self-contained CLI. Keep each skill independently extractable.
 - **Zero host footprint.** A bundled tool writes its caches/results under `~/.<tool>/`, never the
   consumer repo's cwd — so running it inside any repo dirties nothing there.
 - **Idempotent.** Re-running an installer overwrites in place; no duplicates across repos.
+- **Owner's machine = symlinks.** `scripts/skills-link.ts` (`package.json`: `skills:*`) links every
+  own skill to the primary checkout and reports drift. Never run `skills add` or `skills update` for
+  an own skill there: it replaces the link with a copy. Everyone else installs as above. Details:
+  `README.md`, "Maintainer setup".
 
 ---
 
@@ -179,6 +187,12 @@ Small skills monorepo → **GitHub-flow**: `main` is always usable; do feature w
 (`feat:` / `fix:` / `docs:` / `refactor:` / `chore:` …), one responsibility per commit, no AI
 attribution, confirm before pushing to `main`. Use `gh` for PRs. (If you adopt the `git-flow-master`
 skill, it auto-detects + adapts.)
+
+**The primary checkout stays on `main`**: every session on the owner's machine loads its `skills/`
+working tree, uncommitted edits included. Do branch work in a worktree (`git worktree add`), never by
+switching the primary checkout. A small live-skill edit is committed on `main` there and pushed only
+after the owner confirms (rule 3); larger work goes worktree → PR → `main`, then
+`git pull --ff-only` in the primary checkout.
 
 ---
 
