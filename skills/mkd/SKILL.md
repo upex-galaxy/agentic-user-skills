@@ -28,9 +28,13 @@ The **weight** of a decision picks the tool, never the count. A small decision (
 
 ## MKD and SPD
 
-SPD (Sweep Pending Decisions) and MKD are siblings that never overlap: SPD takes the small decisions, MKD the heavy ones. A turn that would end with open small items asks all of them with the harness question tool, in rounds at the tool's own per-call limit until every item is asked. Each question offers the recommended option first, a free-text way out (the tool's automatic "Other") and a "Later" option unless it blocks. With no such tool, fall back to a numbered prose list with the recommended default and "later".
+SPD (Sweep Pending Decisions) and MKD are siblings that never overlap: SPD takes the small decisions, MKD the heavy ones. A turn that would end with open small items, in a session that may ask (below), asks all of them with the harness question tool, in rounds at the tool's own per-call limit until every item is asked. Each question offers the recommended option first, a free-text way out (the tool's automatic "Other") and a "Later" option unless it blocks. With no such tool, fall back to a numbered prose list with the recommended default and "later".
 
-Order for a mixed batch: sweep the small ones first, then open MKD for the heavy ones. Only the session talking to the human sweeps or opens a deck; workers, subagents and routines report their pendings instead. An MKD item the user skipped (decide later) is a deferral, not a rejection: the next sweep may re-raise it once.
+**Order for a mixed batch.** At the close of a turn that holds both, the heavy items go to an MKD deck first, then the sweep takes every remaining small item. A blocking item is asked at once, by whichever instrument fits.
+
+**Who may ask.** The session the human types into sweeps and opens decks. A session launched by another session does so only when the human typed that request into its own session or its brief grants it in writing; otherwise it sends its pendings to its launcher. Subagents and routines never ask: they list their pendings in their report.
+
+An MKD item the user skipped (decide later) is a deferral, not a rejection: the next sweep may re-raise it once.
 
 ## Writing a spec
 
@@ -75,7 +79,7 @@ The CLI never picks artifact mode by itself (it cannot call the `Artifact` tools
 | Anything else, no answer needed in this turn | **copy mode**: opens the browser, exits; the user pastes the JSON | `<spec>` |
 | Anything else, the next step needs the answer now | **`--wait`**: serves, blocks until submit, Result on stdout | `<spec> --wait` |
 
-A subagent, a print session or Claude Code without the `Artifact` tool cannot hold a watch: use the Orca, copy or `--wait` rows. Other flags: `--copy` (force copy mode inside Orca), `--no-open`, `--port <n>`, `--timeout <min>`.
+A subagent runs none of these flows: it only lists its pendings in its report. A print session or Claude Code without the `Artifact` tool cannot hold a watch: use the Orca, copy or `--wait` rows. Other flags: `--copy` (force copy mode inside Orca), `--no-open`, `--port <n>`, `--timeout <min>`.
 
 **Before running any flow, read the matching section of `references/flows.md`**: it holds the exact steps, the pending-deck rule for artifact mode, ports, exit codes and the `open-artifact <url>` subcommand.
 
