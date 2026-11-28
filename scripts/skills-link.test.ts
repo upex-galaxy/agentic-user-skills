@@ -585,6 +585,7 @@ describe('link --claude-dir-link', () => {
       write(join(agents(name), 'SKILL.md'), `${text}\n`);
     }
     symlinkSync('third', agents('alias'));
+    write(join(agents('.old-backup'), 'SKILL.md'), 'stale backup\n');
     mkdirSync(claudeDir(), { recursive: true });
     install('alpha', agents('alpha'));
     install('alpha', claude('alpha'));
@@ -635,7 +636,7 @@ describe('link --claude-dir-link', () => {
     expect(existsSync(join(backup, 'claude', 'same'))).toBe(true);
     expect(r.out).toMatch(/skills\/drifted to .* \(DIFFERS from ~\/\.agents\/skills\/drifted\)/);
     expect(r.out).toMatch(/skills\/same to .* \(same content\)/);
-    expect(r.out).toContain('now also loads: alias');
+    expect(r.out).toContain('now also loads: .old-backup, alias');
     expect(inventory().fromClaude).toEqual(['.trash', 'borrowed', 'channel', 'channel-relative', 'local', 'sibling', 'synced']);
     expect(inventory().skills).toContain('third');
     expect(inventory().skills).not.toContain('synced');

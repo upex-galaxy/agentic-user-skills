@@ -337,7 +337,9 @@ function linkClaudeDirectory(own: string[], dryRun: boolean) {
     }
   }
 
-  const loadedNow = skillEntries().filter(n => !entries.includes(n) && existsSync(join(agentsSkills, n, 'SKILL.md')));
+  // Claude Code loads hidden folders too, so a stale backup left in ~/.agents/skills becomes a skill.
+  const loadedNow = (kind(agentsSkills) === 'dir' ? readdirSync(agentsSkills).sort() : [])
+    .filter(n => !CLAUDE_MANAGED.includes(n) && !entries.includes(n) && existsSync(join(agentsSkills, n, 'SKILL.md')));
   if (loadedNow.length) {
     console.log(`Claude Code ${dryRun ? 'would also load' : 'now also loads'}: ${loadedNow.join(', ')}`);
   }

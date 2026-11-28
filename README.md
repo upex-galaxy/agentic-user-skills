@@ -113,7 +113,7 @@ bun run skills:unlink           # rollback: real copies of the working tree agai
 | What changes | Effect |
 | --- | --- |
 | Entries that existed only under `~/.claude/skills`, including Claude Code's `synced/` | They move to `~/.agents/skills`, where other agents can see them |
-| Entries that existed only under `~/.agents/skills` | Claude Code loads them too |
+| Entries that existed only under `~/.agents/skills` | Claude Code loads them too, hidden folders such as old backups included |
 | `skills remove <name> -a claude-code` | For a linked entry, it removes the skill for every agent |
 | `rm -rf ~/.claude/skills/<name>` | It deletes the real skill |
 
